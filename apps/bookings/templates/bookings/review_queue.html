@@ -1,0 +1,46 @@
+{% extends "base/base.html" %}
+
+{% block title %}Review queue - ticketmirror{% endblock %}
+
+{% block content %}
+  <h1 class="h3 mb-4">Review queue</h1>
+  <div class="tm-card">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Title</th>
+          <th>Booking</th>
+          <th>Raw email</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in issues %}
+          <tr class="{% if issue.issue_type == 'manual_override_conflict' %}table-danger{% endif %}">
+            <td>{{ issue.issue_type }}</td>
+            <td>{{ issue.title }}<div class="small tm-muted">{{ issue.details }}</div></td>
+            <td>{% if issue.booking %}<a href="{% url 'bookings:detail' issue.booking.id %}">{{ issue.booking.provider_booking_reference }}</a>{% endif %}</td>
+            <td>{% if issue.raw_email %}<a href="{% url 'bookings:raw_email_detail' issue.raw_email.id %}">{{ issue.raw_email.subject }}</a>{% endif %}</td>
+            <td>{{ issue.created_at }}</td>
+            <td class="text-end">
+              {% if can_edit_queue %}
+                {% if issue.issue_type == 'product_alias_missing' %}
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'product_aliases' %}?review_id={{ issue.id }}">Link alias</a>
+                {% endif %}
+                <form class="d-inline" method="post" action="{% url 'review_action' issue.id %}">
+                  {% csrf_token %}
+                  <button class="btn btn-sm btn-outline-success" name="action" value="resolve">Resolve</button>
+                  <button class="btn btn-sm btn-outline-secondary" name="action" value="ignore">Ignore</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="text-center tm-muted py-4">No open review items.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

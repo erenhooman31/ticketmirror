@@ -1,0 +1,68 @@
+{% extends "base/base.html" %}
+
+{% block title %}Product aliases - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-end mb-4">
+    <div>
+      <h1 class="h3 mb-1">Product aliases</h1>
+      <div class="tm-muted">Map provider product names to canonical products.</div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <form method="post" class="tm-card p-3">
+        {% csrf_token %}
+        <h2 class="h6">{% if review_item %}Create from review item{% else %}Create alias{% endif %}</h2>
+        {% for field in form %}
+          <div class="mb-3 {% if field.name == 'approved' %}form-check{% endif %}">
+            {% if field.name == 'approved' %}
+              {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {% else %}
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+            {% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+        <button class="btn btn-primary" type="submit">Save alias</button>
+      </form>
+    </div>
+    <div class="col-lg-8">
+      <div class="tm-card">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Provider raw product</th>
+              <th>Canonical</th>
+              <th>Confidence</th>
+              <th>Approved</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for alias in aliases %}
+              <tr>
+                <td>{{ alias.provider.name }} · {{ alias.raw_product_name }}{% if alias.raw_option_name %} / {{ alias.raw_option_name }}{% endif %}</td>
+                <td>{{ alias.canonical_product.canonical_name }}{% if alias.canonical_variant %} / {{ alias.canonical_variant.variant_name }}{% endif %}</td>
+                <td>{{ alias.confidence }}</td>
+                <td>{% if alias.approved %}<span class="badge text-bg-success">Approved</span>{% else %}<span class="badge text-bg-warning">Pending</span>{% endif %}</td>
+                <td class="text-end">
+                  {% if not alias.approved %}
+                    <form method="post" action="{% url 'approve_alias' alias.id %}">
+                      {% csrf_token %}
+                      <button class="btn btn-sm btn-outline-success">Approve</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="text-center tm-muted py-4">No aliases yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

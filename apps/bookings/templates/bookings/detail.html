@@ -1,0 +1,88 @@
+{% extends "base/base.html" %}
+{% load booking_extras %}
+
+{% block title %}Booking {{ booking.provider_booking_reference }} - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">{{ booking.provider_booking_reference }}</h1>
+      <div class="tm-muted">{{ booking.provider.name }} · {{ booking.lead_traveler_name|default:"No lead traveler" }}</div>
+    </div>
+    {% if can_edit_booking %}
+      <a class="btn btn-primary" href="{% url 'bookings:edit' booking.id %}">Edit booking</a>
+    {% endif %}
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Provider identity</h2>
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Provider</dt><dd class="col-sm-8">{{ booking.provider.name }}</dd>
+          <dt class="col-sm-4">Booking ref</dt><dd class="col-sm-8">{{ booking.provider_booking_reference }}</dd>
+          <dt class="col-sm-4">Order ref</dt><dd class="col-sm-8">{{ booking.provider_order_reference|default:"" }}</dd>
+          <dt class="col-sm-4">Raw product</dt><dd class="col-sm-8">{{ booking.raw_product_name }}</dd>
+          <dt class="col-sm-4">Raw option</dt><dd class="col-sm-8">{{ booking.raw_option_name|default:"" }}</dd>
+          <dt class="col-sm-4">Provider date</dt><dd class="col-sm-8">{{ booking.provider_travel_date|default:"" }}</dd>
+          <dt class="col-sm-4">Provider time</dt><dd class="col-sm-8">{{ booking.provider_start_time|time:"H:i"|default:"" }}</dd>
+          <dt class="col-sm-4">Provider pax</dt><dd class="col-sm-8">{{ booking.provider_traveler_count|default:"" }}</dd>
+        </dl>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Active operations</h2>
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Status</dt><dd class="col-sm-8 {% if booking|field_overridden:'status' %}tm-manual{% endif %}">{{ booking.status }}</dd>
+          <dt class="col-sm-4">Product</dt><dd class="col-sm-8">{{ booking.canonical_product.canonical_name|default:"Unmapped" }}</dd>
+          <dt class="col-sm-4">Variant</dt><dd class="col-sm-8">{{ booking.canonical_variant.variant_name|default:"Unmapped" }}</dd>
+          <dt class="col-sm-4">Date</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_travel_date' %}tm-manual{% endif %}">{{ booking.active_travel_date|default:"" }}</dd>
+          <dt class="col-sm-4">Start</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_start_time' %}tm-manual{% endif %}">{{ booking.active_start_time|time:"H:i"|default:"" }}</dd>
+          <dt class="col-sm-4">Pax</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_traveler_count' %}tm-manual{% endif %}">{{ booking.active_traveler_count|default:"" }}</dd>
+          <dt class="col-sm-4">Pickup</dt><dd class="col-sm-8">{{ booking.pickup_location|default:"" }}</dd>
+          <dt class="col-sm-4">Meeting</dt><dd class="col-sm-8">{{ booking.meeting_point|default:"" }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-lg-6">
+      <div class="tm-card p-3">
+        <h2 class="h6">Raw emails</h2>
+        <table class="table table-sm mb-0">
+          <tbody>
+            {% for raw_email in raw_emails %}
+              <tr>
+                <td><a href="{% url 'bookings:raw_email_detail' raw_email.id %}">{{ raw_email.subject }}</a></td>
+                <td>{{ raw_email.received_at }}</td>
+                <td>{{ raw_email.parse_status }}</td>
+              </tr>
+            {% empty %}
+              <tr><td class="tm-muted">No raw emails linked yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="tm-card p-3">
+        <h2 class="h6">Events</h2>
+        <table class="table table-sm mb-0">
+          <tbody>
+            {% for event in events %}
+              <tr>
+                <td><span class="badge text-bg-secondary">{{ event.event_type }}</span></td>
+                <td>{{ event.created_at }}</td>
+                <td>{{ event.source }}</td>
+              </tr>
+            {% empty %}
+              <tr><td class="tm-muted">No events yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -1,63 +1,81 @@
 {% extends "base/base.html" %}
+{% load booking_extras %}
 
 {% block title %}Dashboard - ticketmirror{% endblock %}
 
 {% block content %}
-  <div class="d-flex justify-content-between align-items-center mb-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
     <div>
       <h1 class="h3 mb-1">Operations dashboard</h1>
-      <p class="text-secondary mb-0">{{ today }}</p>
+      <div class="tm-muted">Internal booking mirror for {{ today }}</div>
     </div>
+    <form class="d-flex gap-2" method="get">
+      <input class="form-control" type="date" name="date" value="{{ today|date:'Y-m-d' }}">
+      <button class="btn btn-primary" type="submit">Go</button>
+      <a class="btn btn-outline-secondary" href="{% url 'bookings:daily' %}?date={{ today|date:'Y-m-d' }}">Daily view</a>
+    </form>
   </div>
 
   <div class="row g-3 mb-4">
     <div class="col-md-3">
-      <div class="border rounded p-3">
-        <div class="text-secondary small">Bookings today</div>
-        <div class="fs-3">{{ bookings_today_count }}</div>
+      <div class="tm-card p-3">
+        <div class="tm-label">Bookings today</div>
+        <div class="tm-kpi">{{ bookings_today_count }}</div>
       </div>
     </div>
     <div class="col-md-3">
-      <div class="border rounded p-3">
-        <div class="text-secondary small">Confirmed pax</div>
-        <div class="fs-3">{{ confirmed_pax_today }}</div>
+      <div class="tm-card p-3">
+        <div class="tm-label">Confirmed pax</div>
+        <div class="tm-kpi">{{ confirmed_pax_today }}</div>
       </div>
     </div>
     <div class="col-md-3">
-      <div class="border rounded p-3">
-        <div class="text-secondary small">Pending pax</div>
-        <div class="fs-3">{{ pending_pax_today }}</div>
+      <div class="tm-card p-3">
+        <div class="tm-label">Pending pax</div>
+        <div class="tm-kpi">{{ pending_pax_today }}</div>
       </div>
     </div>
     <div class="col-md-3">
-      <div class="border rounded p-3">
-        <div class="text-secondary small">Needs review</div>
-        <div class="fs-3">{{ open_review_count }}</div>
+      <div class="tm-card p-3">
+        <div class="tm-label">Open review</div>
+        <div class="tm-kpi">{{ open_review_count }}</div>
       </div>
     </div>
   </div>
 
-  <section>
-    <h2 class="h5">Booking status</h2>
-    <table class="table table-sm">
-      <thead>
-        <tr>
-          <th>Status</th>
-          <th>Count</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in status_counts %}
-          <tr>
-            <td>{{ row.status }}</td>
-            <td>{{ row.count }}</td>
-          </tr>
-        {% empty %}
-          <tr>
-            <td colspan="2" class="text-secondary">No bookings yet.</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Exceptions</h2>
+        <div class="d-flex justify-content-between border-top py-2">
+          <span>Failed parser emails</span>
+          <strong>{{ failed_parser_count }}</strong>
+        </div>
+        <div class="d-flex justify-content-between border-top py-2">
+          <span>Capacity warnings</span>
+          <strong>{{ capacity_warning_count }}</strong>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-8">
+      <div class="tm-card p-3">
+        <h2 class="h6">Booking status</h2>
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr><th>Status</th><th class="text-end">Count</th></tr>
+          </thead>
+          <tbody>
+            {% for row in status_counts %}
+              <tr>
+                <td><span class="badge text-bg-{{ row.status|status_class }}">{{ row.status }}</span></td>
+                <td class="text-end">{{ row.count }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="2" class="tm-muted">No bookings yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 {% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base/base.html" %}
+
+{% block title %}Reports - ticketmirror{% endblock %}
+
+{% block content %}
+  <h1 class="h3 mb-4">Reports</h1>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Daily manifest</h2>
+        <form class="d-flex gap-2" action="{% url 'reports:daily_manifest_csv' %}">
+          <input class="form-control" type="date" name="date" value="{{ today|date:'Y-m-d' }}">
+          <button class="btn btn-primary">CSV</button>
+        </form>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Capacity summary</h2>
+        <form class="d-flex gap-2" action="{% url 'reports:capacity_summary_csv' %}">
+          <input class="form-control" type="date" name="date" value="{{ today|date:'Y-m-d' }}">
+          <button class="btn btn-primary">CSV</button>
+        </form>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Bookings by date range</h2>
+        <form class="d-flex gap-2" action="{% url 'reports:bookings_csv' %}">
+          <input class="form-control" type="date" name="date_from" value="{{ date_from }}">
+          <input class="form-control" type="date" name="date_to" value="{{ date_to }}">
+          <button class="btn btn-primary">CSV</button>
+        </form>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Provider summary</h2>
+        <form class="d-flex gap-2" action="{% url 'reports:provider_summary_csv' %}">
+          <input class="form-control" type="date" name="date_from" value="{{ date_from }}">
+          <input class="form-control" type="date" name="date_to" value="{{ date_to }}">
+          <button class="btn btn-primary">CSV</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

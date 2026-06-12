@@ -1,0 +1,29 @@
+{% extends "base/base.html" %}
+
+{% block title %}Login - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="row justify-content-center">
+    <div class="col-sm-10 col-md-6 col-lg-4">
+      <div class="tm-card p-4 mt-5">
+        <h1 class="h4 mb-3">Sign in</h1>
+        {% if form.errors %}
+          <div class="alert alert-danger">Username and password did not match.</div>
+        {% endif %}
+        <form method="post" action="{% url 'login' %}">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.username.id_for_label }}">Username</label>
+            <input class="form-control" type="text" name="{{ form.username.name }}" id="{{ form.username.id_for_label }}" autofocus>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.password.id_for_label }}">Password</label>
+            <input class="form-control" type="password" name="{{ form.password.name }}" id="{{ form.password.id_for_label }}">
+          </div>
+          <input type="hidden" name="next" value="{{ next }}">
+          <button class="btn btn-primary w-100" type="submit">Login</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base/base.html" %}
+
+{% block title %}Raw email - ticketmirror{% endblock %}
+
+{% block content %}
+  <h1 class="h3 mb-3">Raw email</h1>
+  <div class="tm-card p-3 mb-3">
+    <dl class="row mb-0">
+      <dt class="col-sm-3">Subject</dt><dd class="col-sm-9">{{ raw_email.subject }}</dd>
+      <dt class="col-sm-3">Outer sender</dt><dd class="col-sm-9">{{ raw_email.gmail_outer_sender }}</dd>
+      <dt class="col-sm-3">Forwarded sender</dt><dd class="col-sm-9">{{ raw_email.original_forwarded_sender|default:"" }}</dd>
+      <dt class="col-sm-3">Received</dt><dd class="col-sm-9">{{ raw_email.received_at }}</dd>
+      <dt class="col-sm-3">Parse status</dt><dd class="col-sm-9">{{ raw_email.parse_status }}</dd>
+    </dl>
+  </div>
+  <div class="tm-card p-3">
+    <h2 class="h6">Body text</h2>
+    <pre class="tm-pre mb-0">{{ raw_email.body_text }}</pre>
+  </div>
+{% endblock %}

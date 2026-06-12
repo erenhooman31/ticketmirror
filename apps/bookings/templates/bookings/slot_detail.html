@@ -1,0 +1,54 @@
+{% extends "base/base.html" %}
+{% load booking_extras %}
+
+{% block title %}Slot detail - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-end mb-4">
+    <div>
+      <h1 class="h3 mb-1">{{ variant.product.canonical_name }}</h1>
+      <div class="tm-muted">{{ selected_date }} · {{ variant.variant_name }} · {{ slot|time:"H:i"|default:"Open" }}</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{% url 'bookings:daily' %}?date={{ selected_date|date:'Y-m-d' }}">Back to daily</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="tm-card p-3"><div class="tm-label">Confirmed</div><div class="tm-kpi">{{ capacity.confirmed }}</div></div></div>
+    <div class="col-md-3"><div class="tm-card p-3"><div class="tm-label">Pending</div><div class="tm-kpi">{{ capacity.pending }}</div></div></div>
+    <div class="col-md-3"><div class="tm-card p-3"><div class="tm-label">Capacity</div><div class="tm-kpi">{{ capacity.capacity }}</div></div></div>
+    <div class="col-md-3"><div class="tm-card p-3"><div class="tm-label">Remaining</div><div class="tm-kpi">{{ capacity.remaining }}</div></div></div>
+  </div>
+
+  <div class="tm-card">
+    <table class="table table-hover tm-table mb-0">
+      <thead>
+        <tr>
+          <th>Provider</th>
+          <th>Reference</th>
+          <th>Lead traveler</th>
+          <th class="text-end">Pax</th>
+          <th>Status</th>
+          <th>Pickup / meeting</th>
+          <th>Language</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for booking in bookings %}
+          <tr data-href="{% url 'bookings:detail' booking.id %}">
+            <td>{{ booking.provider.name }}</td>
+            <td>{{ booking.provider_booking_reference }}</td>
+            <td>{{ booking.lead_traveler_name|default:"" }}</td>
+            <td class="text-end">{{ booking.active_traveler_count|default:"" }}</td>
+            <td><span class="badge text-bg-{{ booking.status|status_class }}">{{ booking.status }}</span></td>
+            <td>{{ booking.pickup_location|default:booking.meeting_point|default:"" }}</td>
+            <td>{{ booking.language|default:"" }}</td>
+            <td>{{ booking.special_requirements|default:booking.customer_message|default:"" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="8" class="text-center tm-muted py-4">No bookings in this slot.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
