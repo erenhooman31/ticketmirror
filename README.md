@@ -66,6 +66,15 @@ docker compose exec web black .
 docker compose exec web ruff check .
 ```
 
+## Documentation
+
+- [Agent guidance](AGENTS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Database](docs/DATABASE.md)
+- [Ingestion](docs/INGESTION.md)
+- [Parsers](docs/PARSERS.md)
+- [Deployment](docs/DEPLOYMENT.md)
+
 ## Environment Variables
 
 Required production values:
