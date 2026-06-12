@@ -2,7 +2,7 @@
 
 Internal Django platform for mirroring OTA booking emails from a dedicated Gmail inbox.
 
-ticketmirror is not the source of truth. It stores raw provider emails first, parses stable provider booking references, upserts mirrored bookings by `provider + reference`, and keeps internal operational data separate from provider payloads.
+ticketmirror is not the source of truth. It stores raw provider emails first, parses stable provider booking references, upserts mirrored bookings by `provider + provider_booking_reference`, and keeps internal operational data separate from provider payloads.
 
 ## Stack
 
@@ -99,7 +99,7 @@ Do not commit real Gmail credentials or provider secrets.
 ## Booking Model Notes
 
 - Raw emails are stored in `ingestion.RawEmail` before parsing.
-- Existing bookings are matched by provider and provider reference.
+- Existing bookings are matched by provider and provider booking reference.
 - Provider payload data is stored separately from active internal fields.
 - Manual edits should use `bookings.services.apply_manual_override()` so audit events are created.
 - Upserts create `BookingEvent` records instead of silently overwriting operationally important data.

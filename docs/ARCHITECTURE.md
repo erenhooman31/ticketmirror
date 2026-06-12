@@ -18,7 +18,7 @@ There is no separate frontend application. MVP user workflows should use Django 
 1. Celery fetches messages from the dedicated Gmail inbox.
 2. The raw message is stored in `ingestion.RawEmail`.
 3. A provider-specific parser converts raw email text into a normalized parsed booking object.
-4. The upsert service finds or creates the booking by provider and provider reference.
+4. The upsert service finds or creates the booking by provider and provider booking reference.
 5. Product aliases map provider product names to canonical internal products and variants.
 6. Ambiguous mappings create review queue items.
 7. Every create, provider update, manual edit, or review condition creates a booking event.

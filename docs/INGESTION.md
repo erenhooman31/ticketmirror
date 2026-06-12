@@ -12,7 +12,7 @@ The expected flow is:
 2. Store or update `RawEmail` by `gmail_message_id`.
 3. Select a provider parser.
 4. Parse deterministic fields from the plain text body.
-5. Upsert a booking by `provider + provider_reference`.
+5. Upsert a booking by `provider + provider_booking_reference`.
 6. Link the booking to the raw email.
 7. Create booking events and review queue items when needed.
 

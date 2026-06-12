@@ -14,30 +14,42 @@ def bookings_csv(request):
     writer.writerow(
         [
             "provider",
-            "provider_reference",
-            "service_date",
-            "time_slot",
+            "provider_booking_reference",
+            "provider_order_reference",
+            "active_travel_date",
+            "active_start_time",
+            "active_end_time",
             "product",
             "variant",
-            "guest_name",
-            "party_size",
+            "lead_traveler_name",
+            "active_traveler_count",
             "status",
         ]
     )
     queryset = Booking.objects.select_related(
-        "provider", "product", "variant"
-    ).order_by("service_date", "time_slot", "provider_reference")
+        "provider", "canonical_product", "canonical_variant"
+    ).order_by("active_travel_date", "active_start_time", "provider_booking_reference")
     for booking in queryset:
         writer.writerow(
             [
                 booking.provider.name,
-                booking.provider_reference,
-                booking.service_date or "",
-                booking.time_slot or "",
-                booking.product.name if booking.product else "",
-                booking.variant.name if booking.variant else "",
-                booking.guest_name,
-                booking.party_size,
+                booking.provider_booking_reference,
+                booking.provider_order_reference or "",
+                booking.active_travel_date or "",
+                booking.active_start_time or "",
+                booking.active_end_time or "",
+                (
+                    booking.canonical_product.canonical_name
+                    if booking.canonical_product
+                    else ""
+                ),
+                (
+                    booking.canonical_variant.variant_name
+                    if booking.canonical_variant
+                    else ""
+                ),
+                booking.lead_traveler_name or "",
+                booking.active_traveler_count or "",
                 booking.status,
             ]
         )

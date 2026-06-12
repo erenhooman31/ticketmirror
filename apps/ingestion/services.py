@@ -16,13 +16,14 @@ def store_raw_email(payload: dict) -> RawEmail:
     raw_email, _created = RawEmail.objects.update_or_create(
         gmail_message_id=payload["gmail_message_id"],
         defaults={
-            "gmail_thread_id": payload.get("gmail_thread_id", ""),
+            "gmail_thread_id": payload.get("gmail_thread_id"),
+            "gmail_history_id": payload.get("gmail_history_id"),
+            "gmail_outer_sender": payload.get("gmail_outer_sender", ""),
+            "original_forwarded_sender": payload.get("original_forwarded_sender"),
             "subject": payload.get("subject", ""),
-            "sender": payload.get("sender", ""),
             "received_at": payload["received_at"],
             "body_text": payload.get("body_text", ""),
-            "body_html": payload.get("body_html", ""),
-            "headers": payload.get("headers", {}),
+            "body_html": payload.get("body_html"),
         },
     )
     return raw_email
@@ -32,79 +33,112 @@ def store_raw_email(payload: dict) -> RawEmail:
 def upsert_booking_from_parsed(raw_email: RawEmail, parsed) -> Booking:
     provider, _ = Provider.objects.get_or_create(
         code=parsed.provider_code,
-        defaults={"name": parsed.provider_code.replace("-", " ").title()},
+        defaults={
+            "name": parsed.provider_code.replace("-", " ").title(),
+            "parser_key": parsed.provider_code,
+        },
     )
-    raw_email.provider = provider
-    raw_email.processing_status = RawEmail.ProcessingStatus.PARSED
-    raw_email.processing_error = ""
+    raw_email.provider_detected = provider
+    raw_email.parse_status = RawEmail.ParseStatus.PARSED
+    raw_email.parse_error = None
     raw_email.save(
         update_fields=[
-            "provider",
-            "processing_status",
-            "processing_error",
+            "provider_detected",
+            "parse_status",
+            "parse_error",
             "updated_at",
         ]
     )
 
-    alias = None
-    if parsed.provider_product_name:
-        alias = ProductAlias.objects.filter(
-            provider=provider,
-            provider_product_name__iexact=parsed.provider_product_name,
-            is_active=True,
-        ).first()
-
+    alias = _find_product_alias(provider=provider, parsed=parsed)
     defaults = {
-        "raw_email": raw_email,
-        "provider_payload": parsed.payload,
-        "service_date": parsed.service_date,
-        "time_slot": parsed.time_slot,
-        "guest_name": parsed.guest_name,
-        "guest_email": parsed.guest_email,
-        "guest_phone": parsed.guest_phone,
-        "party_size": parsed.party_size,
+        "provider_order_reference": parsed.provider_order_reference,
         "status": parsed.status,
-        "provider_notes": parsed.provider_notes,
-        "source_created_at": parsed.source_created_at,
-        "source_updated_at": parsed.source_updated_at,
+        "raw_product_name": parsed.provider_product_name,
+        "raw_option_name": parsed.provider_option_name,
+        "provider_product_code": parsed.provider_product_code,
+        "provider_option_code": parsed.provider_option_code,
+        "provider_travel_date": parsed.service_date,
+        "provider_start_time": parsed.start_time,
+        "provider_end_time": parsed.end_time,
+        "provider_slot_type": parsed.slot_type,
+        "active_travel_date": parsed.service_date,
+        "active_start_time": parsed.start_time,
+        "active_end_time": parsed.end_time,
+        "active_slot_type": parsed.slot_type,
+        "provider_traveler_count": parsed.traveler_count,
+        "active_traveler_count": parsed.traveler_count,
+        "lead_traveler_name": parsed.lead_traveler_name,
+        "lead_traveler_email": parsed.lead_traveler_email,
+        "lead_traveler_phone": parsed.lead_traveler_phone,
+        "traveler_names": parsed.traveler_names,
+        "ticket_breakdown": parsed.ticket_breakdown,
+        "language": parsed.language,
+        "pickup_location": parsed.pickup_location,
+        "meeting_point": parsed.meeting_point,
+        "special_requirements": parsed.special_requirements,
+        "customer_message": parsed.customer_message,
+        "price": parsed.price,
+        "payment_status": parsed.payment_status,
+        "source_thread_id": raw_email.gmail_thread_id,
+        "last_email_received_at": raw_email.received_at,
     }
     if alias:
-        defaults["product"] = alias.product
-        defaults["variant"] = alias.variant
+        defaults["canonical_product"] = alias.canonical_product
+        defaults["canonical_variant"] = alias.canonical_variant
 
     booking, created = Booking.objects.update_or_create(
         provider=provider,
-        provider_reference=parsed.provider_reference,
+        provider_booking_reference=parsed.provider_booking_reference,
         defaults=defaults,
     )
     BookingEvent.objects.create(
         booking=booking,
         event_type=(
-            BookingEvent.EventType.CREATED
+            BookingEvent.EventType.EMAIL_NEW_BOOKING
             if created
-            else BookingEvent.EventType.PROVIDER_UPDATE
+            else BookingEvent.EventType.EMAIL_UPDATE
         ),
-        message=(
-            "Booking created from provider email."
-            if created
-            else "Booking updated from provider email."
-        ),
-        metadata={"raw_email_id": raw_email.id, "provider_payload": parsed.payload},
+        source=BookingEvent.Source.EMAIL,
+        old_values={},
+        new_values=parsed.payload,
+        raw_email=raw_email,
     )
 
     if not alias and parsed.provider_product_name:
         ReviewQueueItem.objects.create(
-            provider=provider,
             booking=booking,
             raw_email=raw_email,
+            issue_type=ReviewQueueItem.IssueType.PRODUCT_ALIAS_MISSING,
             title="Unmapped provider product",
-            notes=parsed.provider_product_name,
+            details=parsed.provider_product_name,
         )
         BookingEvent.objects.create(
             booking=booking,
-            event_type=BookingEvent.EventType.REVIEW_REQUIRED,
-            message="Provider product alias could not be mapped.",
-            metadata={"provider_product_name": parsed.provider_product_name},
+            event_type=BookingEvent.EventType.CONFLICT_DETECTED,
+            source=BookingEvent.Source.SYSTEM,
+            old_values={},
+            new_values={"provider_product_name": parsed.provider_product_name},
+            raw_email=raw_email,
         )
 
     return booking
+
+
+def _find_product_alias(*, provider: Provider, parsed):
+    queryset = ProductAlias.objects.filter(provider=provider, approved=True)
+    if parsed.provider_product_code:
+        alias = queryset.filter(
+            provider_product_code=parsed.provider_product_code,
+            provider_option_code=parsed.provider_option_code,
+        ).first()
+        if alias:
+            return alias
+
+    if parsed.provider_product_name:
+        return queryset.filter(
+            raw_product_name__iexact=parsed.provider_product_name,
+            raw_option_name__iexact=parsed.provider_option_name or "",
+        ).first()
+
+    return None
