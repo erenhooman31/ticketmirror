@@ -6,6 +6,15 @@ from django.db.models import Q, Sum
 
 from .models import Booking, BookingEvent, CapacityRule
 
+PROVIDER_TO_ACTIVE_FIELD_MAP = {
+    "provider_travel_date": "active_travel_date",
+    "provider_start_time": "active_start_time",
+    "provider_end_time": "active_end_time",
+    "provider_slot_type": "active_slot_type",
+    "provider_traveler_count": "active_traveler_count",
+    "status": "status",
+}
+
 MANUAL_EDIT_BLOCKLIST = {
     "provider",
     "provider_id",
@@ -61,6 +70,57 @@ def apply_manual_override(
             )
 
     return booking
+
+
+def is_manually_overridden(booking: Booking, field_name: str) -> bool:
+    return field_name in set(booking.manual_override_fields or [])
+
+
+def active_field_for_provider_field(field_name: str) -> str | None:
+    return PROVIDER_TO_ACTIVE_FIELD_MAP.get(field_name)
+
+
+def diff_field_values(instance, values: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    diffs = {}
+    for field_name, new_value in values.items():
+        old_value = getattr(instance, field_name)
+        if old_value != new_value:
+            diffs[field_name] = {"old": old_value, "new": new_value}
+    return diffs
+
+
+def provider_update_conflicts(
+    *,
+    booking: Booking,
+    provider_values: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    conflicts = {}
+    for provider_field, provider_value in provider_values.items():
+        active_field = active_field_for_provider_field(provider_field)
+        if not active_field or not is_manually_overridden(booking, active_field):
+            continue
+        active_value = getattr(booking, active_field)
+        if active_value != provider_value:
+            conflicts[active_field] = {
+                "provider_field": provider_field,
+                "provider_value": provider_value,
+                "active_value": active_value,
+            }
+    return conflicts
+
+
+def active_updates_from_provider_values(
+    *,
+    booking: Booking,
+    provider_values: Mapping[str, Any],
+) -> dict[str, Any]:
+    updates = {}
+    for provider_field, provider_value in provider_values.items():
+        active_field = active_field_for_provider_field(provider_field)
+        if not active_field or is_manually_overridden(booking, active_field):
+            continue
+        updates[active_field] = provider_value
+    return updates
 
 
 def capacity_snapshot(
