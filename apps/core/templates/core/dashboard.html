@@ -1,0 +1,63 @@
+{% extends "base/base.html" %}
+
+{% block title %}Dashboard - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="h3 mb-1">Operations dashboard</h1>
+      <p class="text-secondary mb-0">{{ today }}</p>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="border rounded p-3">
+        <div class="text-secondary small">Bookings today</div>
+        <div class="fs-3">{{ bookings_today_count }}</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="border rounded p-3">
+        <div class="text-secondary small">Confirmed pax</div>
+        <div class="fs-3">{{ confirmed_pax_today }}</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="border rounded p-3">
+        <div class="text-secondary small">Pending pax</div>
+        <div class="fs-3">{{ pending_pax_today }}</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="border rounded p-3">
+        <div class="text-secondary small">Needs review</div>
+        <div class="fs-3">{{ open_review_count }}</div>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h2 class="h5">Booking status</h2>
+    <table class="table table-sm">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in status_counts %}
+          <tr>
+            <td>{{ row.status }}</td>
+            <td>{{ row.count }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="2" class="text-secondary">No bookings yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}
