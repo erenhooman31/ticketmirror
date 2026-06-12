@@ -1,0 +1,18 @@
+Hello operations,
+
+Please process this OTA booking.
+
+---------- Forwarded message ---------
+From: Viator Partner <bookings@viator.com>
+Date: Wed, 17 Jun 2026 at 10:01
+Subject: Viator booking BR-FWD-42 confirmed
+To: bookings@example.test
+
+Booking reference: BR-FWD-42
+Product: Forwarded Food Tour
+Option: Evening
+Travel date: 27 June 2026
+Start time: 18:00
+Travelers: 2
+Lead traveler: Forwarded Guest
+Email: forwarded@example.test

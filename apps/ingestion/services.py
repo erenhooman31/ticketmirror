@@ -7,19 +7,22 @@ from apps.bookings.models import (
     Provider,
     ReviewQueueItem,
 )
+from apps.ingestion.parsers.common import extract_forwarded_headers
 
 from .models import RawEmail
 
 
 @transaction.atomic
 def store_raw_email(payload: dict) -> RawEmail:
+    forwarded = extract_forwarded_headers(payload.get("body_text", ""))
     raw_email, _created = RawEmail.objects.update_or_create(
         gmail_message_id=payload["gmail_message_id"],
         defaults={
             "gmail_thread_id": payload.get("gmail_thread_id"),
             "gmail_history_id": payload.get("gmail_history_id"),
             "gmail_outer_sender": payload.get("gmail_outer_sender", ""),
-            "original_forwarded_sender": payload.get("original_forwarded_sender"),
+            "original_forwarded_sender": payload.get("original_forwarded_sender")
+            or forwarded.sender,
             "subject": payload.get("subject", ""),
             "received_at": payload["received_at"],
             "body_text": payload.get("body_text", ""),
@@ -54,15 +57,15 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed) -> Booking:
     defaults = {
         "provider_order_reference": parsed.provider_order_reference,
         "status": parsed.status,
-        "raw_product_name": parsed.provider_product_name,
-        "raw_option_name": parsed.provider_option_name,
+        "raw_product_name": parsed.raw_product_name,
+        "raw_option_name": parsed.raw_option_name,
         "provider_product_code": parsed.provider_product_code,
         "provider_option_code": parsed.provider_option_code,
-        "provider_travel_date": parsed.service_date,
+        "provider_travel_date": parsed.travel_date,
         "provider_start_time": parsed.start_time,
         "provider_end_time": parsed.end_time,
         "provider_slot_type": parsed.slot_type,
-        "active_travel_date": parsed.service_date,
+        "active_travel_date": parsed.travel_date,
         "active_start_time": parsed.start_time,
         "active_end_time": parsed.end_time,
         "active_slot_type": parsed.slot_type,
@@ -95,9 +98,7 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed) -> Booking:
     BookingEvent.objects.create(
         booking=booking,
         event_type=(
-            BookingEvent.EventType.EMAIL_NEW_BOOKING
-            if created
-            else BookingEvent.EventType.EMAIL_UPDATE
+            parsed.event_type if created else BookingEvent.EventType.EMAIL_UPDATE
         ),
         source=BookingEvent.Source.EMAIL,
         old_values={},
@@ -105,20 +106,20 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed) -> Booking:
         raw_email=raw_email,
     )
 
-    if not alias and parsed.provider_product_name:
+    if not alias and parsed.raw_product_name:
         ReviewQueueItem.objects.create(
             booking=booking,
             raw_email=raw_email,
             issue_type=ReviewQueueItem.IssueType.PRODUCT_ALIAS_MISSING,
             title="Unmapped provider product",
-            details=parsed.provider_product_name,
+            details=parsed.raw_product_name,
         )
         BookingEvent.objects.create(
             booking=booking,
             event_type=BookingEvent.EventType.CONFLICT_DETECTED,
             source=BookingEvent.Source.SYSTEM,
             old_values={},
-            new_values={"provider_product_name": parsed.provider_product_name},
+            new_values={"raw_product_name": parsed.raw_product_name},
             raw_email=raw_email,
         )
 
@@ -135,10 +136,10 @@ def _find_product_alias(*, provider: Provider, parsed):
         if alias:
             return alias
 
-    if parsed.provider_product_name:
+    if parsed.raw_product_name:
         return queryset.filter(
-            raw_product_name__iexact=parsed.provider_product_name,
-            raw_option_name__iexact=parsed.provider_option_name or "",
+            raw_product_name__iexact=parsed.raw_product_name,
+            raw_option_name__iexact=parsed.raw_option_name or "",
         ).first()
 
     return None

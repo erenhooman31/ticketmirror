@@ -1,0 +1,12 @@
+Urgent booking request
+
+Order number: TS-555888
+Product: Theme Park Admission
+Ticket type: Day pass
+Date: June 24, 2026
+Time: 09:00
+Ticket count: 4
+Customer name: Morgan Guest
+Email: morgan@example.test
+Phone: +1 (555) 010-2000
+Please confirm this pending request.

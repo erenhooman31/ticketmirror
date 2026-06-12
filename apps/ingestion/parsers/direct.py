@@ -2,8 +2,8 @@ from .base import ParsedBooking, ProviderEmailParser
 from .common import parse_labeled_booking
 
 
-class KlookParser(ProviderEmailParser):
-    provider_code = "klook"
+class DirectParser(ProviderEmailParser):
+    provider_code = "direct"
 
     def parse_content(
         self,
@@ -19,12 +19,12 @@ class KlookParser(ProviderEmailParser):
             body_text=body_text,
             reference_patterns=[
                 r"Booking reference\s*[:#-]\s*([A-Z0-9-]+)",
-                r"Booking ID\s*[:#-]\s*([A-Z0-9-]+)",
-                r"\b(KL[A-Z0-9-]*\d[A-Z0-9-]*)\b",
+                r"Reference\s*[:#-]\s*([A-Z0-9-]+)",
+                r"\b(DIR-[A-Z0-9-]+)\b",
             ],
-            order_patterns=[r"Order ID\s*[:#-]\s*([A-Z0-9-]+)"],
-            product_labels=["Activity", "Package", "Product"],
-            option_labels=["Package option", "Option"],
-            traveler_count_labels=["Participants", "Guests", "Quantity"],
-            name_labels=["Guest", "Customer", "Lead traveler"],
+            order_patterns=[r"Order reference\s*[:#-]\s*([A-Z0-9-]+)"],
+            product_labels=["Product", "Tour", "Activity"],
+            option_labels=["Option", "Variant"],
+            traveler_count_labels=["Travelers", "Participants", "Guests"],
+            name_labels=["Lead traveler", "Guest", "Customer"],
         )

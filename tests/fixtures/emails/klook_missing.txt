@@ -1,0 +1,7 @@
+Klook activity notification
+
+Activity: Airport Transfer
+Package option: Sedan
+Guest: Riley Placeholder
+Email: riley@example.test
+We will send the full booking details later.

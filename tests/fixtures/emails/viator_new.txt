@@ -1,0 +1,15 @@
+Booking confirmed
+
+Booking reference: BR-123456789
+Order reference: V-ORDER-1
+Product: Evening Bosphorus Cruise
+Option: Standard deck
+Travel date: 21 June 2026
+Start time: 19:30
+End time: 22:00
+Travelers: 2
+Lead traveler: Alex Sample
+Email: alex.sample@example.test
+Phone: +1 555 010 1000
+Payment status: Paid
+Total: USD 120.00

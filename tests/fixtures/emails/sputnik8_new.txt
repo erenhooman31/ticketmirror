@@ -1,0 +1,13 @@
+New Sputnik8 order
+
+Order number: SP8-998877
+Excursion: Private City Excursion
+Route: Private group
+Excursion date: 25 June 2026
+Excursion time: 11:15
+Participants: 5
+Customer: Taylor Tourist
+Email: taylor@example.test
+Phone: +90 555 010 3000
+Meeting point: Main square information desk
+Special requirements: Wheelchair access requested

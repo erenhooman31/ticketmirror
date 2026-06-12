@@ -1,0 +1,13 @@
+Booking update from GetYourGuide
+
+Reference number: GYGABC12345
+Order ID: GYG-ORDER-77
+Activity: Old Town Walking Tour
+Option: Afternoon group
+Travel date: 22 June 2026
+Start time: 14:00
+Participants: 3
+Customer: Jordan Example
+Email: jordan@example.test
+Phone: +44 20 7946 0000
+Language: English

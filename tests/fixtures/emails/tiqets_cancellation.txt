@@ -1,0 +1,11 @@
+Tiqets cancellation notice
+
+Order ID: 987654321
+Venue: Museum Timed Entry
+Ticket type: Adult admission
+Visit date: 2026-06-23
+Visit time: 10:30
+Tickets: 2
+Customer: Casey Visitor
+Email: casey@example.test
+This order has been cancelled.

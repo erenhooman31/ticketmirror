@@ -1,0 +1,13 @@
+Internal booking
+
+Booking reference: DIR-2026-001
+Product: Custom Shore Excursion
+Option: Private group
+Travel date: 26/06/2026
+Start time: 08:00
+Guests: 6
+Lead traveler: Jamie Internal
+Email: jamie@example.test
+Phone: +1 555 010 4000
+Pickup location: Cruise port gate
+Customer message: Needs a German speaking guide.
