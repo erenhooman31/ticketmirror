@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -9,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from apps.accounts.permissions import can_mutate, operator_required, viewer_required
 from apps.bookings.services import (
     apply_manual_override,
     capacity_snapshot,
@@ -27,21 +27,7 @@ from .models import (
 )
 
 
-def can_edit(user) -> bool:
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    profile = getattr(user, "profile", None)
-    return bool(profile and profile.can_edit_bookings)
-
-
-def _require_editor(user) -> None:
-    if not can_edit(user):
-        raise PermissionDenied
-
-
-@login_required
+@viewer_required
 def daily_operations(request):
     selected_date = _parse_date(request.GET.get("date")) or timezone.localdate()
     query = request.GET.get("q", "").strip()
@@ -68,7 +54,7 @@ def daily_operations(request):
     return render(request, "bookings/daily.html", context)
 
 
-@login_required
+@viewer_required
 def slot_detail(request, date, variant_id, time):
     selected_date = _parse_date(date) or timezone.localdate()
     variant = get_object_or_404(
@@ -95,7 +81,7 @@ def slot_detail(request, date, variant_id, time):
     )
 
 
-@login_required
+@viewer_required
 def booking_detail(request, booking_id):
     booking = get_object_or_404(
         Booking.objects.select_related(
@@ -116,14 +102,13 @@ def booking_detail(request, booking_id):
             "booking": booking,
             "events": events,
             "raw_emails": raw_emails,
-            "can_edit_booking": can_edit(request.user),
+            "can_edit_booking": can_mutate(request.user),
         },
     )
 
 
-@login_required
+@operator_required
 def booking_edit(request, booking_id):
-    _require_editor(request.user)
     booking = get_object_or_404(Booking, id=booking_id)
     if request.method == "POST":
         original_values = {
@@ -148,6 +133,9 @@ def booking_edit(request, booking_id):
             )
             messages.success(request, "Booking updated.")
             return redirect("bookings:detail", booking_id=booking.id)
+        messages.error(
+            request, "Manual edit was not saved. Check the highlighted fields."
+        )
     else:
         form = BookingEditForm(instance=booking)
     return render(
@@ -157,7 +145,7 @@ def booking_edit(request, booking_id):
     )
 
 
-@login_required
+@viewer_required
 def review_queue(request):
     issues = (
         ReviewQueueItem.objects.filter(status=ReviewQueueItem.Status.OPEN)
@@ -167,14 +155,13 @@ def review_queue(request):
     return render(
         request,
         "bookings/review_queue.html",
-        {"issues": issues, "can_edit_queue": can_edit(request.user)},
+        {"issues": issues, "can_edit_queue": can_mutate(request.user)},
     )
 
 
-@login_required
 @require_POST
+@operator_required
 def review_action(request, item_id):
-    _require_editor(request.user)
     item = get_object_or_404(ReviewQueueItem, id=item_id)
     action = request.POST.get("action")
     if action == "resolve":
@@ -191,17 +178,21 @@ def review_action(request, item_id):
     return redirect("review_queue")
 
 
-@login_required
+@viewer_required
 def product_aliases(request):
-    _require_editor(request.user)
+    can_edit_aliases = can_mutate(request.user)
     review_item = None
     if request.GET.get("review_id"):
         review_item = get_object_or_404(ReviewQueueItem, id=request.GET["review_id"])
 
     if request.method == "POST":
+        if not can_edit_aliases:
+            raise PermissionDenied
         alias = None
+        old_values = {}
         if request.POST.get("alias_id"):
             alias = get_object_or_404(ProductAlias, id=request.POST["alias_id"])
+            old_values = _alias_audit_values(alias)
             form = ProductAliasForm(request.POST, instance=alias)
         else:
             form = ProductAliasForm(request.POST)
@@ -211,9 +202,11 @@ def product_aliases(request):
                 alias=alias,
                 user=request.user,
                 review_item=review_item,
+                old_values=old_values,
             )
             messages.success(request, "Product alias saved.")
             return redirect("bookings:aliases")
+        messages.error(request, "Alias was not saved. Check the highlighted fields.")
     else:
         initial = {}
         if review_item:
@@ -232,23 +225,33 @@ def product_aliases(request):
     return render(
         request,
         "bookings/aliases.html",
-        {"aliases": aliases, "form": form, "review_item": review_item},
+        {
+            "aliases": aliases,
+            "form": form,
+            "review_item": review_item,
+            "can_edit_aliases": can_edit_aliases,
+        },
     )
 
 
-@login_required
 @require_POST
+@operator_required
 def approve_alias(request, alias_id):
-    _require_editor(request.user)
     alias = get_object_or_404(ProductAlias, id=alias_id)
+    old_values = _alias_audit_values(alias)
     alias.approved = True
     alias.save(update_fields=["approved", "updated_at"])
-    _record_alias_change(alias=alias, user=request.user, review_item=None)
+    _record_alias_change(
+        alias=alias,
+        user=request.user,
+        review_item=None,
+        old_values=old_values,
+    )
     messages.success(request, "Product alias approved.")
     return redirect("bookings:aliases")
 
 
-@login_required
+@viewer_required
 def raw_email_detail(request, raw_email_id):
     raw_email = get_object_or_404(
         RawEmail.objects.select_related("provider_detected"),
@@ -365,13 +368,13 @@ def _parse_slot(value):
     return datetime.strptime(value, "%H:%M").time()
 
 
-def _record_alias_change(*, alias, user, review_item):
+def _record_alias_change(*, alias, user, review_item, old_values=None):
     booking = review_item.booking if review_item else None
     BookingEvent.objects.create(
         booking=booking,
         event_type=BookingEvent.EventType.PRODUCT_ALIAS_CHANGED,
         source=BookingEvent.Source.MANUAL,
-        old_values={},
+        old_values=old_values or {},
         new_values={
             "alias_id": alias.id,
             "provider": alias.provider.code,
@@ -387,6 +390,20 @@ def _record_alias_change(*, alias, user, review_item):
         },
         created_by=user,
     )
+
+
+def _alias_audit_values(alias):
+    return {
+        "alias_id": alias.id,
+        "provider": alias.provider.code,
+        "raw_product_name": alias.raw_product_name,
+        "raw_option_name": alias.raw_option_name,
+        "canonical_product": alias.canonical_product.canonical_name,
+        "canonical_variant": (
+            alias.canonical_variant.variant_name if alias.canonical_variant else None
+        ),
+        "approved": alias.approved,
+    }
 
 
 def _alias_initial_from_review(review_item):

@@ -11,7 +11,8 @@
   </div>
 
   <div class="row g-3">
-    <div class="col-lg-4">
+    {% if can_edit_aliases %}
+      <div class="col-lg-4">
       <form method="post" class="tm-card p-3">
         {% csrf_token %}
         <h2 class="h6">{% if review_item %}Create from review item{% else %}Create alias{% endif %}</h2>
@@ -28,8 +29,9 @@
         {% endfor %}
         <button class="btn btn-primary" type="submit">Save alias</button>
       </form>
-    </div>
-    <div class="col-lg-8">
+      </div>
+    {% endif %}
+    <div class="{% if can_edit_aliases %}col-lg-8{% else %}col-12{% endif %}">
       <div class="tm-card">
         <table class="table table-sm table-hover mb-0">
           <thead>
@@ -49,7 +51,7 @@
                 <td>{{ alias.confidence }}</td>
                 <td>{% if alias.approved %}<span class="badge text-bg-success">Approved</span>{% else %}<span class="badge text-bg-warning">Pending</span>{% endif %}</td>
                 <td class="text-end">
-                  {% if not alias.approved %}
+                  {% if can_edit_aliases and not alias.approved %}
                     <form method="post" action="{% url 'approve_alias' alias.id %}">
                       {% csrf_token %}
                       <button class="btn btn-sm btn-outline-success">Approve</button>

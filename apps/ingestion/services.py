@@ -17,6 +17,7 @@ from apps.bookings.services import (
     is_manually_overridden,
     provider_update_conflicts,
 )
+from apps.core.privacy import mask_contact_text
 from apps.ingestion.parsers import detect_provider, get_parser
 from apps.ingestion.parsers.common import (
     EVENT_CANCELLATION,
@@ -114,14 +115,14 @@ def process_raw_email(raw_email_id: int) -> Booking | None:
         parsed = parser.parse(raw_email)
     except Exception as exc:
         raw_email.parse_status = RawEmail.ParseStatus.FAILED
-        raw_email.parse_error = str(exc)
+        raw_email.parse_error = mask_contact_text(str(exc), limit=500)
         raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
         _create_review_item(
             raw_email=raw_email,
             booking=None,
             issue_type=ReviewQueueItem.IssueType.PARSER_ERROR,
             title="Parser error",
-            details=str(exc),
+            details=raw_email.parse_error,
         )
         return None
 

@@ -5,6 +5,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from apps.bookings.models import ReviewQueueItem
+from apps.core.privacy import mask_contact_text
 from config.celery import app
 
 from .gmail import fetch_new_messages
@@ -120,7 +121,7 @@ def process_pending_raw_emails(limit: int | None = None) -> int:
 
 def _mark_raw_email_failed(raw_email: RawEmail, exc: Exception) -> None:
     raw_email.parse_status = RawEmail.ParseStatus.FAILED
-    raw_email.parse_error = str(exc)
+    raw_email.parse_error = mask_contact_text(str(exc), limit=500)
     raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
     ReviewQueueItem.objects.update_or_create(
         raw_email=raw_email,
@@ -129,7 +130,7 @@ def _mark_raw_email_failed(raw_email: RawEmail, exc: Exception) -> None:
         status=ReviewQueueItem.Status.OPEN,
         defaults={
             "title": "Pending raw email processing failed",
-            "details": str(exc),
+            "details": raw_email.parse_error,
         },
     )
 

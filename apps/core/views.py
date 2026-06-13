@@ -1,5 +1,5 @@
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.shortcuts import render
 from django.utils import timezone
 
@@ -35,6 +35,36 @@ def dashboard(request):
         .order_by("status"),
     }
     return render(request, "core/dashboard.html", context)
+
+
+@login_required
+def search(request):
+    query = request.GET.get("q", "").strip()
+    bookings = Booking.objects.none()
+    if query:
+        bookings = (
+            Booking.objects.filter(
+                Q(provider_booking_reference__icontains=query)
+                | Q(provider_order_reference__icontains=query)
+                | Q(lead_traveler_name__icontains=query)
+                | Q(lead_traveler_phone__icontains=query)
+                | Q(lead_traveler_email__icontains=query)
+                | Q(provider__name__icontains=query)
+                | Q(provider__code__icontains=query)
+                | Q(raw_product_name__icontains=query)
+                | Q(raw_option_name__icontains=query)
+            )
+            .select_related("provider", "canonical_product", "canonical_variant")
+            .order_by("-active_travel_date", "provider_booking_reference")[:50]
+        )
+    return render(
+        request,
+        "core/search.html",
+        {
+            "query": query,
+            "bookings": bookings,
+        },
+    )
 
 
 def _capacity_warning_count(selected_date):

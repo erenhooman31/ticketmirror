@@ -31,16 +31,61 @@ class ProductVariantInline(admin.TabularInline):
     )
 
 
+class ProductAliasForProductInline(admin.TabularInline):
+    model = ProductAlias
+    fk_name = "canonical_product"
+    extra = 0
+    fields = (
+        "provider",
+        "raw_product_name",
+        "raw_option_name",
+        "canonical_variant",
+        "confidence",
+        "approved",
+    )
+    show_change_link = True
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    inlines = [ProductVariantInline]
-    list_display = ("canonical_name", "category", "active", "created_at")
+    inlines = [ProductVariantInline, ProductAliasForProductInline]
+    list_display = (
+        "canonical_name",
+        "category",
+        "active",
+        "variant_count",
+        "alias_count",
+        "created_at",
+    )
     list_filter = ("category", "active")
     search_fields = ("canonical_name", "category", "notes")
+
+    @admin.display(description="Variants")
+    def variant_count(self, obj):
+        return obj.variants.count()
+
+    @admin.display(description="Aliases")
+    def alias_count(self, obj):
+        return obj.provider_aliases.count()
+
+
+class ProductAliasForVariantInline(admin.TabularInline):
+    model = ProductAlias
+    fk_name = "canonical_variant"
+    extra = 0
+    fields = (
+        "provider",
+        "raw_product_name",
+        "raw_option_name",
+        "confidence",
+        "approved",
+    )
+    show_change_link = True
 
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
+    inlines = [ProductAliasForVariantInline]
     list_display = (
         "variant_name",
         "product",
@@ -48,9 +93,14 @@ class ProductVariantAdmin(admin.ModelAdmin):
         "duration_minutes",
         "default_capacity",
         "active",
+        "alias_count",
     )
     list_filter = ("slot_type", "active", "product")
     search_fields = ("variant_name", "product__canonical_name")
+
+    @admin.display(description="Aliases")
+    def alias_count(self, obj):
+        return obj.provider_aliases.count()
 
 
 @admin.register(ProductAlias)
@@ -108,17 +158,16 @@ class BookingEventInline(admin.TabularInline):
     )
     fields = readonly_fields
     can_delete = False
+    show_change_link = True
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
     inlines = [BookingEventInline]
-    readonly_fields = (
-        "provider",
-        "provider_booking_reference",
-        "created_at",
-        "updated_at",
-    )
+    readonly_fields = ("created_at", "updated_at")
     list_display = (
         "provider_booking_reference",
         "provider",
@@ -233,6 +282,12 @@ class BookingAdmin(admin.ModelAdmin):
         ),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+        if obj:
+            readonly_fields.extend(["provider", "provider_booking_reference"])
+        return readonly_fields
 
 
 @admin.register(BookingEvent)

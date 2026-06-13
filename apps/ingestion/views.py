@@ -6,6 +6,8 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from apps.core.privacy import mask_email
+
 from .tasks import process_gmail_notification
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ def gmail_webhook(request):
     process_gmail_notification.delay(notification)
     logger.info(
         "Queued Gmail notification for %s history %s",
-        notification["emailAddress"],
+        mask_email(notification["emailAddress"]),
         notification["historyId"],
     )
     return JsonResponse({"status": "queued"}, status=202)

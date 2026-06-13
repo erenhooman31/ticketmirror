@@ -79,9 +79,14 @@ def apply_manual_override(
                     "updated_at",
                 ]
             )
+            event_type = (
+                BookingEvent.EventType.MANUAL_STATUS_CHANGE
+                if "status" in changed_fields
+                else BookingEvent.EventType.MANUAL_EDIT
+            )
             BookingEvent.objects.create(
                 booking=booking,
-                event_type=BookingEvent.EventType.MANUAL_EDIT,
+                event_type=event_type,
                 source=BookingEvent.Source.MANUAL,
                 old_values=old_values,
                 new_values={**new_values, "reason": reason},
