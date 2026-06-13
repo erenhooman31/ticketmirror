@@ -133,16 +133,16 @@
                             <tr>
                               <th>Type:</th>
                               <td>
-                                <select class="form-select form-select-sm" name="canonical_product" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
-                                  <option value="">Unmapped product</option>
-                                  {% for product in product_options %}
-                                    <option value="{{ product.id }}" {% if booking.canonical_product_id == product.id %}selected{% endif %}>{{ product.canonical_name }}</option>
+                                <select class="form-select form-select-sm" name="activity" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
+                                  <option value="">Unmapped activity</option>
+                                  {% for activity in activity_options %}
+                                    <option value="{{ activity.id }}" {% if booking.activity_id == activity.id %}selected{% endif %}>{{ activity.name }}</option>
                                   {% endfor %}
                                 </select>
-                                <select class="form-select form-select-sm mt-1" name="canonical_variant" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
-                                  <option value="">Unmapped variant</option>
-                                  {% for variant in variant_options %}
-                                    <option value="{{ variant.id }}" {% if booking.canonical_variant_id == variant.id %}selected{% endif %}>{{ variant.product.canonical_name }} - {{ variant.variant_name }}</option>
+                                <select class="form-select form-select-sm mt-1" name="schedule_slot" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
+                                  <option value="">Unmapped slot</option>
+                                  {% for slot in slot_options %}
+                                    <option value="{{ slot.id }}" {% if booking.schedule_slot_id == slot.id %}selected{% endif %}>{{ slot.schedule.activity.name }} - {{ slot.start_time|time:"H:i" }}</option>
                                   {% endfor %}
                                 </select>
                               </td>
@@ -190,7 +190,7 @@
                               <th>Slot type:</th>
                               <td>
                                 <select class="form-select form-select-sm" name="active_slot_type" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
-                                  <option value="">Default from variant</option>
+                                  <option value="">Default from slot</option>
                                   {% for value, label in slot_type_options %}
                                     <option value="{{ value }}" {% if booking.active_slot_type == value %}selected{% endif %}>{{ label }}</option>
                                   {% endfor %}

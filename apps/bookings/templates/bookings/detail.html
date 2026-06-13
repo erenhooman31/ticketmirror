@@ -7,7 +7,7 @@
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
     <div>
       <h1 class="h3 mb-1">{{ booking.provider_booking_reference }}</h1>
-      <div class="tm-muted">{{ booking.provider.name }} · {{ booking.lead_traveler_name|default:"No lead traveler" }}</div>
+      <div class="tm-muted">{{ booking.provider.name }} - {{ booking.lead_traveler_name|default:"No lead traveler" }}</div>
     </div>
     {% if can_edit_booking %}
       <a class="btn btn-primary" href="{% url 'bookings:edit' booking.id %}">Edit booking</a>
@@ -35,8 +35,8 @@
         <h2 class="h6">Active operations</h2>
         <dl class="row mb-0">
           <dt class="col-sm-4">Status</dt><dd class="col-sm-8 {% if booking|field_overridden:'status' %}tm-manual{% endif %}">{{ booking.status }}</dd>
-          <dt class="col-sm-4">Product</dt><dd class="col-sm-8">{{ booking.canonical_product.canonical_name|default:"Unmapped" }}</dd>
-          <dt class="col-sm-4">Variant</dt><dd class="col-sm-8">{{ booking.canonical_variant.variant_name|default:"Unmapped" }}</dd>
+          <dt class="col-sm-4">Activity</dt><dd class="col-sm-8">{{ booking.activity.name|default:"Unmapped" }}</dd>
+          <dt class="col-sm-4">Slot</dt><dd class="col-sm-8">{% if booking.schedule_slot %}{{ booking.schedule_slot.start_time|time:"H:i" }}{% else %}Unmapped{% endif %}</dd>
           <dt class="col-sm-4">Date</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_travel_date' %}tm-manual{% endif %}">{{ booking.active_travel_date|default:"" }}</dd>
           <dt class="col-sm-4">Start</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_start_time' %}tm-manual{% endif %}">{{ booking.active_start_time|time:"H:i"|default:"" }}</dd>
           <dt class="col-sm-4">Pax</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_traveler_count' %}tm-manual{% endif %}">{{ booking.active_traveler_count|default:"" }}</dd>

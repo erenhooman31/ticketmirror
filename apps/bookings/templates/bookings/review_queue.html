@@ -26,7 +26,7 @@
             <td>{{ issue.created_at }}</td>
             <td class="text-end">
               {% if can_edit_queue %}
-                {% if issue.issue_type == 'product_alias_missing' %}
+                {% if issue.issue_type == 'provider_alias_missing' %}
                   <a class="btn btn-sm btn-outline-primary" href="{% url 'settings_provider_aliases' %}?review_id={{ issue.id }}">Link alias</a>
                 {% endif %}
                 <form class="d-inline" method="post" action="{% url 'review_action' issue.id %}">

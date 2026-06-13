@@ -87,8 +87,7 @@ def test_admin_sees_settings_sections_for_configuration(client, users):
 
     assert response.status_code == 200
     for label in [
-        b"Products &amp; Schedules",
-        b"Capacity Rules",
+        b"Tours &amp; Activities",
         b"Customer Fields",
         b"Users &amp; Roles",
         b"Gmail / Ingestion",
@@ -107,7 +106,7 @@ def test_operator_settings_hide_restricted_admin_sections(client, users):
     assert response.status_code == 200
     assert b"Provider Aliases" in response.content
     assert b"Reports / Exports" in response.content
-    assert b"Products &amp; Schedules" not in response.content
+    assert b"Tours &amp; Activities" not in response.content
     assert b"Users &amp; Roles" not in response.content
     assert b"Customer Fields" not in response.content
 
@@ -117,7 +116,7 @@ def test_restricted_settings_urls_deny_operator(client, users):
     client.force_login(users["operator"])
 
     for url in [
-        reverse("settings_product_settings"),
+        reverse("settings_tour_activities"),
         reverse("core:settings_users_roles"),
         reverse("core:settings_customer_fields"),
     ]:

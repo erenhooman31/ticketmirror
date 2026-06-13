@@ -1,15 +1,17 @@
 import pytest
 from django.core.management import call_command
 from django.db import IntegrityError
+from helpers import create_activity_setup
 
 from apps.accounts.models import UserProfile
 from apps.bookings.models import (
+    ActivitySchedule,
+    ActivityScheduleSlot,
     Booking,
     BookingEvent,
-    Product,
-    ProductAlias,
-    ProductVariant,
     Provider,
+    ProviderAlias,
+    TourActivity,
 )
 from apps.ingestion.models import GmailSyncState, RawEmail
 
@@ -55,30 +57,25 @@ def test_booking_status_default_is_pending_provider_acceptance():
 
 @pytest.mark.django_db
 def test_model_string_representations():
-    provider = Provider.objects.create(name="GetYourGuide", code="getyourguide")
-    product = Product.objects.create(
-        canonical_name="Full-Day City Highlights Tour",
-        category="city_tour",
-    )
-    variant = ProductVariant.objects.create(
-        product=product,
-        variant_name="Full day",
-        slot_type=ProductVariant.SlotType.FULL_DAY,
-    )
-    alias = ProductAlias.objects.create(
-        provider=provider,
+    setup = create_activity_setup(
+        provider_code="getyourguide",
+        provider_name="GetYourGuide",
+        activity_name="Full-Day City Highlights Tour",
+        schedule_name="Full day",
+        slot_type=ActivityScheduleSlot.SlotType.FULL_DAY,
         raw_product_name="City Tour",
         raw_option_name="Full Day",
-        provider_product_code="P1",
-        provider_option_code="O1",
-        canonical_product=product,
-        canonical_variant=variant,
     )
+    provider = setup["provider"]
+    activity = setup["activity"]
+    schedule = setup["schedule"]
+    slot = setup["slot"]
+    alias = setup["alias"]
     booking = Booking.objects.create(
         provider=provider,
         provider_booking_reference="GYG-1",
-        canonical_product=product,
-        canonical_variant=variant,
+        activity=activity,
+        schedule_slot=slot,
     )
     event = BookingEvent.objects.create(
         booking=booking,
@@ -88,34 +85,34 @@ def test_model_string_representations():
     )
 
     assert str(provider) == "GetYourGuide"
-    assert str(product) == "Full-Day City Highlights Tour"
-    assert str(variant) == "Full-Day City Highlights Tour - Full day"
+    assert str(activity) == "Full-Day City Highlights Tour"
+    assert str(schedule) == "Full-Day City Highlights Tour - Full day"
+    assert str(slot).endswith("09:00")
     assert str(alias) == "GetYourGuide: City Tour / Full Day"
     assert str(booking) == "getyourguide GYG-1"
     assert "email_new_booking" in str(event)
 
 
 @pytest.mark.django_db
-def test_product_alias_unique_constraint():
-    provider = Provider.objects.create(name="Tiqets", code="tiqets")
-    product = Product.objects.create(canonical_name="Museum Timed Entry")
-    ProductAlias.objects.create(
-        provider=provider,
+def test_provider_alias_unique_constraint():
+    setup = create_activity_setup(
+        provider_code="tiqets",
+        provider_name="Tiqets",
+        activity_name="Museum Timed Entry",
         raw_product_name="Museum",
         raw_option_name="Timed",
-        provider_product_code="M1",
-        provider_option_code="T1",
-        canonical_product=product,
     )
+    provider = setup["provider"]
+    activity = setup["activity"]
 
     with pytest.raises(IntegrityError):
-        ProductAlias.objects.create(
+        ProviderAlias.objects.create(
             provider=provider,
             raw_product_name="Museum",
             raw_option_name="Timed",
-            provider_product_code="M1",
-            provider_option_code="T1",
-            canonical_product=product,
+            provider_product_code="",
+            provider_option_code="",
+            linked_activity=activity,
         )
 
 
@@ -137,13 +134,13 @@ def test_ingestion_string_representations():
 
 
 @pytest.mark.django_db
-def test_seed_defaults_creates_providers_and_sample_products():
+def test_seed_defaults_creates_providers_and_bookeo_activities():
     call_command("seed_defaults")
 
     assert Provider.objects.filter(code="getyourguide").exists()
-    assert Provider.objects.filter(code="direct").exists()
-    assert Product.objects.filter(canonical_name="Museum Timed Entry").exists()
-    assert ProductVariant.objects.filter(
-        product__canonical_name="Half-Day Old Town Walk",
-        variant_name="Morning",
+    assert Provider.objects.filter(code="viator").exists()
+    assert TourActivity.objects.filter(name="gyg yacht").exists()
+    assert ActivitySchedule.objects.filter(
+        activity__name="1 Hours Bosphorus Tour GYG",
+        schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
     ).exists()

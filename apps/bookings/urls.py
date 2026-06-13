@@ -7,7 +7,7 @@ app_name = "bookings"
 urlpatterns = [
     path("daily/", views.daily_operations, name="daily"),
     path(
-        "slots/<str:date>/<int:variant_id>/<str:time>/",
+        "slots/<str:date>/<int:slot_id>/",
         views.slot_detail,
         name="slot_detail",
     ),
@@ -18,5 +18,5 @@ urlpatterns = [
         views.raw_email_detail,
         name="raw_email_detail",
     ),
-    path("aliases/", views.product_aliases, name="aliases"),
+    path("aliases/", views.provider_aliases, name="aliases"),
 ]

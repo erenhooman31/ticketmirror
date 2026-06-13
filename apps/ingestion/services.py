@@ -7,8 +7,8 @@ from django.db import transaction
 from apps.bookings.models import (
     Booking,
     BookingEvent,
-    ProductAlias,
     Provider,
+    ProviderAlias,
     ReviewQueueItem,
 )
 from apps.bookings.services import (
@@ -33,8 +33,8 @@ PARSER_VERSION = "deterministic-v1"
 
 
 @dataclass(frozen=True)
-class ProductAliasMatch:
-    alias: ProductAlias | None = None
+class ProviderAliasMatch:
+    alias: ProviderAlias | None = None
     suggestions: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -211,9 +211,9 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
         _create_review_item(
             raw_email=raw_email,
             booking=booking,
-            issue_type=ReviewQueueItem.IssueType.PRODUCT_ALIAS_MISSING,
+            issue_type=ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
             title="Unmapped provider product",
-            details=_product_alias_review_details(parsed_booking, alias_match),
+            details=_provider_alias_review_details(parsed_booking, alias_match),
         )
 
     raw_email.save(
@@ -228,9 +228,9 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
     return booking
 
 
-def match_product_alias(parsed_booking) -> ProductAliasMatch:
+def match_product_alias(parsed_booking) -> ProviderAliasMatch:
     provider = _get_or_create_provider(parsed_booking.provider_code)
-    queryset = ProductAlias.objects.filter(provider=provider)
+    queryset = ProviderAlias.objects.filter(provider=provider)
     approved = queryset.filter(approved=True)
 
     if parsed_booking.provider_product_code:
@@ -239,7 +239,7 @@ def match_product_alias(parsed_booking) -> ProductAliasMatch:
             provider_option_code=parsed_booking.provider_option_code,
         ).first()
         if alias:
-            return ProductAliasMatch(alias=alias)
+            return ProviderAliasMatch(alias=alias)
 
     if parsed_booking.raw_product_name:
         exact = approved.filter(
@@ -247,20 +247,20 @@ def match_product_alias(parsed_booking) -> ProductAliasMatch:
             raw_option_name__iexact=parsed_booking.raw_option_name or "",
         ).first()
         if exact:
-            return ProductAliasMatch(alias=exact)
+            return ProviderAliasMatch(alias=exact)
 
         exact_suggestions = queryset.filter(
             raw_product_name__iexact=parsed_booking.raw_product_name,
             raw_option_name__iexact=parsed_booking.raw_option_name or "",
         )
         if exact_suggestions.exists():
-            return ProductAliasMatch(
+            return ProviderAliasMatch(
                 suggestions=[
                     _alias_suggestion(alias, 1.0) for alias in exact_suggestions[:3]
                 ]
             )
 
-    return ProductAliasMatch(
+    return ProviderAliasMatch(
         suggestions=_fuzzy_alias_suggestions(queryset, parsed_booking)
     )
 
@@ -271,7 +271,7 @@ def _create_booking(
     raw_email: RawEmail,
     parsed,
     provider_values: dict[str, Any],
-    alias_match: ProductAliasMatch,
+    alias_match: ProviderAliasMatch,
 ) -> Booking:
     values = provider_values.copy()
     active_values = {
@@ -282,8 +282,9 @@ def _create_booking(
         "active_traveler_count": values["provider_traveler_count"],
     }
     if alias_match.alias:
-        values["canonical_product"] = alias_match.alias.canonical_product
-        values["canonical_variant"] = alias_match.alias.canonical_variant
+        values["activity"] = alias_match.alias.linked_activity
+        values["schedule_slot"] = alias_match.alias.linked_slot
+        _apply_alias_slot_values(active_values, alias_match.alias)
     booking = Booking.objects.create(
         provider=provider,
         provider_booking_reference=parsed.provider_booking_reference,
@@ -306,7 +307,7 @@ def _update_booking(
     raw_email: RawEmail,
     parsed,
     provider_values: dict[str, Any],
-    alias_match: ProductAliasMatch,
+    alias_match: ProviderAliasMatch,
 ) -> Booking:
     old_values = {}
     new_values = {}
@@ -331,6 +332,11 @@ def _update_booking(
     alias_values = _alias_values(alias_match)
     alias_diffs = diff_field_values(booking, alias_values)
     for field_name, diff in alias_diffs.items():
+        if field_name.startswith("active_") and is_manually_overridden(
+            booking,
+            field_name,
+        ):
+            continue
         old_values[field_name] = diff["old"]
         new_values[field_name] = diff["new"]
         setattr(booking, field_name, diff["new"])
@@ -408,13 +414,30 @@ def _get_or_create_provider(provider_code: str) -> Provider:
     return provider
 
 
-def _alias_values(alias_match: ProductAliasMatch) -> dict[str, Any]:
+def _alias_values(alias_match: ProviderAliasMatch) -> dict[str, Any]:
     if not alias_match.alias:
         return {}
-    return {
-        "canonical_product": alias_match.alias.canonical_product,
-        "canonical_variant": alias_match.alias.canonical_variant,
+    values = {
+        "activity": alias_match.alias.linked_activity,
+        "schedule_slot": alias_match.alias.linked_slot,
     }
+    _apply_alias_slot_values(values, alias_match.alias)
+    return values
+
+
+def _apply_alias_slot_values(values: dict[str, Any], alias: ProviderAlias) -> None:
+    slot = alias.linked_slot
+    if not slot:
+        return
+    values.setdefault("active_start_time", slot.start_time)
+    values.setdefault("active_end_time", slot.end_time)
+    values.setdefault("active_slot_type", slot.slot_type)
+    if not values.get("active_start_time"):
+        values["active_start_time"] = slot.start_time
+    if not values.get("active_end_time"):
+        values["active_end_time"] = slot.end_time
+    if not values.get("active_slot_type"):
+        values["active_slot_type"] = slot.slot_type
 
 
 def _create_booking_event(
@@ -489,7 +512,7 @@ def _create_cancellation_without_booking_review_if_needed(
     )
 
 
-def _product_alias_review_details(parsed, alias_match: ProductAliasMatch) -> str:
+def _provider_alias_review_details(parsed, alias_match: ProviderAliasMatch) -> str:
     details = [f"Raw product: {parsed.raw_product_name}"]
     if parsed.raw_option_name:
         details.append(f"Raw option: {parsed.raw_option_name}")
@@ -514,11 +537,12 @@ def _fuzzy_alias_suggestions(queryset, parsed) -> list[dict[str, Any]]:
     return sorted(scored, key=lambda item: item["score"], reverse=True)[:3]
 
 
-def _alias_suggestion(alias: ProductAlias, score: float) -> dict[str, Any]:
+def _alias_suggestion(alias: ProviderAlias, score: float) -> dict[str, Any]:
     return {
         "id": alias.id,
         "raw_product_name": alias.raw_product_name,
         "raw_option_name": alias.raw_option_name,
+        "linked_activity": alias.linked_activity.name,
         "approved": alias.approved,
         "score": score,
     }

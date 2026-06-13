@@ -6,7 +6,7 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 
-from .models import Booking, BookingEvent, CapacityRule, ProductVariant
+from .models import ActivitySchedule, ActivityScheduleSlot, Booking, BookingEvent
 
 PROVIDER_TO_ACTIVE_FIELD_MAP = {
     "provider_travel_date": "active_travel_date",
@@ -147,17 +147,23 @@ def active_updates_from_provider_values(
     return updates
 
 
+def resolve_active_schedule(activity, service_date) -> ActivitySchedule | None:
+    schedules = activity.schedules.filter(active=True).filter(
+        Q(date_from__isnull=True) | Q(date_from__lte=service_date),
+        Q(date_to__isnull=True) | Q(date_to__gte=service_date),
+    )
+    candidates = list(schedules)
+    if not candidates:
+        return None
+    return sorted(candidates, key=_schedule_precedence_key)[0]
+
+
 def capacity_snapshot(
     *,
-    product_variant,
+    schedule_slot,
     service_date,
-    start_time=None,
 ) -> dict[str, int]:
-    snapshot = get_capacity_for_variant_date_slot(
-        product_variant,
-        service_date,
-        start_time,
-    )
+    snapshot = get_capacity_for_slot_date(schedule_slot, service_date)
     return {
         "capacity": snapshot["capacity"] or 0,
         "confirmed": snapshot["confirmed_pax"],
@@ -166,23 +172,22 @@ def capacity_snapshot(
     }
 
 
-def get_capacity_for_variant_date_slot(
-    variant: ProductVariant,
+def get_capacity_for_slot_date(
+    slot: ActivityScheduleSlot,
     service_date,
-    slot=None,
 ) -> dict[str, Any]:
-    bookings = get_slot_bookings(service_date, variant, slot)
+    bookings = get_slot_bookings(service_date, slot)
     confirmed_pax = _sum_pax(bookings, CONFIRMED_CAPACITY_STATUSES)
     pending_pax = _sum_pax(bookings, PENDING_CAPACITY_STATUSES)
     manual_review_pax = _sum_pax(bookings, MANUAL_REVIEW_CAPACITY_STATUSES)
-    capacity = _configured_capacity(variant, service_date, slot)
-    remaining = None if capacity is None else capacity - confirmed_pax
+    capacity = slot.capacity
+    remaining = capacity - confirmed_pax
     return {
         "date": service_date,
-        "product": variant.product,
-        "variant": variant,
+        "activity": slot.schedule.activity,
+        "schedule": slot.schedule,
         "slot": slot,
-        "slot_label": _slot_label(slot),
+        "slot_label": slot_label(slot),
         "confirmed_pax": confirmed_pax,
         "pending_pax": pending_pax,
         "manual_review_pax": manual_review_pax,
@@ -192,49 +197,53 @@ def get_capacity_for_variant_date_slot(
 
 
 def get_daily_capacity_summary(service_date) -> list[dict[str, Any]]:
-    slots: dict[tuple[int, Any], dict[str, Any]] = {}
-
-    bookings = _capacity_bookings_queryset().filter(active_travel_date=service_date)
-    for booking in bookings:
-        if not booking.canonical_variant_id:
+    slots = {}
+    for schedule in ActivitySchedule.objects.select_related("activity").filter(
+        activity__active=True,
+        active=True,
+    ):
+        if schedule.activity_id in slots:
             continue
-        slot = _slot_for_booking(booking)
-        slots[(booking.canonical_variant_id, slot)] = {
-            "variant": booking.canonical_variant,
-            "slot": slot,
-        }
+        active_schedule = resolve_active_schedule(schedule.activity, service_date)
+        if not active_schedule:
+            continue
+        if not _schedule_applies_to_weekday(active_schedule, service_date):
+            continue
+        slots[schedule.activity_id] = active_schedule
 
-    rule_variants = ProductVariant.objects.select_related("product").filter(
-        capacity_rules__in=_matching_capacity_rules(service_date)
+    rows = []
+    for schedule in slots.values():
+        for slot in schedule.slots.filter(active=True).select_related(
+            "schedule", "schedule__activity"
+        ):
+            rows.append(get_capacity_for_slot_date(slot, service_date))
+
+    booking_slots = (
+        Booking.objects.exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
+        .filter(active_travel_date=service_date, schedule_slot__isnull=False)
+        .select_related("schedule_slot", "schedule_slot__schedule__activity")
+        .values_list("schedule_slot_id", flat=True)
+        .distinct()
     )
-    for variant in rule_variants.distinct():
-        variant_rules = _matching_capacity_rules(service_date).filter(
-            product_variant=variant
-        )
-        for rule in variant_rules:
-            if _generic_timed_rule_without_bookings(variant, rule, slots):
-                continue
-            slot = _slot_for_rule(variant, rule)
-            slots.setdefault((variant.id, slot), {"variant": variant, "slot": slot})
+    seen_slot_ids = {row["slot"].id for row in rows}
+    for slot in ActivityScheduleSlot.objects.filter(id__in=booking_slots).exclude(
+        id__in=seen_slot_ids
+    ):
+        rows.append(get_capacity_for_slot_date(slot, service_date))
 
-    rows = [
-        get_capacity_for_variant_date_slot(data["variant"], service_date, data["slot"])
-        for data in slots.values()
-    ]
     return sorted(rows, key=_capacity_row_sort_key)
 
 
-def get_slot_bookings(service_date, variant: ProductVariant, slot):
-    queryset = (
+def get_slot_bookings(service_date, slot: ActivityScheduleSlot):
+    return (
         Booking.objects.filter(
-            canonical_variant=variant,
+            schedule_slot=slot,
             active_travel_date=service_date,
         )
         .exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
-        .select_related("provider", "canonical_product", "canonical_variant")
+        .select_related("provider", "activity", "schedule_slot")
         .order_by("provider__name", "provider_booking_reference")
     )
-    return _filter_bookings_for_slot(queryset, variant, slot)
 
 
 def export_daily_manifest_csv(service_date) -> str:
@@ -243,8 +252,7 @@ def export_daily_manifest_csv(service_date) -> str:
     writer.writerow(
         [
             "date",
-            "product",
-            "variant",
+            "activity",
             "slot",
             "provider",
             "reference",
@@ -262,11 +270,10 @@ def export_daily_manifest_csv(service_date) -> str:
     bookings = (
         Booking.objects.filter(active_travel_date=service_date)
         .exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
-        .select_related("provider", "canonical_product", "canonical_variant")
+        .select_related("provider", "activity", "schedule_slot")
         .order_by(
-            "canonical_product__canonical_name",
-            "canonical_variant__variant_name",
-            "active_start_time",
+            "activity__name",
+            "schedule_slot__start_time",
             "provider__name",
             "provider_booking_reference",
         )
@@ -282,8 +289,7 @@ def export_capacity_summary_csv(date_from, date_to) -> str:
     writer.writerow(
         [
             "date",
-            "product",
-            "variant",
+            "activity",
             "slot",
             "confirmed pax",
             "pending pax",
@@ -297,8 +303,7 @@ def export_capacity_summary_csv(date_from, date_to) -> str:
             writer.writerow(
                 [
                     row["date"],
-                    row["product"].canonical_name,
-                    row["variant"].variant_name,
+                    row["activity"].name,
                     row["slot_label"],
                     row["confirmed_pax"],
                     row["pending_pax"],
@@ -360,97 +365,37 @@ def export_provider_summary_csv(date_from, date_to) -> str:
     return output.getvalue()
 
 
-def _capacity_bookings_queryset():
-    return (
-        Booking.objects.exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
-        .select_related("canonical_product", "canonical_variant__product")
-        .order_by()
-    )
-
-
-def _matching_capacity_rules(service_date):
-    return CapacityRule.objects.filter(
-        active=True,
-    ).filter(
-        Q(date_from__isnull=True) | Q(date_from__lte=service_date),
-        Q(date_to__isnull=True) | Q(date_to__gte=service_date),
-        Q(day_of_week__isnull=True) | Q(day_of_week=service_date.weekday()),
-    )
-
-
-def _configured_capacity(variant: ProductVariant, service_date, slot) -> int | None:
-    rules = _matching_capacity_rules(service_date).filter(product_variant=variant)
-    if _slot_is_time(slot):
-        rules = rules.filter(Q(slot_start_time__isnull=True) | Q(slot_start_time=slot))
-    else:
-        rules = rules.filter(slot_start_time__isnull=True)
-
-    rule = rules.order_by(
-        "-slot_start_time",
-        "-date_from",
-        "-created_at",
-    ).first()
-    if rule:
-        return rule.capacity
-    return variant.default_capacity
-
-
-def _slot_for_booking(booking: Booking):
-    slot_type = booking.active_slot_type or (
-        booking.canonical_variant.slot_type if booking.canonical_variant else ""
-    )
-    if slot_type in {
-        ProductVariant.SlotType.FULL_DAY,
-        ProductVariant.SlotType.HALF_DAY,
+def slot_label(slot: ActivityScheduleSlot | None) -> str:
+    if not slot:
+        return "Open"
+    if slot.slot_type in {
+        ActivityScheduleSlot.SlotType.FULL_DAY,
+        ActivityScheduleSlot.SlotType.HALF_DAY,
+        ActivityScheduleSlot.SlotType.OPEN_TIME,
+        ActivityScheduleSlot.SlotType.PRIVATE_GROUP,
     }:
-        return slot_type
-    if slot_type == ProductVariant.SlotType.FIXED_TIME:
-        return booking.active_start_time
-    if slot_type == ProductVariant.SlotType.PRIVATE_GROUP:
-        return booking.active_start_time or ProductVariant.SlotType.PRIVATE_GROUP
-    return booking.active_start_time or slot_type or None
+        return f"{slot.start_time:%H:%M} {slot.get_slot_type_display()}"
+    return slot.start_time.strftime("%H:%M")
 
 
-def _slot_for_rule(variant: ProductVariant, rule: CapacityRule):
-    if variant.slot_type in {
-        ProductVariant.SlotType.FULL_DAY,
-        ProductVariant.SlotType.HALF_DAY,
-    }:
-        return variant.slot_type
-    return rule.slot_start_time or variant.slot_type
+def _schedule_precedence_key(schedule):
+    date_span = _schedule_date_span(schedule)
+    kind_rank = (
+        0 if schedule.schedule_kind == ActivitySchedule.ScheduleKind.CURRENT else 1
+    )
+    return (date_span, kind_rank, schedule.priority, schedule.id)
 
 
-def _generic_timed_rule_without_bookings(
-    variant: ProductVariant,
-    rule: CapacityRule,
-    slots: dict[tuple[int, Any], dict[str, Any]],
-) -> bool:
-    if rule.slot_start_time is not None:
-        return False
-    if variant.slot_type not in {
-        ProductVariant.SlotType.FIXED_TIME,
-        ProductVariant.SlotType.PRIVATE_GROUP,
-    }:
-        return False
-    return any(variant_id == variant.id for variant_id, _slot in slots)
+def _schedule_date_span(schedule):
+    if schedule.date_from and schedule.date_to:
+        return (schedule.date_to - schedule.date_from).days
+    return 999999
 
 
-def _filter_bookings_for_slot(queryset, variant: ProductVariant, slot):
-    if _slot_is_time(slot):
-        return queryset.filter(active_start_time=slot)
-    if slot in {ProductVariant.SlotType.FULL_DAY, ProductVariant.SlotType.HALF_DAY}:
-        return queryset.filter(
-            Q(active_slot_type=slot)
-            | Q(active_slot_type="", canonical_variant__slot_type=slot)
-        )
-    if slot == ProductVariant.SlotType.PRIVATE_GROUP:
-        return queryset.filter(
-            Q(active_slot_type=slot)
-            | Q(active_slot_type="", canonical_variant__slot_type=slot)
-        )
-    if slot is None:
-        return queryset.filter(active_start_time__isnull=True)
-    return queryset.filter(active_slot_type=slot)
+def _schedule_applies_to_weekday(schedule, service_date):
+    if not schedule.days_of_week:
+        return True
+    return service_date.weekday() in schedule.days_of_week
 
 
 def _sum_pax(queryset, statuses: set[str]) -> int:
@@ -462,34 +407,19 @@ def _sum_pax(queryset, statuses: set[str]) -> int:
     )
 
 
-def _slot_is_time(slot) -> bool:
-    return hasattr(slot, "hour") and hasattr(slot, "minute")
-
-
-def _slot_label(slot) -> str:
-    if _slot_is_time(slot):
-        return slot.strftime("%H:%M")
-    if not slot:
-        return "Open"
-    return str(slot).replace("_", " ").title()
-
-
 def _capacity_row_sort_key(row: dict[str, Any]):
-    slot = row["slot"]
-    slot_sort = slot.strftime("%H:%M") if _slot_is_time(slot) else str(slot or "")
     return (
-        row["product"].canonical_name,
-        row["variant"].variant_name,
-        slot_sort,
+        row["activity"].name,
+        row["slot"].start_time,
+        row["slot"].id,
     )
 
 
 def _daily_manifest_row(booking: Booking) -> list[Any]:
     return [
         booking.active_travel_date or "",
-        (booking.canonical_product.canonical_name if booking.canonical_product else ""),
-        booking.canonical_variant.variant_name if booking.canonical_variant else "",
-        _slot_label(_slot_for_booking(booking)),
+        booking.activity.name if booking.activity else "",
+        slot_label(booking.schedule_slot),
         booking.provider.name,
         booking.provider_booking_reference,
         booking.lead_traveler_name or "",

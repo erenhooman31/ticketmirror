@@ -67,7 +67,7 @@ successful enqueueing.
 
 ## Error Handling
 
-Parsing failures should update the raw email processing state and preserve the error. Ambiguous product mapping should create a review queue item rather than guessing.
+Parsing failures should update the raw email processing state and preserve the error. Ambiguous provider alias mapping should create a review queue item rather than guessing.
 
 Ingestion code should use database transactions around raw email state changes and booking upserts.
 
@@ -99,7 +99,7 @@ The merge rules are:
 - Cancellation emails set status to `cancelled` unless `status` is manually overridden.
 - Capacity-impacting traveler count changes are recorded in the update event old/new values.
 
-Product alias matching is deliberately conservative:
+Provider alias matching is deliberately conservative:
 
 1. Approved alias by provider product code and option code.
 2. Approved alias by exact raw product and option names.
@@ -107,4 +107,4 @@ Product alias matching is deliberately conservative:
 4. Fuzzy suggestions only for review.
 
 If no approved alias is matched, ingestion still stores the booking when a
-reference exists, but opens a `product_alias_missing` review item.
+reference exists, but opens a `provider_alias_missing` review item.

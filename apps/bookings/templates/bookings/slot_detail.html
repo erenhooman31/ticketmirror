@@ -6,8 +6,8 @@
 {% block content %}
   <div class="d-flex justify-content-between align-items-end mb-4">
     <div>
-      <h1 class="h3 mb-1">{{ variant.product.canonical_name }}</h1>
-      <div class="tm-muted">{{ selected_date }} · {{ variant.variant_name }} · {{ slot|time:"H:i"|default:"Open" }}</div>
+      <h1 class="h3 mb-1">{{ activity.name }}</h1>
+      <div class="tm-muted">{{ selected_date }} - {{ slot.schedule.name|default:slot.schedule.get_schedule_kind_display }} - {{ slot.start_time|time:"H:i"|default:"Open" }}</div>
     </div>
     <a class="btn btn-outline-secondary" href="{% url 'bookings:daily' %}?{% if request.GET %}{{ request.GET.urlencode }}{% else %}date={{ selected_date|date:'Y-m-d' }}{% endif %}">Back to calendar</a>
   </div>

@@ -82,10 +82,11 @@ black --check .
 ruff check .
 ```
 
-Seed canonical products, variants, capacity rules, and provider aliases:
+Seed the 12 inspected Bookeo-inspired activities, schedules, slots, people
+rules, and provider aliases:
 
 ```bash
-python manage.py seed_products --file data/sample_products.yml
+python manage.py seed_bookeo_products
 ```
 
 ## Documentation
@@ -95,7 +96,7 @@ python manage.py seed_products --file data/sample_products.yml
 - [Database](docs/DATABASE.md)
 - [Ingestion](docs/INGESTION.md)
 - [Parsers](docs/PARSERS.md)
-- [Product seeds](docs/PRODUCT_SEEDS.md)
+- [Bookeo-inspired activity seeds](docs/PRODUCT_SEEDS.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Final review](FINAL_REVIEW.md)
 
@@ -160,6 +161,8 @@ Do not commit real Gmail credentials or provider secrets.
 
 - Raw emails are stored in `ingestion.RawEmail` before parsing.
 - Existing bookings are matched by provider and provider booking reference.
+- Tours and activities are configured in Settings at `/settings/tours/`.
+- Capacity lives on `ActivityScheduleSlot`; people rules store booking-size defaults.
 - Provider payload data is stored separately from active internal fields.
 - Manual edits should use `bookings.services.apply_manual_override()` so audit events are created.
 - Upserts create `BookingEvent` records instead of silently overwriting operationally important data.

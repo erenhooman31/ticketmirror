@@ -1,19 +1,15 @@
-from datetime import date, time
-
 import pytest
 from django.contrib.admin.sites import AdminSite
 from django.urls import reverse
 from django.utils import timezone
+from helpers import create_activity_setup, create_booking
 
 from apps.accounts.models import UserProfile
 from apps.bookings.admin import BookingAdmin
 from apps.bookings.models import (
+    ActivityScheduleSlot,
     Booking,
     BookingEvent,
-    Product,
-    ProductAlias,
-    ProductVariant,
-    Provider,
     ReviewQueueItem,
 )
 from apps.core.privacy import mask_contact_text
@@ -41,44 +37,56 @@ def users(django_user_model):
 
 @pytest.fixture
 def booking_setup():
-    provider = Provider.objects.create(name="Viator", code="viator")
-    product = Product.objects.create(canonical_name="City Tour")
-    variant = ProductVariant.objects.create(
-        product=product,
-        variant_name="Morning",
-        slot_type=ProductVariant.SlotType.FIXED_TIME,
-    )
-    booking = Booking.objects.create(
-        provider=provider,
-        provider_booking_reference="BR-SEARCH-1",
-        provider_order_reference="ORDER-1",
-        status=Booking.Status.CONFIRMED,
-        canonical_product=product,
-        canonical_variant=variant,
-        raw_product_name="Raw City Walk",
-        active_travel_date=date(2026, 6, 21),
-        active_start_time=time(9, 0),
-        active_slot_type=ProductVariant.SlotType.FIXED_TIME,
-        active_traveler_count=2,
-        lead_traveler_name="Alex Search",
-        lead_traveler_phone="+1 555 123 4567",
-        lead_traveler_email="alex.search@example.test",
-    )
-    alias = ProductAlias.objects.create(
-        provider=provider,
+    setup = create_activity_setup(
+        activity_name="City Tour",
         raw_product_name="Raw City Walk",
         raw_option_name="Morning",
-        canonical_product=product,
-        canonical_variant=variant,
-        approved=False,
     )
-    return {
-        "provider": provider,
-        "product": product,
-        "variant": variant,
-        "booking": booking,
-        "alias": alias,
+    booking = create_booking(
+        setup,
+        "BR-SEARCH-1",
+        status=Booking.Status.CONFIRMED,
+        pax=2,
+        lead_name="Alex Search",
+    )
+    booking.provider_order_reference = "ORDER-1"
+    booking.raw_product_name = "Raw City Walk"
+    booking.lead_traveler_phone = "+1 555 123 4567"
+    booking.lead_traveler_email = "alex.search@example.test"
+    booking.save()
+    alias = setup["alias"]
+    alias.approved = False
+    alias.save(update_fields=["approved"])
+    return {**setup, "booking": booking, "alias": alias}
+
+
+def edit_payload(booking_setup, **overrides):
+    slot = booking_setup["slot"]
+    payload = {
+        "status": Booking.Status.CONFIRMED,
+        "activity": str(booking_setup["activity"].id),
+        "schedule_slot": str(slot.id),
+        "active_travel_date": "2026-06-21",
+        "active_start_time": "09:00",
+        "active_end_time": "",
+        "active_slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
+        "active_traveler_count": "2",
+        "lead_traveler_name": "Alex Search",
+        "lead_traveler_email": "alex.search@example.test",
+        "lead_traveler_phone": "+1 555 123 4567",
+        "traveler_names": "[]",
+        "ticket_breakdown": "{}",
+        "language": "",
+        "pickup_location": "",
+        "meeting_point": "",
+        "special_requirements": "",
+        "customer_message": "",
+        "price": "{}",
+        "payment_status": "",
+        "reason": "Capacity correction",
     }
+    payload.update(overrides)
+    return payload
 
 
 @pytest.mark.django_db
@@ -124,9 +132,9 @@ def test_viewer_is_read_only_for_mutation_views(client, users, booking_setup):
         {
             "provider": booking_setup["provider"].id,
             "raw_product_name": "Other",
-            "canonical_product": booking_setup["product"].id,
-            "canonical_variant": booking_setup["variant"].id,
-            "confidence": "1",
+            "linked_activity": booking_setup["activity"].id,
+            "linked_schedule": booking_setup["schedule"].id,
+            "linked_slot": booking_setup["slot"].id,
         },
     )
 
@@ -155,27 +163,7 @@ def test_operator_manual_edit_audits_old_and_new_values(client, users, booking_s
 
     response = client.post(
         reverse("bookings:edit", args=[booking.id]),
-        {
-            "status": Booking.Status.CONFIRMED,
-            "active_travel_date": "2026-06-21",
-            "active_start_time": "09:00",
-            "active_end_time": "",
-            "active_slot_type": ProductVariant.SlotType.FIXED_TIME,
-            "active_traveler_count": "4",
-            "lead_traveler_name": "Alex Search",
-            "lead_traveler_email": "alex.search@example.test",
-            "lead_traveler_phone": "+1 555 123 4567",
-            "traveler_names": "[]",
-            "ticket_breakdown": "{}",
-            "language": "",
-            "pickup_location": "",
-            "meeting_point": "",
-            "special_requirements": "",
-            "customer_message": "",
-            "price": "{}",
-            "payment_status": "",
-            "reason": "Capacity correction",
-        },
+        edit_payload(booking_setup, active_traveler_count="4"),
     )
 
     assert response.status_code == 302
@@ -196,27 +184,11 @@ def test_status_only_change_uses_status_audit_event(client, users, booking_setup
 
     response = client.post(
         reverse("bookings:edit", args=[booking.id]),
-        {
-            "status": Booking.Status.CANCELLED,
-            "active_travel_date": "2026-06-21",
-            "active_start_time": "09:00",
-            "active_end_time": "",
-            "active_slot_type": ProductVariant.SlotType.FIXED_TIME,
-            "active_traveler_count": "2",
-            "lead_traveler_name": "Alex Search",
-            "lead_traveler_email": "alex.search@example.test",
-            "lead_traveler_phone": "+1 555 123 4567",
-            "traveler_names": "[]",
-            "ticket_breakdown": "{}",
-            "language": "",
-            "pickup_location": "",
-            "meeting_point": "",
-            "special_requirements": "",
-            "customer_message": "",
-            "price": "{}",
-            "payment_status": "",
-            "reason": "Customer cancelled",
-        },
+        edit_payload(
+            booking_setup,
+            status=Booking.Status.CANCELLED,
+            reason="Customer cancelled",
+        ),
     )
 
     assert response.status_code == 302
@@ -229,19 +201,23 @@ def test_status_only_change_uses_status_audit_event(client, users, booking_setup
 
 
 @pytest.mark.django_db
-def test_alias_approval_is_audited(client, users, booking_setup):
+def test_alias_approval_is_admin_only_and_audited(client, users, booking_setup):
     alias = booking_setup["alias"]
-    client.force_login(users["operator"])
 
+    client.force_login(users["operator"])
+    operator_response = client.post(reverse("settings_approve_alias", args=[alias.id]))
+    assert operator_response.status_code == 403
+
+    client.force_login(users["admin"])
     response = client.post(reverse("settings_approve_alias", args=[alias.id]))
 
     assert response.status_code == 302
     event = BookingEvent.objects.get(
-        event_type=BookingEvent.EventType.PRODUCT_ALIAS_CHANGED
+        event_type=BookingEvent.EventType.PROVIDER_ALIAS_CHANGED
     )
     assert event.old_values["approved"] is False
     assert event.new_values["approved"] is True
-    assert event.created_by == users["operator"]
+    assert event.created_by == users["admin"]
 
 
 @pytest.mark.django_db
@@ -302,9 +278,10 @@ def test_admin_pages_smoke(client, users, booking_setup):
 
     for url in [
         reverse("admin:bookings_booking_changelist"),
-        reverse("admin:bookings_product_changelist"),
-        reverse("admin:bookings_productvariant_changelist"),
-        reverse("admin:bookings_productalias_changelist"),
+        reverse("admin:bookings_touractivity_changelist"),
+        reverse("admin:bookings_activityschedule_changelist"),
+        reverse("admin:bookings_activityscheduleslot_changelist"),
+        reverse("admin:bookings_provideralias_changelist"),
         reverse("admin:bookings_bookingevent_changelist"),
         reverse("admin:bookings_reviewqueueitem_changelist"),
         reverse("admin:ingestion_rawemail_changelist"),

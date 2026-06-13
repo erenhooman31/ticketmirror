@@ -7,7 +7,7 @@
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
     <div>
       <h1 class="h3 mb-1">Calendar</h1>
-      <div class="tm-muted">{{ selected_date }} · {{ range_days }} day{% if range_days != 1 %}s{% endif %}</div>
+      <div class="tm-muted">{{ selected_date }} - {{ range_days }} day{% if range_days != 1 %}s{% endif %}</div>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary" href="{{ previous_url }}">Previous</a>
@@ -20,9 +20,9 @@
   <div class="tm-calendar-layout">
     <aside class="tm-card tm-calendar-rail">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <a class="btn btn-sm btn-outline-secondary" href="{{ mini_calendar.previous_month_url }}">‹</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ mini_calendar.previous_month_url }}">&lt;</a>
         <div class="fw-semibold">{{ mini_calendar.month_label }}</div>
-        <a class="btn btn-sm btn-outline-secondary" href="{{ mini_calendar.next_month_url }}">›</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ mini_calendar.next_month_url }}">&gt;</a>
       </div>
       <table class="tm-mini-calendar mb-4">
         <thead>
@@ -65,11 +65,11 @@
           </select>
         </div>
         <div>
-          <label class="form-label small fw-semibold" for="calendar-product">Product</label>
-          <select id="calendar-product" class="form-select form-select-sm" name="product">
-            <option value="">All products</option>
-            {% for product in product_options %}
-              <option value="{{ product.id }}" {% if product.id == filters.product %}selected{% endif %}>{{ product.canonical_name }}</option>
+          <label class="form-label small fw-semibold" for="calendar-activity">Activity</label>
+          <select id="calendar-activity" class="form-select form-select-sm" name="activity">
+            <option value="">All activities</option>
+            {% for activity in activity_options %}
+              <option value="{{ activity.id }}" {% if activity.id == filters.activity %}selected{% endif %}>{{ activity.name }}</option>
             {% endfor %}
           </select>
         </div>
@@ -125,8 +125,8 @@
               <thead>
                 <tr>
                   <th>Time</th>
-                  <th>Product</th>
-                  <th>Variant</th>
+                  <th>Activity</th>
+                  <th>Slot</th>
                   <th class="text-end">Confirmed</th>
                   <th class="text-end">Pending</th>
                   <th class="text-end">Manual review</th>
@@ -140,8 +140,8 @@
                 {% for row in section.rows %}
                   <tr {% if row.slot_url %}data-href="{{ row.slot_url }}"{% endif %}>
                     <td class="fw-semibold">{{ row.slot_label }}</td>
-                    <td>{{ row.product.canonical_name|default:"Unmapped product" }}</td>
-                    <td>{{ row.variant.variant_name|default:"Unmapped variant" }}</td>
+                    <td>{{ row.activity.name|default:"Unmapped activity" }}</td>
+                    <td>{{ row.slot.start_time|time:"H:i"|default:"Unmapped slot" }}</td>
                     <td class="text-end">{{ row.confirmed }}</td>
                     <td class="text-end">{{ row.pending }}</td>
                     <td class="text-end {% if row.manual_review %}text-danger fw-semibold{% endif %}">{{ row.manual_review }}</td>

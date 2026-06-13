@@ -23,7 +23,7 @@
           <th>Traveler</th>
           <th>Phone</th>
           <th>Email</th>
-          <th>Product</th>
+          <th>Activity</th>
           <th>Date</th>
           <th>Status</th>
         </tr>
@@ -36,7 +36,7 @@
             <td>{{ booking.lead_traveler_name|default:"" }}</td>
             <td>{{ booking.lead_traveler_phone|default:"" }}</td>
             <td>{{ booking.lead_traveler_email|default:"" }}</td>
-            <td>{{ booking.raw_product_name|default:booking.canonical_product.canonical_name }}</td>
+            <td>{{ booking.raw_product_name|default:booking.activity.name }}</td>
             <td>{{ booking.active_travel_date|default:"" }}</td>
             <td>{{ booking.status }}</td>
           </tr>

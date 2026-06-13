@@ -11,10 +11,11 @@ Accounts:
 Bookings:
 
 - `Provider`: OTA/provider identity such as Viator or Klook.
-- `Product`: canonical internal product.
-- `ProductVariant`: internal variant or time-slot-specific product option.
-- `ProductAlias`: maps provider product names/codes to canonical products and variants.
-- `CapacityRule`: date, weekday, and slot capacity override for a product variant.
+- `TourActivity`: internal activity setup shown under Settings / Tours & Activities.
+- `ActivitySchedule`: current or alternate schedule for an activity.
+- `ActivityScheduleSlot`: dated schedule slot template with duration, slot type, and capacity.
+- `ActivityPeopleRule`: activity-level booking-size defaults and capacity notes.
+- `ProviderAlias`: maps provider product names/codes to activities and optional slots.
 - `Booking`: mirrored booking record keyed by provider and provider booking reference.
 - `BookingEvent`: audit trail for creation, provider updates, manual overrides, status changes, and review conditions.
 - `ReviewQueueItem`: operational queue for unmapped or ambiguous ingestion results.
@@ -36,14 +37,26 @@ Keep original provider data available through raw emails and provider-prefixed b
 
 Manual edits must update `Booking.manual_override_fields` and create `BookingEvent` records. Provider updates must create `BookingEvent` records and must not silently erase manual corrections.
 
-## Capacity Rules
+## Scheduling And Capacity
 
 Capacity reporting should count confirmed active bookings separately from pending bookings:
 
 - Confirmed bookings consume capacity.
 - Pending bookings should be visible as pending demand.
 - Cancelled, rejected, parse-failed, and duplicate-ignored records should not consume future operational capacity unless a later explicit rule says otherwise.
+- `ActivitySchedule` records determine which slots are active for an activity on a service date.
+- `ActivityScheduleSlot.capacity` is the source of truth for slot capacity.
+- `ActivityPeopleRule.default_capacity` is a setup default, not the operational capacity once slots exist.
 
-## Migration Rules
+## Clean Setup
+
+This app currently uses a clean replacement migration history for the Tours &
+Activities model. For a local development database with the old product schema,
+drop and recreate the database, then run:
+
+```bash
+python manage.py migrate
+python manage.py seed_bookeo_products
+```
 
 Every model change requires a migration. Migrations should be committed with the code that uses them. Do not edit applied migrations in a shared branch unless the team has explicitly agreed that the migration is not yet used anywhere.

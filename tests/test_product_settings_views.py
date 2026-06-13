@@ -1,10 +1,16 @@
-from datetime import date, time
+from datetime import time
 
 import pytest
 from django.urls import reverse
+from helpers import create_activity_setup
 
 from apps.accounts.models import UserProfile
-from apps.bookings.models import CapacityRule, Product, ProductVariant
+from apps.bookings.models import (
+    ActivitySchedule,
+    ActivityScheduleSlot,
+    ProviderAlias,
+    TourActivity,
+)
 
 
 @pytest.fixture
@@ -29,138 +35,159 @@ def users(django_user_model):
 
 
 @pytest.mark.django_db
-def test_product_settings_list_requires_login(client):
-    response = client.get(reverse("settings_product_settings"))
+def test_tour_activity_list_requires_login(client):
+    response = client.get(reverse("settings_tour_activities"))
 
     assert response.status_code == 302
     assert "/accounts/login/" in response["Location"]
 
 
 @pytest.mark.django_db
-def test_admin_creates_product_general_settings(client, users):
+def test_admin_creates_activity_general_settings(client, users):
     client.force_login(users["admin"])
     response = client.post(
-        reverse("settings_product_settings_new"),
+        reverse("settings_tour_activity_new"),
         {
             "action": "save_general",
-            "canonical_name": "Bosphorus Sightseeing Cruise",
-            "nickname": "Bosphorus Cruise",
-            "category": "Cruise",
+            "name": "Bosphorus Sightseeing Cruise",
+            "internal_display_name": "Bosphorus Cruise",
+            "category": TourActivity.Category.CRUISE,
             "active": "on",
+            "visible_internally": "on",
+            "show_in_calendar": "on",
+            "show_in_reports": "on",
             "notes": "Shown as a short operations label.",
         },
     )
-    product = Product.objects.get(canonical_name="Bosphorus Sightseeing Cruise")
+    activity = TourActivity.objects.get(name="Bosphorus Sightseeing Cruise")
 
     assert response.status_code == 302
     assert response["Location"] == reverse(
-        "settings_product_settings_edit",
-        args=[product.id],
+        "settings_tour_activity_detail",
+        args=[activity.id],
     )
-    assert product.nickname == "Bosphorus Cruise"
-    assert product.category == "Cruise"
+    assert activity.internal_display_name == "Bosphorus Cruise"
+    assert activity.category == TourActivity.Category.CRUISE
+    assert activity.display_settings["show_in_calendar"] is True
 
 
 @pytest.mark.django_db
-def test_schedule_save_creates_time_slot_variants_and_capacity_rules(client, users):
-    product = Product.objects.create(
-        canonical_name="Old City Tour",
-        nickname="Old City",
-        category="Walking",
-    )
+def test_schedule_save_creates_current_schedule_slots(client, users):
+    setup = create_activity_setup(activity_name="Old City Tour", alias=False)
+    activity = setup["activity"]
 
     client.force_login(users["admin"])
     response = client.post(
-        reverse("settings_product_settings_edit", args=[product.id]),
+        reverse("settings_tour_activity_detail", args=[activity.id]),
         {
-            "action": "save_schedule",
-            "original_schedule_name": "Default season",
-            "original_date_from": "",
-            "original_date_to": "",
-            "schedule_name": "Summer season",
-            "date_from": "2026-04-01",
-            "date_to": "2026-10-31",
-            "duration_days": "0",
-            "duration_hours": "2",
-            "duration_minutes": "30",
-            "default_capacity": "80",
-            "monday": "10:00,80\n12:00,60",
-            "tuesday": "10:00,80",
-            "wednesday": "",
-            "thursday": "",
-            "friday": "",
-            "saturday": "",
-            "sunday": "14:00,50",
+            "action": "save_current_schedule",
+            "current-name": "Summer season",
+            "current-active": "on",
+            "current-date_from": "2026-04-01",
+            "current-date_to": "2026-10-31",
+            "current-days_of_week": "[0,1,6]",
+            "current-timezone": "Europe/Istanbul",
+            "current-priority": "10",
+            "current-slot_lines": "10:00,80,150,fixed_time\n12:00,60,150,fixed_time",
         },
     )
 
     assert response.status_code == 302
-    assert ProductVariant.objects.filter(product=product).count() == 3
+    schedule = ActivitySchedule.objects.get(
+        activity=activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+        name="Summer season",
+    )
+    assert schedule.days_of_week == [0, 1, 6]
+    assert schedule.slots.count() == 2
     assert (
-        ProductVariant.objects.get(
-            product=product,
-            variant_name="10:00 fixed slot",
+        ActivityScheduleSlot.objects.get(
+            schedule=schedule,
+            start_time=time(10, 0),
         ).duration_minutes
         == 150
     )
-    assert (
-        CapacityRule.objects.filter(
-            product_variant__product=product,
-            schedule_name="Summer season",
-            date_from=date(2026, 4, 1),
-            date_to=date(2026, 10, 31),
-        ).count()
-        == 4
-    )
-    assert CapacityRule.objects.filter(
-        product_variant__product=product,
-        day_of_week=0,
-        slot_start_time=time(12, 0),
-        capacity=60,
-    ).exists()
 
 
 @pytest.mark.django_db
-def test_schedule_tab_renders_weekly_grid(client, users):
-    product = Product.objects.create(canonical_name="Rendered Tour")
-    variant = ProductVariant.objects.create(
-        product=product,
-        variant_name="09:00 fixed slot",
-        slot_type=ProductVariant.SlotType.FIXED_TIME,
-        duration_minutes=90,
-        default_capacity=40,
+def test_people_tab_updates_capacity_defaults(client, users):
+    setup = create_activity_setup(activity_name="People Tour", capacity=50)
+    activity = setup["activity"]
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "save_people",
+            "min_people_per_booking": "1",
+            "max_people_per_booking": "12",
+            "default_capacity": "40",
+            "capacity_note": "Shared boat capacity.",
+        },
     )
-    CapacityRule.objects.create(
-        product_variant=variant,
-        schedule_name="Default season",
-        day_of_week=0,
-        slot_start_time=time(9, 0),
-        capacity=40,
+    activity.people_rule.refresh_from_db()
+
+    assert response.status_code == 302
+    assert activity.people_rule.max_people_per_booking == 12
+    assert activity.people_rule.default_capacity == 40
+
+
+@pytest.mark.django_db
+def test_activity_detail_creates_provider_alias(client, users):
+    setup = create_activity_setup(activity_name="Alias Tour", alias=False)
+    activity = setup["activity"]
+    provider = setup["provider"]
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "save_alias",
+            "provider": str(provider.id),
+            "raw_product_name": "Raw Alias Tour",
+            "raw_option_name": "",
+            "provider_product_code": "",
+            "provider_option_code": "",
+            "linked_activity": str(activity.id),
+            "linked_schedule": str(setup["schedule"].id),
+            "linked_slot": str(setup["slot"].id),
+            "approved": "on",
+            "notes": "",
+        },
     )
+
+    assert response.status_code == 302
+    alias = ProviderAlias.objects.get(raw_product_name="Raw Alias Tour")
+    assert alias.linked_activity == activity
+    assert alias.linked_slot == setup["slot"]
+
+
+@pytest.mark.django_db
+def test_schedule_tab_renders_current_and_other_sections(client, users):
+    setup = create_activity_setup(activity_name="Rendered Tour")
 
     client.force_login(users["admin"])
     response = client.get(
-        reverse("settings_product_settings_edit", args=[product.id]),
-        {"tab": "schedule"},
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "scheduling"},
     )
 
     assert response.status_code == 200
     assert b"Current schedule" in response.content
-    assert b"Other schedules" in response.content
-    assert b"Duration" in response.content
+    assert b"Other schedule" in response.content
     assert b"09:00" in response.content
 
 
 @pytest.mark.django_db
-def test_viewer_cannot_save_product_schedule(client, users):
-    product = Product.objects.create(canonical_name="Readonly Tour")
+def test_viewer_cannot_save_activity_schedule(client, users):
+    setup = create_activity_setup(activity_name="Readonly Tour")
     client.force_login(users["viewer"])
 
     response = client.post(
-        reverse("settings_product_settings_edit", args=[product.id]),
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
         {
-            "action": "save_schedule",
-            "schedule_name": "Default season",
+            "action": "save_current_schedule",
+            "current-name": "Default season",
         },
     )
 
@@ -168,9 +195,9 @@ def test_viewer_cannot_save_product_schedule(client, users):
 
 
 @pytest.mark.django_db
-def test_operator_cannot_open_product_settings(client, users):
+def test_operator_cannot_open_tour_activity_settings(client, users):
     client.force_login(users["operator"])
 
-    response = client.get(reverse("settings_product_settings"))
+    response = client.get(reverse("settings_tour_activities"))
 
     assert response.status_code == 403

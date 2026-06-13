@@ -77,8 +77,8 @@ def provider_summary_csv(request):
 def _bookings_queryset():
     return Booking.objects.select_related(
         "provider",
-        "canonical_product",
-        "canonical_variant",
+        "activity",
+        "schedule_slot",
     ).order_by("active_travel_date", "active_start_time", "provider_booking_reference")
 
 
@@ -97,8 +97,8 @@ def _write_booking_header(writer):
             "active_travel_date",
             "active_start_time",
             "active_end_time",
-            "product",
-            "variant",
+            "activity",
+            "slot",
             "lead_traveler_name",
             "active_traveler_count",
             "status",
@@ -118,16 +118,8 @@ def _write_booking_row(writer, booking):
             booking.active_travel_date or "",
             booking.active_start_time or "",
             booking.active_end_time or "",
-            (
-                booking.canonical_product.canonical_name
-                if booking.canonical_product
-                else ""
-            ),
-            (
-                booking.canonical_variant.variant_name
-                if booking.canonical_variant
-                else ""
-            ),
+            booking.activity.name if booking.activity else "",
+            booking.schedule_slot.start_time if booking.schedule_slot else "",
             booking.lead_traveler_name or "",
             booking.active_traveler_count or "",
             booking.status,

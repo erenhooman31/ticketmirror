@@ -3,13 +3,12 @@ from pathlib import Path
 
 import pytest
 from django.utils import timezone
+from helpers import create_activity_setup
 
 from apps.bookings.models import (
+    ActivityScheduleSlot,
     Booking,
     BookingEvent,
-    Product,
-    ProductAlias,
-    ProductVariant,
     Provider,
     ReviewQueueItem,
 )
@@ -40,22 +39,17 @@ def viator_provider():
 
 
 @pytest.fixture
-def viator_alias(viator_provider):
-    product = Product.objects.create(canonical_name="Evening Bosphorus Cruise")
-    variant = ProductVariant.objects.create(
-        product=product,
-        variant_name="Standard deck",
-        slot_type=ProductVariant.SlotType.FIXED_TIME,
-        default_capacity=30,
-    )
-    return ProductAlias.objects.create(
-        provider=viator_provider,
+def viator_alias():
+    setup = create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="Evening Bosphorus Cruise",
+        start_time=time(19, 30),
+        duration_minutes=150,
         raw_product_name="Evening Bosphorus Cruise",
         raw_option_name="Standard deck",
-        canonical_product=product,
-        canonical_variant=variant,
-        approved=True,
     )
+    return setup["alias"]
 
 
 def raw_email(provider_code="viator", message_id="raw-1") -> RawEmail:
@@ -79,7 +73,7 @@ def parsed_booking(**overrides) -> ParsedBooking:
         "travel_date": date(2026, 6, 21),
         "start_time": time(19, 30),
         "end_time": time(22, 0),
-        "slot_type": ProductVariant.SlotType.FIXED_TIME,
+        "slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
         "traveler_count": 2,
         "lead_traveler_name": "Alex Sample",
         "lead_traveler_email": "alex.sample@example.test",
@@ -113,7 +107,8 @@ def test_process_gmail_message_creates_booking_and_event(viator_alias):
     assert booking.active_travel_date == date(2026, 6, 21)
     assert booking.provider_traveler_count == 2
     assert booking.active_traveler_count == 2
-    assert booking.canonical_product == viator_alias.canonical_product
+    assert booking.activity == viator_alias.linked_activity
+    assert booking.schedule_slot == viator_alias.linked_slot
     assert booking.events.get().event_type == BookingEvent.EventType.EMAIL_NEW_BOOKING
 
 
@@ -211,7 +206,7 @@ def test_missing_reference_creates_review_item_without_booking(viator_provider):
 
 
 @pytest.mark.django_db
-def test_missing_product_alias_creates_review_item(viator_provider):
+def test_missing_provider_alias_creates_review_item(viator_provider):
     booking = upsert_booking_from_parsed(
         raw_email(message_id="missing-alias"),
         parsed_booking(event_type=EVENT_NEW_BOOKING),
@@ -220,7 +215,7 @@ def test_missing_product_alias_creates_review_item(viator_provider):
     assert booking is not None
     assert ReviewQueueItem.objects.filter(
         booking=booking,
-        issue_type=ReviewQueueItem.IssueType.PRODUCT_ALIAS_MISSING,
+        issue_type=ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
     ).exists()
 
 

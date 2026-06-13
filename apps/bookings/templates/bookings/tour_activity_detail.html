@@ -1,0 +1,111 @@
+{% extends "base/base.html" %}
+
+{% block title %}{% if activity %}{{ activity.name }}{% else %}New activity{% endif %} - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+    <div>
+      <h1 class="h3 mb-1">{% if activity %}{{ activity.name }}{% else %}New activity{% endif %}</h1>
+      <div class="tm-muted">Settings / Tours & Activities</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{% url 'settings_tour_activities' %}">Back</a>
+  </div>
+
+  <ul class="nav nav-tabs tm-booking-tabs mb-3">
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'general' %}active{% endif %}" href="{% if activity %}{% url 'settings_tour_activity_detail' activity.id %}?tab=general{% else %}{% url 'settings_tour_activity_new' %}{% endif %}">General</a></li>
+    {% if activity %}
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'scheduling' %}active{% endif %}" href="{% url 'settings_tour_activity_detail' activity.id %}?tab=scheduling">Scheduling</a></li>
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'people' %}active{% endif %}" href="{% url 'settings_tour_activity_detail' activity.id %}?tab=people">People</a></li>
+    {% endif %}
+  </ul>
+
+  {% if active_tab == "scheduling" and activity %}
+    <div class="row g-3">
+      <div class="col-lg-6">
+        {% include "bookings/partials/schedule_form.html" with form=current_schedule_form action="save_current_schedule" title="Current schedule" %}
+      </div>
+      <div class="col-lg-6">
+        {% include "bookings/partials/schedule_form.html" with form=other_schedule_form action="save_other_schedule" title="Other schedule" %}
+      </div>
+    </div>
+  {% elif active_tab == "people" and activity %}
+    <form method="post" class="tm-card p-3">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_people">
+      <h2 class="h6">People and capacity defaults</h2>
+      <div class="row g-3">
+        {% for field in people_form %}
+          <div class="col-md-6 {% if field.name == 'capacity_note' %}col-md-12{% endif %}">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      {% for error in people_form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
+      <button class="btn btn-primary mt-3" type="submit">Save people settings</button>
+    </form>
+  {% else %}
+    <div class="row g-3">
+      <div class="{% if activity %}col-lg-7{% else %}col-lg-8{% endif %}">
+        <form method="post" class="tm-card p-3">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="save_general">
+          <h2 class="h6">General</h2>
+          <div class="row g-3">
+            {% for field in general_form %}
+              <div class="col-md-6 {% if field.name == 'notes' %}col-md-12{% endif %} {% if field.field.widget.input_type == 'checkbox' %}d-flex align-items-end{% endif %}">
+                {% if field.field.widget.input_type == 'checkbox' %}
+                  <label class="form-check mb-0">
+                    {{ field }}
+                    <span class="form-check-label">{{ field.label }}</span>
+                  </label>
+                {% else %}
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                {% endif %}
+                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+          <button class="btn btn-primary mt-3" type="submit">Save general settings</button>
+        </form>
+      </div>
+      {% if activity %}
+        <div class="col-lg-5">
+          <form method="post" class="tm-card p-3 mb-3">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_alias">
+            <h2 class="h6">Add provider alias</h2>
+            {% for field in alias_form %}
+              <div class="mb-3 {% if field.field.widget.input_type == 'checkbox' %}form-check{% endif %}">
+                {% if field.field.widget.input_type == 'checkbox' %}
+                  {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {% else %}
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                {% endif %}
+                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </div>
+            {% endfor %}
+            <button class="btn btn-primary" type="submit">Save alias</button>
+          </form>
+          <div class="tm-card p-3">
+            <h2 class="h6">Existing aliases</h2>
+            <div class="vstack gap-2">
+              {% for alias in provider_aliases %}
+                <div class="border-bottom pb-2">
+                  <div class="fw-semibold">{{ alias.provider.name }} - {{ alias.raw_product_name }}</div>
+                  <div class="small tm-muted">{% if alias.linked_slot %}{{ alias.linked_slot.start_time|time:"H:i" }}{% else %}Activity-level{% endif %}{% if alias.needs_manual_confirmation %} / needs confirmation{% endif %}</div>
+                </div>
+              {% empty %}
+                <div class="tm-muted">No aliases yet.</div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}

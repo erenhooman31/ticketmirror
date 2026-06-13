@@ -1,14 +1,15 @@
 from django.contrib import admin
 
 from .models import (
+    ActivityPeopleRule,
+    ActivitySchedule,
+    ActivityScheduleSlot,
     Booking,
     BookingEvent,
-    CapacityRule,
-    Product,
-    ProductAlias,
-    ProductVariant,
     Provider,
+    ProviderAlias,
     ReviewQueueItem,
+    TourActivity,
 )
 
 
@@ -19,131 +20,149 @@ class ProviderAdmin(admin.ModelAdmin):
     search_fields = ("name", "code", "parser_key")
 
 
-class ProductVariantInline(admin.TabularInline):
-    model = ProductVariant
+class ActivityScheduleInline(admin.TabularInline):
+    model = ActivitySchedule
     extra = 0
     fields = (
-        "variant_name",
-        "slot_type",
-        "duration_minutes",
-        "default_capacity",
+        "schedule_kind",
+        "name",
         "active",
+        "date_from",
+        "date_to",
+        "days_of_week",
+        "priority",
     )
+    show_change_link = True
 
 
-class ProductAliasForProductInline(admin.TabularInline):
-    model = ProductAlias
-    fk_name = "canonical_product"
+class ActivityPeopleRuleInline(admin.StackedInline):
+    model = ActivityPeopleRule
+    extra = 0
+    max_num = 1
+
+
+class ProviderAliasForActivityInline(admin.TabularInline):
+    model = ProviderAlias
+    fk_name = "linked_activity"
     extra = 0
     fields = (
         "provider",
         "raw_product_name",
         "raw_option_name",
-        "canonical_variant",
-        "confidence",
+        "linked_slot",
         "approved",
+        "needs_manual_confirmation",
     )
     show_change_link = True
 
 
-@admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
-    inlines = [ProductVariantInline, ProductAliasForProductInline]
+@admin.register(TourActivity)
+class TourActivityAdmin(admin.ModelAdmin):
+    inlines = [
+        ActivityPeopleRuleInline,
+        ActivityScheduleInline,
+        ProviderAliasForActivityInline,
+    ]
     list_display = (
-        "canonical_name",
-        "nickname",
+        "name",
+        "internal_display_name",
         "category",
         "active",
-        "variant_count",
+        "schedule_count",
         "alias_count",
         "created_at",
     )
     list_filter = ("category", "active")
-    search_fields = ("canonical_name", "nickname", "category", "notes")
+    search_fields = ("name", "internal_display_name", "category", "notes")
 
-    @admin.display(description="Variants")
-    def variant_count(self, obj):
-        return obj.variants.count()
+    @admin.display(description="Schedules")
+    def schedule_count(self, obj):
+        return obj.schedules.count()
 
     @admin.display(description="Aliases")
     def alias_count(self, obj):
         return obj.provider_aliases.count()
 
 
-class ProductAliasForVariantInline(admin.TabularInline):
-    model = ProductAlias
-    fk_name = "canonical_variant"
+class ActivityScheduleSlotInline(admin.TabularInline):
+    model = ActivityScheduleSlot
     extra = 0
     fields = (
-        "provider",
-        "raw_product_name",
-        "raw_option_name",
-        "confidence",
-        "approved",
-    )
-    show_change_link = True
-
-
-@admin.register(ProductVariant)
-class ProductVariantAdmin(admin.ModelAdmin):
-    inlines = [ProductAliasForVariantInline]
-    list_display = (
-        "variant_name",
-        "product",
-        "slot_type",
+        "start_time",
+        "end_time",
         "duration_minutes",
-        "default_capacity",
+        "slot_type",
+        "capacity",
         "active",
-        "alias_count",
     )
-    list_filter = ("slot_type", "active", "product")
-    search_fields = ("variant_name", "product__canonical_name")
-
-    @admin.display(description="Aliases")
-    def alias_count(self, obj):
-        return obj.provider_aliases.count()
 
 
-@admin.register(ProductAlias)
-class ProductAliasAdmin(admin.ModelAdmin):
+@admin.register(ActivitySchedule)
+class ActivityScheduleAdmin(admin.ModelAdmin):
+    inlines = [ActivityScheduleSlotInline]
+    list_display = (
+        "activity",
+        "schedule_kind",
+        "name",
+        "active",
+        "date_from",
+        "date_to",
+        "priority",
+    )
+    list_filter = ("schedule_kind", "active", "activity")
+    search_fields = ("name", "activity__name")
+
+
+@admin.register(ActivityScheduleSlot)
+class ActivityScheduleSlotAdmin(admin.ModelAdmin):
+    list_display = (
+        "schedule",
+        "start_time",
+        "end_time",
+        "duration_minutes",
+        "slot_type",
+        "capacity",
+        "active",
+    )
+    list_filter = ("slot_type", "active", "schedule__activity")
+    search_fields = ("schedule__name", "schedule__activity__name")
+
+
+@admin.register(ActivityPeopleRule)
+class ActivityPeopleRuleAdmin(admin.ModelAdmin):
+    list_display = (
+        "activity",
+        "min_people_per_booking",
+        "max_people_per_booking",
+        "default_capacity",
+    )
+    search_fields = ("activity__name", "capacity_note")
+
+
+@admin.register(ProviderAlias)
+class ProviderAliasAdmin(admin.ModelAdmin):
     list_display = (
         "raw_product_name",
         "raw_option_name",
         "provider",
-        "canonical_product",
-        "canonical_variant",
-        "confidence",
+        "linked_activity",
+        "linked_slot",
         "approved",
+        "needs_manual_confirmation",
     )
-    list_filter = ("provider", "approved", "canonical_product")
+    list_filter = (
+        "provider",
+        "approved",
+        "needs_manual_confirmation",
+        "linked_activity",
+    )
     search_fields = (
         "raw_product_name",
         "raw_option_name",
         "provider_product_code",
         "provider_option_code",
-        "canonical_product__canonical_name",
-        "canonical_variant__variant_name",
-    )
-
-
-@admin.register(CapacityRule)
-class CapacityRuleAdmin(admin.ModelAdmin):
-    list_display = (
-        "product_variant",
-        "schedule_name",
-        "date_from",
-        "date_to",
-        "day_of_week",
-        "slot_start_time",
-        "slot_end_time",
-        "capacity",
-        "active",
-    )
-    list_filter = ("active", "day_of_week", "product_variant__product")
-    search_fields = (
-        "schedule_name",
-        "product_variant__variant_name",
-        "product_variant__product__canonical_name",
+        "linked_activity__name",
+        "linked_slot__schedule__name",
     )
 
 
@@ -177,8 +196,8 @@ class BookingAdmin(admin.ModelAdmin):
         "status",
         "active_travel_date",
         "active_start_time",
-        "canonical_product",
-        "canonical_variant",
+        "activity",
+        "schedule_slot",
         "active_traveler_count",
         "lead_traveler_name",
         "has_manual_overrides",
@@ -187,8 +206,8 @@ class BookingAdmin(admin.ModelAdmin):
         "provider",
         "status",
         "active_travel_date",
-        "canonical_product",
-        "canonical_variant",
+        "activity",
+        "schedule_slot",
         "active_slot_type",
     )
     search_fields = (
@@ -201,8 +220,8 @@ class BookingAdmin(admin.ModelAdmin):
         "raw_option_name",
         "provider__name",
         "provider__code",
-        "canonical_product__canonical_name",
-        "canonical_variant__variant_name",
+        "activity__name",
+        "schedule_slot__schedule__name",
     )
     date_hierarchy = "active_travel_date"
     fieldsets = (
@@ -220,11 +239,11 @@ class BookingAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Product mapping",
+            "Activity mapping",
             {
                 "fields": (
-                    "canonical_product",
-                    "canonical_variant",
+                    "activity",
+                    "schedule_slot",
                     "raw_product_name",
                     "raw_option_name",
                     "provider_product_code",

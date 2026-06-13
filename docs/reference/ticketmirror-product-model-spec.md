@@ -6,7 +6,7 @@ This specification translates the inspected Bookeo configuration into TicketMirr
 
 ## Purpose
 
-TicketMirror needs one canonical operational model for products, variants, provider aliases, schedules, slots, and capacity. The model must support operator workflows for dashboard capacity, calendar capacity investigation, slot detail, and admin-only product/schedule setup.
+TicketMirror needs one canonical operational model for activities, provider aliases, schedules, slots, people rules, and capacity. The model must support operator workflows for dashboard capacity, calendar capacity investigation, slot detail, and admin-only Tours & Activities setup.
 
 The Bookeo products should be treated as historical source records and provider-facing aliases, not as the primary TicketMirror product structure.
 
@@ -34,8 +34,8 @@ Canonical products represent real business products sold through one or more pro
 
 ### Canonical Product Rules
 
-- Operators consume canonical products and slots; they do not edit setup.
-- Provider-specific naming must not create duplicate canonical products when the operational product is the same.
+- Operators consume activities and slots; they do not edit setup.
+- Provider-specific naming must not create duplicate activities when the operational product is the same.
 - Historical Bookeo product names should be retained as aliases for matching imports and audit, not as primary product names.
 - Inactive products remain available for historical bookings and audit trails.
 
@@ -192,7 +192,7 @@ The workflows require manual-review indicators and mathematically correct capaci
 
 | Bookeo concept | TicketMirror term | Notes |
 | --- | --- | --- |
-| Product/tour/activity | CanonicalProduct plus ProviderAlias | Raw source product names should map into canonical business products. |
+| Product/tour/activity | TourActivity plus ProviderAlias | Raw source product names should map into internal activities. |
 | Display nickname | Internal alias/display note | Useful for matching provider or operational labels. |
 | Current schedule | ActiveSchedule | Effective schedule for the inspected/current service range. |
 | Other schedule | AlternateSchedule | Derive FutureSchedule or HistoricalSchedule by date. |
@@ -284,7 +284,7 @@ TicketMirror should resolve these by provider alias mapping, not duplicate canon
 ## Admin Workflow Implications
 
 - Product and schedule setup belongs under Settings and must be role-gated to admins.
-- Admins configure canonical products, aliases, active state, duration, schedule names, weekday slots, seasonal date ranges, and capacity.
+- Admins configure activities, aliases, active state, duration, schedule names, weekday slots, seasonal date ranges, and capacity.
 - Operators view configured products in dashboard, calendar, and slot detail but do not modify setup.
 - Schedule changes must be deterministic, validated, and audited.
 - Product filters and booking search must narrow display without corrupting slot-wide capacity totals.

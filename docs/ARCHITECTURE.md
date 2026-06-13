@@ -1,6 +1,6 @@
 # Architecture
 
-ticketmirror is a server-rendered Django application for internal operations teams. It mirrors reservations from OTA provider emails and presents bookings by date, product, variant, and time slot.
+ticketmirror is a server-rendered Django application for internal operations teams. It mirrors reservations from OTA provider emails and presents bookings by date, activity, schedule slot, and capacity status.
 
 ## System Shape
 
@@ -19,13 +19,18 @@ There is no separate frontend application. Normal user workflows should use Djan
 2. The raw message is stored in `ingestion.RawEmail`.
 3. A provider-specific parser converts raw email text into a normalized parsed booking object.
 4. The upsert service finds or creates the booking by provider and provider booking reference.
-5. Product aliases map provider product names to canonical internal products and variants.
+5. Provider aliases map provider product names to internal activities and optional schedule slots.
 6. Ambiguous mappings create review queue items.
 7. Every create, provider update, manual edit, or review condition creates a booking event.
 
 ## Boundaries
 
 Provider data and internal operational data must remain distinct. Provider payloads and raw email bodies support traceability. Active internal fields support operations, manual corrections, capacity reporting, and CSV exports.
+
+Tours & Activities setup lives under `/settings/tours/`. Admin users configure
+`TourActivity`, `ActivitySchedule`, `ActivityScheduleSlot`,
+`ActivityPeopleRule`, and `ProviderAlias` records there. Operators can edit
+bookings, but setup mutation is admin-only.
 
 Provider updates must not silently overwrite manual overrides. Any future merge policy should explicitly compare provider values, internal active values, and manual override history.
 

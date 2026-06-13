@@ -29,28 +29,81 @@ class Provider(TimeStampedModel):
         return self.name
 
 
-class Product(TimeStampedModel):
-    canonical_name = models.CharField(max_length=180, unique=True)
-    nickname = models.CharField(max_length=180, blank=True)
-    category = models.CharField(max_length=120, blank=True)
+class TourActivity(TimeStampedModel):
+    class Category(models.TextChoices):
+        CRUISE = "cruise", "Cruise"
+        LAND_AND_CRUISE = "land_and_cruise", "Land and cruise"
+        YACHT = "yacht", "Yacht"
+        OTHER = "other", "Other"
+
+    name = models.CharField(max_length=180, unique=True)
+    internal_display_name = models.CharField(max_length=180, blank=True)
     active = models.BooleanField(default=True)
+    category = models.CharField(
+        max_length=40,
+        choices=Category.choices,
+        blank=True,
+    )
+    display_settings = models.JSONField(default=dict, blank=True)
     notes = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["canonical_name"]
+        ordering = ["name"]
         indexes = [
-            models.Index(fields=["canonical_name"], name="product_name_idx"),
+            models.Index(fields=["active"], name="activity_active_idx"),
             models.Index(
                 fields=["category", "active"],
-                name="product_category_active_idx",
+                name="activity_cat_active_idx",
             ),
         ]
 
     def __str__(self) -> str:
-        return self.canonical_name
+        return self.name
 
 
-class ProductVariant(TimeStampedModel):
+class ActivitySchedule(TimeStampedModel):
+    class ScheduleKind(models.TextChoices):
+        CURRENT = "current", "Current"
+        OTHER = "other", "Other"
+
+    activity = models.ForeignKey(
+        TourActivity,
+        on_delete=models.CASCADE,
+        related_name="schedules",
+    )
+    schedule_kind = models.CharField(
+        max_length=20,
+        choices=ScheduleKind.choices,
+        default=ScheduleKind.CURRENT,
+    )
+    name = models.CharField(max_length=120, blank=True)
+    active = models.BooleanField(default=True)
+    date_from = models.DateField(null=True, blank=True)
+    date_to = models.DateField(null=True, blank=True)
+    days_of_week = models.JSONField(default=list, blank=True)
+    timezone = models.CharField(max_length=80, default=settings.TIME_ZONE)
+    priority = models.PositiveIntegerField(default=100)
+
+    class Meta:
+        ordering = ["activity__name", "schedule_kind", "priority", "date_from"]
+        indexes = [
+            models.Index(
+                fields=["activity", "schedule_kind"],
+                name="activity_schedule_kind_idx",
+            ),
+            models.Index(
+                fields=["date_from", "date_to"],
+                name="activity_schedule_dates_idx",
+            ),
+            models.Index(fields=["active"], name="activity_schedule_active_idx"),
+        ]
+
+    def __str__(self) -> str:
+        label = self.name or self.get_schedule_kind_display()
+        return f"{self.activity} - {label}"
+
+
+class ActivityScheduleSlot(TimeStampedModel):
     class SlotType(models.TextChoices):
         FIXED_TIME = "fixed_time", "Fixed time"
         HALF_DAY = "half_day", "Half day"
@@ -58,59 +111,83 @@ class ProductVariant(TimeStampedModel):
         OPEN_TIME = "open_time", "Open time"
         PRIVATE_GROUP = "private_group", "Private group"
 
-    product = models.ForeignKey(
-        Product,
+    schedule = models.ForeignKey(
+        ActivitySchedule,
         on_delete=models.CASCADE,
-        related_name="variants",
+        related_name="slots",
     )
-    variant_name = models.CharField(max_length=180)
+    start_time = models.TimeField()
+    end_time = models.TimeField(null=True, blank=True)
+    duration_minutes = models.PositiveIntegerField()
     slot_type = models.CharField(max_length=30, choices=SlotType.choices)
-    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
-    default_capacity = models.PositiveIntegerField(null=True, blank=True)
+    capacity = models.PositiveIntegerField()
     active = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ["product__canonical_name", "variant_name"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["product", "variant_name"],
-                name="unique_product_variant_name",
-            )
-        ]
+        ordering = ["schedule__activity__name", "schedule__schedule_kind", "start_time"]
         indexes = [
             models.Index(
-                fields=["product", "active"],
-                name="variant_product_active_idx",
+                fields=["schedule", "active"],
+                name="act_slot_sched_active_idx",
             ),
-            models.Index(fields=["slot_type"], name="variant_slot_type_idx"),
+            models.Index(fields=["start_time"], name="activity_slot_start_idx"),
+            models.Index(fields=["slot_type"], name="activity_slot_type_idx"),
         ]
 
     def __str__(self) -> str:
-        return f"{self.product} - {self.variant_name}"
+        return f"{self.schedule} {self.start_time:%H:%M}"
 
 
-class ProductAlias(TimeStampedModel):
+class ActivityPeopleRule(TimeStampedModel):
+    activity = models.OneToOneField(
+        TourActivity,
+        on_delete=models.CASCADE,
+        related_name="people_rule",
+    )
+    min_people_per_booking = models.PositiveIntegerField(null=True, blank=True)
+    max_people_per_booking = models.PositiveIntegerField(null=True, blank=True)
+    default_capacity = models.PositiveIntegerField(null=True, blank=True)
+    capacity_note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["activity__name"]
+
+    def __str__(self) -> str:
+        return f"{self.activity} people rule"
+
+
+class ProviderAlias(TimeStampedModel):
     provider = models.ForeignKey(
-        Provider, on_delete=models.CASCADE, related_name="product_aliases"
+        Provider,
+        on_delete=models.CASCADE,
+        related_name="provider_aliases",
     )
     raw_product_name = models.CharField(max_length=240)
     raw_option_name = models.CharField(max_length=240, null=True, blank=True)
     provider_product_code = models.CharField(max_length=120, null=True, blank=True)
     provider_option_code = models.CharField(max_length=120, null=True, blank=True)
-    canonical_product = models.ForeignKey(
-        Product,
+    linked_activity = models.ForeignKey(
+        TourActivity,
         on_delete=models.PROTECT,
         related_name="provider_aliases",
     )
-    canonical_variant = models.ForeignKey(
-        ProductVariant,
+    linked_schedule = models.ForeignKey(
+        ActivitySchedule,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="provider_aliases",
     )
-    confidence = models.DecimalField(max_digits=5, decimal_places=2, default=1)
+    linked_slot = models.ForeignKey(
+        ActivityScheduleSlot,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="provider_aliases",
+    )
     approved = models.BooleanField(default=False)
+    needs_manual_confirmation = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ["provider__name", "raw_product_name", "raw_option_name"]
@@ -123,7 +200,7 @@ class ProductAlias(TimeStampedModel):
                     "provider_product_code",
                     "provider_option_code",
                 ],
-                name="unique_provider_product_alias",
+                name="unique_provider_alias",
             )
         ]
         indexes = [
@@ -135,49 +212,22 @@ class ProductAlias(TimeStampedModel):
                 fields=["provider", "provider_product_code"],
                 name="alias_provider_code_idx",
             ),
-            models.Index(
-                fields=["provider", "provider_option_code"],
-                name="alias_provider_option_code_idx",
-            ),
             models.Index(fields=["approved"], name="alias_approved_idx"),
+            models.Index(
+                fields=["needs_manual_confirmation"],
+                name="alias_manual_confirm_idx",
+            ),
         ]
 
     def __str__(self) -> str:
         option = f" / {self.raw_option_name}" if self.raw_option_name else ""
         return f"{self.provider}: {self.raw_product_name}{option}"
 
-
-class CapacityRule(TimeStampedModel):
-    product_variant = models.ForeignKey(
-        ProductVariant,
-        on_delete=models.CASCADE,
-        related_name="capacity_rules",
-    )
-    schedule_name = models.CharField(max_length=120, blank=True)
-    date_from = models.DateField(null=True, blank=True)
-    date_to = models.DateField(null=True, blank=True)
-    day_of_week = models.PositiveSmallIntegerField(null=True, blank=True)
-    slot_start_time = models.TimeField(null=True, blank=True)
-    slot_end_time = models.TimeField(null=True, blank=True)
-    capacity = models.PositiveIntegerField()
-    active = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ["product_variant__product__canonical_name", "date_from"]
-        indexes = [
-            models.Index(
-                fields=["product_variant", "active"],
-                name="capacity_variant_active_idx",
-            ),
-            models.Index(
-                fields=["date_from", "date_to"],
-                name="capacity_date_range_idx",
-            ),
-            models.Index(fields=["day_of_week"], name="capacity_day_idx"),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.product_variant} capacity {self.capacity}"
+    def save(self, *args, **kwargs):
+        self.raw_option_name = self.raw_option_name or ""
+        self.provider_product_code = self.provider_product_code or ""
+        self.provider_option_code = self.provider_option_code or ""
+        super().save(*args, **kwargs)
 
 
 class Booking(TimeStampedModel):
@@ -195,7 +245,9 @@ class Booking(TimeStampedModel):
         DUPLICATE_IGNORED = "duplicate_ignored", "Duplicate ignored"
 
     provider = models.ForeignKey(
-        Provider, on_delete=models.PROTECT, related_name="bookings"
+        Provider,
+        on_delete=models.PROTECT,
+        related_name="bookings",
     )
     provider_booking_reference = models.CharField(max_length=120)
     provider_order_reference = models.CharField(max_length=120, null=True, blank=True)
@@ -204,15 +256,15 @@ class Booking(TimeStampedModel):
         choices=Status.choices,
         default=Status.PENDING_PROVIDER_ACCEPTANCE,
     )
-    canonical_product = models.ForeignKey(
-        Product,
+    activity = models.ForeignKey(
+        TourActivity,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="bookings",
     )
-    canonical_variant = models.ForeignKey(
-        ProductVariant,
+    schedule_slot = models.ForeignKey(
+        ActivityScheduleSlot,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
@@ -227,7 +279,7 @@ class Booking(TimeStampedModel):
     provider_end_time = models.TimeField(null=True, blank=True)
     provider_slot_type = models.CharField(
         max_length=30,
-        choices=ProductVariant.SlotType.choices,
+        choices=ActivityScheduleSlot.SlotType.choices,
         blank=True,
     )
     active_travel_date = models.DateField(null=True, blank=True)
@@ -235,7 +287,7 @@ class Booking(TimeStampedModel):
     active_end_time = models.TimeField(null=True, blank=True)
     active_slot_type = models.CharField(
         max_length=30,
-        choices=ProductVariant.SlotType.choices,
+        choices=ActivityScheduleSlot.SlotType.choices,
         blank=True,
     )
     provider_traveler_count = models.PositiveIntegerField(null=True, blank=True)
@@ -272,12 +324,12 @@ class Booking(TimeStampedModel):
             models.Index(fields=["active_travel_date"], name="booking_active_date_idx"),
             models.Index(fields=["status"], name="booking_status_idx"),
             models.Index(
-                fields=["canonical_product", "active_travel_date"],
-                name="booking_product_date_idx",
+                fields=["activity", "active_travel_date"],
+                name="booking_activity_date_idx",
             ),
             models.Index(
-                fields=["canonical_variant", "active_travel_date"],
-                name="booking_variant_date_idx",
+                fields=["schedule_slot", "active_travel_date"],
+                name="booking_slot_date_idx",
             ),
             models.Index(
                 fields=["provider", "status"],
@@ -313,7 +365,7 @@ class BookingEvent(models.Model):
             "parser_review_resolved",
             "Parser review resolved",
         )
-        PRODUCT_ALIAS_CHANGED = "product_alias_changed", "Product alias changed"
+        PROVIDER_ALIAS_CHANGED = "provider_alias_changed", "Provider alias changed"
         CONFLICT_DETECTED = "conflict_detected", "Conflict detected"
 
     class Source(models.TextChoices):
@@ -375,7 +427,7 @@ class ReviewQueueItem(models.Model):
             "traveler_count_missing",
             "Traveler count missing",
         )
-        PRODUCT_ALIAS_MISSING = "product_alias_missing", "Product alias missing"
+        PROVIDER_ALIAS_MISSING = "provider_alias_missing", "Provider alias missing"
         LOW_CONFIDENCE_PARSE = "low_confidence_parse", "Low confidence parse"
         POSSIBLE_DUPLICATE = "possible_duplicate", "Possible duplicate"
         MANUAL_OVERRIDE_CONFLICT = (
@@ -409,7 +461,9 @@ class ReviewQueueItem(models.Model):
     )
     issue_type = models.CharField(max_length=40, choices=IssueType.choices)
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.OPEN
+        max_length=20,
+        choices=Status.choices,
+        default=Status.OPEN,
     )
     title = models.CharField(max_length=180)
     details = models.TextField(blank=True)

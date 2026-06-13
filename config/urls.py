@@ -6,23 +6,23 @@ from apps.bookings import views as booking_views
 
 urlpatterns = [
     path(
-        "settings/products/",
-        booking_views.product_settings,
-        name="settings_product_settings",
+        "settings/tours/",
+        booking_views.tour_activity_list,
+        name="settings_tour_activities",
     ),
     path(
-        "settings/products/new/",
-        booking_views.product_settings_new,
-        name="settings_product_settings_new",
+        "settings/tours/new/",
+        booking_views.tour_activity_new,
+        name="settings_tour_activity_new",
     ),
     path(
-        "settings/products/<int:product_id>/",
-        booking_views.product_settings_edit,
-        name="settings_product_settings_edit",
+        "settings/tours/<int:activity_id>/",
+        booking_views.tour_activity_detail,
+        name="settings_tour_activity_detail",
     ),
     path(
         "settings/provider-aliases/",
-        booking_views.product_aliases,
+        booking_views.provider_aliases,
         name="settings_provider_aliases",
     ),
     path(
@@ -49,12 +49,6 @@ urlpatterns = [
         "review/<int:item_id>/action/",
         booking_views.review_action,
         name="review_action",
-    ),
-    path("products/aliases/", booking_views.product_aliases, name="product_aliases"),
-    path(
-        "products/aliases/<int:alias_id>/approve/",
-        booking_views.approve_alias,
-        name="approve_alias",
     ),
     path("reports/", include("apps.reports.urls")),
 ]

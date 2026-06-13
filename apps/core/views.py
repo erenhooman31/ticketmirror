@@ -13,11 +13,11 @@ from django.utils import timezone
 from apps.accounts.models import UserProfile
 from apps.accounts.permissions import admin_required, is_admin, is_operator
 from apps.bookings.models import (
+    ActivityScheduleSlot,
     Booking,
     BookingEvent,
-    Product,
-    ProductVariant,
     ReviewQueueItem,
+    TourActivity,
 )
 from apps.bookings.services import capacity_snapshot, get_daily_capacity_summary
 from apps.ingestion.models import RawEmail
@@ -60,13 +60,11 @@ def dashboard(request):
         "dashboard_messages": _dashboard_messages(),
         "agenda_sections": _agenda_sections(selected_date, range_days),
         "booking_status_options": Booking.Status.choices,
-        "product_options": Product.objects.filter(active=True).order_by(
-            "canonical_name"
-        ),
-        "variant_options": ProductVariant.objects.filter(active=True)
-        .select_related("product")
-        .order_by("product__canonical_name", "variant_name"),
-        "slot_type_options": ProductVariant.SlotType.choices,
+        "activity_options": TourActivity.objects.filter(active=True).order_by("name"),
+        "slot_options": ActivityScheduleSlot.objects.filter(active=True)
+        .select_related("schedule", "schedule__activity")
+        .order_by("schedule__activity__name", "start_time"),
+        "slot_type_options": ActivityScheduleSlot.SlotType.choices,
         "bookings_today_count": bookings_today.count(),
         "confirmed_pax_today": bookings_today.filter(
             status=Booking.Status.CONFIRMED
@@ -107,7 +105,7 @@ def search(request):
                 | Q(raw_product_name__icontains=query)
                 | Q(raw_option_name__icontains=query)
             )
-            .select_related("provider", "canonical_product", "canonical_variant")
+            .select_related("provider", "activity", "schedule_slot")
             .order_by("-active_travel_date", "provider_booking_reference")[:50]
         )
     return render(
@@ -173,20 +171,12 @@ def _settings_sections(user):
         sections.extend(
             [
                 {
-                    "title": "Products & Schedules",
+                    "title": "Tours & Activities",
                     "description": (
-                        "Configure canonical products, time slots, seasonal "
-                        "schedules, and capacity setup."
+                        "Configure activities, provider aliases, seasonal "
+                        "schedules, slots, and capacity setup."
                     ),
-                    "url": reverse("settings_product_settings"),
-                },
-                {
-                    "title": "Capacity Rules",
-                    "description": (
-                        "Review capacity through product schedules. Dedicated "
-                        "rule editing can be added when needed."
-                    ),
-                    "url": reverse("settings_product_settings"),
+                    "url": reverse("settings_tour_activities"),
                 },
                 {
                     "title": "Providers",
@@ -253,16 +243,15 @@ def _capacity_warning_count(selected_date):
     seen = set()
     for booking in Booking.objects.filter(
         active_travel_date=selected_date,
-        canonical_variant__isnull=False,
-    ).select_related("canonical_variant"):
-        key = (booking.canonical_variant_id, booking.active_start_time)
+        schedule_slot__isnull=False,
+    ).select_related("schedule_slot"):
+        key = (booking.schedule_slot_id, booking.active_start_time)
         if key in seen:
             continue
         seen.add(key)
         snapshot = capacity_snapshot(
-            product_variant=booking.canonical_variant,
+            schedule_slot=booking.schedule_slot,
             service_date=selected_date,
-            start_time=booking.active_start_time,
         )
         if snapshot["remaining"] <= 0 and snapshot["pending"]:
             warnings += 1
@@ -310,11 +299,7 @@ def _agenda_row(service_date, row):
 
 
 def _agenda_title(row):
-    product_name = row["product"].canonical_name
-    variant_name = row["variant"].variant_name
-    if variant_name and variant_name.lower() not in product_name.lower():
-        return f"{product_name} - {variant_name}"
-    return product_name
+    return row["activity"].name
 
 
 def _agenda_status(row):
@@ -328,17 +313,12 @@ def _agenda_status(row):
 
 
 def _slot_url(service_date, row):
-    variant = row["variant"]
     slot = row["slot"]
-    if not variant:
+    if not slot:
         return ""
-    if hasattr(slot, "strftime"):
-        slot_value = slot.strftime("%H:%M")
-    else:
-        slot_value = str(slot or "open")
     return reverse(
         "bookings:slot_detail",
-        args=[service_date.isoformat(), variant.id, slot_value],
+        args=[service_date.isoformat(), slot.id],
     )
 
 
@@ -347,8 +327,8 @@ def _dashboard_messages():
     events = BookingEvent.objects.select_related(
         "booking",
         "booking__provider",
-        "booking__canonical_product",
-        "booking__canonical_variant",
+        "booking__activity",
+        "booking__schedule_slot",
         "raw_email",
     ).order_by("-created_at")[:MESSAGE_LIMIT]
     messages.extend(_message_from_event(event) for event in events)
@@ -481,10 +461,11 @@ def _booking_datetime_label(booking):
 def _booking_product_label(booking):
     if not booking:
         return ""
-    if booking.canonical_variant_id:
-        return str(booking.canonical_variant)
-    if booking.canonical_product_id:
-        return booking.canonical_product.canonical_name
+    if booking.schedule_slot_id:
+        activity_name = booking.activity.name if booking.activity else ""
+        return f"{activity_name} - {booking.schedule_slot.start_time:%H:%M}"
+    if booking.activity_id:
+        return booking.activity.name
     return booking.raw_product_name
 
 

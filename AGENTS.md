@@ -6,7 +6,7 @@ Guidance for all future Codex work in this repository.
 
 ticketmirror is an internal booking and ticket management dashboard. It mirrors bookings received by email from OTA providers such as GetYourGuide, Viator, Tiqets, Tripster, Sputnik8, Klook, and similar providers.
 
-This is not a customer-facing booking engine. The OTA/provider systems remain the source of truth. ticketmirror stores incoming Gmail messages, parses stable provider booking references, and gives internal operations staff a date, product, and time-slot view of mirrored reservations.
+This is not a customer-facing booking engine. The OTA/provider systems remain the source of truth. ticketmirror stores incoming Gmail messages, parses stable provider booking references, and gives internal operations staff a date, activity, schedule-slot, and capacity view of mirrored reservations.
 
 Do not build public customer pages. Do not build payment processing. Do not add checkout, payment links, carts, or customer booking flows.
 
@@ -31,7 +31,7 @@ Do not use React, Next.js, or a separate frontend app unless explicitly requeste
 
 - `config/`: Django settings, URL configuration, ASGI/WSGI, Celery app.
 - `apps/accounts/`: user profile and role model for admin, operator, viewer.
-- `apps/bookings/`: providers, products, variants, aliases, capacity rules, bookings, audit events, manual overrides, review queue.
+- `apps/bookings/`: providers, tours/activities, schedules, schedule slots, people rules, provider aliases, bookings, audit events, manual overrides, review queue.
 - `apps/ingestion/`: raw email storage, Gmail scaffolding, parser registry, provider parser modules, booking upsert services.
 - `apps/reports/`: CSV export and reporting endpoints.
 - `apps/core/`: dashboard, base views, shared templates.
@@ -120,6 +120,8 @@ Do not leave formatting-only churn mixed with unrelated behavior changes unless 
 - Provider updates must create booking events.
 - Provider updates must not silently overwrite manual overrides.
 - Capacity calculations should count confirmed active bookings and show pending separately.
+- Activity setup uses `TourActivity`, `ActivitySchedule`, `ActivityScheduleSlot`, `ActivityPeopleRule`, and `ProviderAlias`.
+- Capacity lives on `ActivityScheduleSlot`; people rules are setup defaults.
 - Use transactions around booking upserts, manual edits, and ingestion state changes.
 
 ## Parser Rules
@@ -128,7 +130,7 @@ Do not leave formatting-only churn mixed with unrelated behavior changes unless 
 - Parser code must be deterministic and tested.
 - Provider parsers should extract stable booking/reference numbers, product names, date, time slot, guest details, party size, and status when available.
 - Parser output should be normalized into ingestion DTOs before upsert.
-- Unknown or ambiguous products should create review queue items instead of guessing.
+- Unknown or ambiguous provider aliases should create review queue items instead of guessing.
 - Do not rely on traveler name, email subject alone, or fuzzy person matching to identify bookings.
 - AI extraction may only be added later as a fallback, not as the main parser.
 - Parser behavior must be provider-specific and covered by fixture-based tests.
@@ -139,7 +141,7 @@ Do not leave formatting-only churn mixed with unrelated behavior changes unless 
 - Primary navigation is limited to Home, Calendar, Customers, Settings. Admin functionality is role-based inside Settings, not a separate Admin section.
 - Keep Django admin unlinked from the product UI; use it only as an emergency/developer console when explicitly needed.
 - Keep UI internal, operational, dense, and practical.
-- Prioritize date, product, time slot, capacity, booking status, review queue, and CSV export workflows.
+- Prioritize date, activity, schedule slot, capacity, booking status, review queue, and CSV export workflows.
 - Do not build marketing pages, customer booking pages, checkout pages, or public landing pages.
 - Use Bootstrap or simple CSS. Avoid adding a frontend build system unless explicitly requested.
 
