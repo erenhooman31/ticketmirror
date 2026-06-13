@@ -66,6 +66,16 @@ docker compose exec web black .
 docker compose exec web ruff check .
 ```
 
+Run the same checks directly in a local virtualenv:
+
+```bash
+python manage.py check
+python manage.py makemigrations --check --dry-run
+python -m pytest
+black --check .
+ruff check .
+```
+
 ## Documentation
 
 - [Agent guidance](AGENTS.md)
@@ -74,6 +84,30 @@ docker compose exec web ruff check .
 - [Ingestion](docs/INGESTION.md)
 - [Parsers](docs/PARSERS.md)
 - [Deployment](docs/DEPLOYMENT.md)
+- [Final review](FINAL_REVIEW.md)
+
+## Production Deployment
+
+Production deployment uses `docker-compose.prod.yml` with Gunicorn, Celery
+worker, Celery beat, PostgreSQL, Redis, and Caddy. Start from
+`.env.prod.example`, fill in real values on the server, and follow
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+```bash
+cp .env.prod.example .env.prod
+chmod +x deployment/*.sh
+deployment/deploy.sh
+```
+
+Do not commit `.env`, `.env.prod`, OAuth credentials, database passwords, or real
+provider email samples.
+
+## CI
+
+GitHub Actions runs on pushes to `main` and `develop` and on pull requests. The
+workflow installs Python dependencies, runs migrations and Django checks, runs
+the test suite, and verifies Ruff and Black. Dependabot is configured for Python
+dependencies and GitHub Actions.
 
 ## Environment Variables
 
