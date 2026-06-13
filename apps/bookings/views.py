@@ -789,6 +789,12 @@ def _activity_context(
             else []
         ),
         "current_schedule": current_schedule,
+        "current_schedule_summary": _schedule_summary(current_schedule),
+        "current_schedule_slot_rows": _schedule_slot_rows(current_schedule),
+        "current_schedule_exception_rows": [
+            _exception_row(exception)
+            for exception in _schedule_exceptions_for_schedule(current_schedule)
+        ],
         "other_schedule": other_schedule,
         "other_schedules": [
             _other_schedule_row(schedule) for schedule in other_schedules
@@ -1095,6 +1101,64 @@ def _schedule_exceptions_for_activity(activity, exception_types):
     )
 
 
+def _schedule_exceptions_for_schedule(schedule):
+    if not schedule:
+        return []
+    return schedule.exceptions.filter(active=True).order_by("date", "start_time", "id")
+
+
+def _schedule_summary(schedule):
+    if not schedule:
+        return {
+            "name": "Current schedule",
+            "status_label": "Not configured",
+            "effective_label": "No date limits",
+            "repeat_labels": ["Every day"],
+            "slot_count": 0,
+            "active_slot_count": 0,
+            "capacity_label": "No capacity",
+            "timezone": "",
+            "notes": "",
+        }
+    slots = list(schedule.slots.all())
+    active_slots = [slot for slot in slots if slot.active]
+    total_capacity = sum(slot.capacity for slot in active_slots)
+    if active_slots:
+        capacity_label = (
+            f"{total_capacity} total seats across {len(active_slots)} times"
+        )
+    else:
+        capacity_label = "No active times"
+    return {
+        "name": schedule.name or schedule.get_schedule_kind_display(),
+        "status_label": "Active" if schedule.active else "Inactive",
+        "effective_label": _schedule_effective_label(schedule),
+        "repeat_labels": _schedule_repeat_labels(schedule),
+        "slot_count": len(slots),
+        "active_slot_count": len(active_slots),
+        "capacity_label": capacity_label,
+        "timezone": schedule.timezone,
+        "notes": schedule.notes,
+    }
+
+
+def _schedule_slot_rows(schedule):
+    if not schedule:
+        return []
+    return [
+        {
+            "slot": slot,
+            "time_label": _slot_time_label(slot),
+            "repeat_labels": _schedule_repeat_labels(slot),
+            "duration_label": f"{slot.duration_minutes} min",
+            "type_label": slot.get_slot_type_display(),
+            "capacity_label": f"{slot.capacity} seats",
+            "status_label": "Active" if slot.active else "Inactive",
+        }
+        for slot in schedule.slots.order_by("start_time", "id")
+    ]
+
+
 def _exception_row(exception):
     return {
         "item": exception,
@@ -1107,6 +1171,7 @@ def _exception_row(exception):
 
 
 def _other_schedule_row(schedule):
+    summary = _schedule_summary(schedule)
     return {
         "schedule": schedule,
         "start": schedule.date_from,
@@ -1114,6 +1179,13 @@ def _other_schedule_row(schedule):
         "name": schedule.name or "Other schedule",
         "status_label": "Active" if schedule.active else "Inactive",
         "effective_label": _schedule_effective_label(schedule),
+        "repeat_labels": summary["repeat_labels"],
+        "active_slot_count": summary["active_slot_count"],
+        "capacity_label": summary["capacity_label"],
+        "time_labels": [
+            _slot_time_label(slot)
+            for slot in schedule.slots.filter(active=True).order_by("start_time", "id")
+        ],
     }
 
 
@@ -1171,6 +1243,12 @@ def _schedule_repeat_labels(schedule):
     if not schedule.days_of_week:
         return ["Every day"]
     return [labels[day] for day in schedule.days_of_week if day in range(7)]
+
+
+def _slot_time_label(slot):
+    if slot.end_time:
+        return f"{slot.start_time:%H:%M} - {slot.end_time:%H:%M}"
+    return f"{slot.start_time:%H:%M}"
 
 
 def _special_date_type_label(exception):

@@ -28,24 +28,58 @@
   {% if show_scheduling_tab %}
     {% url 'settings_tour_activity_detail' activity.id as detail_url %}
 
-    <section class="tm-card p-3 mb-3">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+    <section class="tm-card p-3 mb-3" data-testid="current-schedule-section">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div>
           <h2 class="h5 mb-1">Current schedule</h2>
-          <div class="tm-muted">
-            {% if current_schedule.date_from and current_schedule.date_to %}
-              This schedule is effective from {{ current_schedule.date_from }} to {{ current_schedule.date_to }}
-            {% else %}
-              This schedule has no date limits
-            {% endif %}
-          </div>
+          <div class="tm-muted">The active weekly availability operators use for normal bookings.</div>
         </div>
-        {% if can_edit_activities %}
-          <a class="btn btn-sm btn-outline-secondary" href="{{ detail_url }}?tab=scheduling&edit_schedule=current">Edit schedule</a>
-        {% endif %}
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <span class="badge {% if current_schedule and current_schedule.active %}text-bg-success{% elif current_schedule %}text-bg-secondary{% else %}text-bg-warning{% endif %}">{{ current_schedule_summary.status_label }}</span>
+          {% if can_edit_activities %}
+            <a class="btn btn-sm btn-outline-secondary" href="{{ detail_url }}?tab=scheduling&edit_schedule=current">Edit schedule</a>
+          {% endif %}
+        </div>
       </div>
 
-      <div class="table-responsive">
+      <div class="row g-2 mb-3">
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="tm-label">Schedule name</div>
+            <div class="fw-semibold">{{ current_schedule_summary.name }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="tm-label">Effective dates</div>
+            <div class="fw-semibold">{{ current_schedule_summary.effective_label }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="tm-label">Repeats on</div>
+            <div class="fw-semibold">{% for label in current_schedule_summary.repeat_labels %}{{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="border rounded p-2 h-100">
+            <div class="tm-label">Capacity</div>
+            <div class="fw-semibold">{{ current_schedule_summary.capacity_label }}</div>
+          </div>
+        </div>
+      </div>
+
+      {% if current_schedule_summary.notes %}
+        <div class="alert alert-light border py-2 mb-3">{{ current_schedule_summary.notes }}</div>
+      {% endif %}
+
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h3 class="h6 mb-0">Weekly availability</h3>
+        {% if current_schedule_summary.timezone %}
+          <span class="small tm-muted">{{ current_schedule_summary.timezone }}</span>
+        {% endif %}
+      </div>
+      <div class="table-responsive mb-3">
         <table class="tm-week-grid" data-testid="weekly-schedule-grid">
           <thead>
             <tr>
@@ -81,6 +115,99 @@
                 </td>
               {% endfor %}
             </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h3 class="h6 mb-0">Available times</h3>
+        {% if can_edit_activities and current_schedule %}
+          <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_slot={{ current_schedule.id }}">Add time</a>
+        {% endif %}
+      </div>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Repeats on</th>
+              <th>Duration</th>
+              <th>Type</th>
+              <th>Capacity</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in current_schedule_slot_rows %}
+              <tr>
+                <td>{{ row.time_label }}</td>
+                <td>{% for label in row.repeat_labels %}{{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                <td>{{ row.duration_label }}</td>
+                <td>{{ row.type_label }}</td>
+                <td>{{ row.capacity_label }}</td>
+                <td>{{ row.status_label }}</td>
+                <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_slot={{ row.slot.id }}">Edit</a>{% else %}-{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="7" class="tm-muted text-center py-3">No time slots have been added to this schedule yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h3 class="h6 mb-0">Special dates: Additional times / Blocked dates</h3>
+        {% if can_edit_activities and current_schedule %}
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_additional=1">Add additional time</a>
+            <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_blocked=1">Add blocked date</a>
+          </div>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Capacity impact</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in current_schedule_exception_rows %}
+              <tr>
+                <td>{{ row.date }}</td>
+                <td>{{ row.time_label }}</td>
+                <td>{{ row.type_label }}</td>
+                <td>{{ row.capacity_label }}</td>
+                <td>{{ row.item.reason|default:"-" }}</td>
+                <td>{{ row.status_label }}</td>
+                <td>
+                  {% if can_edit_activities %}
+                    {% if row.item.exception_type == "extra_slot" %}
+                      <a href="{{ detail_url }}?tab=scheduling&edit_additional={{ row.item.id }}">Edit</a>
+                    {% else %}
+                      <a href="{{ detail_url }}?tab=scheduling&edit_blocked={{ row.item.id }}">Edit</a>
+                    {% endif %}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="7" class="tm-muted text-center py-3">
+                  No special dates or blocked dates have been added.
+                  <span class="d-block">No additional times have been added.</span>
+                  <span class="d-block">No blocked dates have been added.</span>
+                </td>
+              </tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>
@@ -233,9 +360,12 @@
       </section>
     {% endif %}
 
-    <section class="tm-card p-3 mb-3">
+    <section class="tm-card p-3" data-testid="other-schedules-section">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h2 class="h5 mb-0">Other schedules</h2>
+        <div>
+          <h2 class="h5 mb-1">Other schedules</h2>
+          <div class="tm-muted">Alternate, future, or seasonal schedules with their own effective dates.</div>
+        </div>
         {% if can_edit_activities %}
           <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&edit_schedule=new_other">New / change schedule</a>
         {% endif %}
@@ -244,9 +374,11 @@
         <table class="table table-sm align-middle mb-0">
           <thead>
             <tr>
-              <th>Start</th>
-              <th>End</th>
               <th>Name</th>
+              <th>Effective dates</th>
+              <th>Repeats on</th>
+              <th>Times</th>
+              <th>Capacity</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -254,68 +386,22 @@
           <tbody>
             {% for row in other_schedules %}
               <tr>
-                <td>{{ row.start|default:"-" }}</td>
-                <td>{{ row.end|default:"-" }}</td>
                 <td>{{ row.name }}</td>
-                <td>{{ row.status_label }}</td>
+                <td>{{ row.effective_label }}</td>
+                <td>{% for label in row.repeat_labels %}{{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                <td>
+                  {% for label in row.time_labels %}
+                    <span class="badge text-bg-light border">{{ label }}</span>
+                  {% empty %}
+                    <span class="tm-muted">No times</span>
+                  {% endfor %}
+                </td>
+                <td>{{ row.capacity_label }}</td>
+                <td><span class="badge {% if row.schedule.active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ row.status_label }}</span></td>
                 <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_schedule={{ row.schedule.id }}">Edit</a>{% else %}-{% endif %}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="5" class="tm-muted text-center py-3">No other schedules have been added.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="tm-card p-3 mb-3">
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h2 class="h5 mb-0">Additional times</h2>
-        {% if can_edit_activities %}
-          <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_additional=1">Add additional time</a>
-        {% endif %}
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>Date</th><th>Time</th><th>Seats</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>
-            {% for row in additional_times %}
-              <tr>
-                <td>{{ row.date }}</td>
-                <td>{{ row.time_label }}</td>
-                <td>{{ row.capacity_label }}</td>
-                <td>{{ row.status_label }}</td>
-                <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_additional={{ row.item.id }}">Edit</a>{% else %}-{% endif %}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="5" class="tm-muted text-center py-3">No additional times have been added.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="tm-card p-3">
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h2 class="h5 mb-0">Blocked dates</h2>
-        {% if can_edit_activities %}
-          <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_blocked=1">Add blocked date</a>
-        {% endif %}
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead><tr><th>Date</th><th>Time</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>
-            {% for row in blocked_dates %}
-              <tr>
-                <td>{{ row.date }}</td>
-                <td>{{ row.time_label }}</td>
-                <td>{{ row.item.reason|default:"-" }}</td>
-                <td>{{ row.status_label }}</td>
-                <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_blocked={{ row.item.id }}">Edit</a>{% else %}-{% endif %}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="5" class="tm-muted text-center py-3">No blocked dates have been added.</td></tr>
+              <tr><td colspan="7" class="tm-muted text-center py-3">No other schedules have been added.</td></tr>
             {% endfor %}
           </tbody>
         </table>
