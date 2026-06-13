@@ -6,7 +6,6 @@ from helpers import create_activity_setup
 
 from apps.accounts.models import UserProfile
 from apps.bookings.models import (
-    ActivitySchedule,
     ActivityScheduleException,
     ActivityScheduleSlot,
     ProviderAlias,
@@ -73,34 +72,46 @@ def test_admin_creates_activity_general_settings(client, users):
 
 
 @pytest.mark.django_db
-def test_schedule_save_creates_current_schedule_slots(client, users):
+def test_schedule_save_updates_current_schedule_details_and_adds_slot(client, users):
     setup = create_activity_setup(activity_name="Old City Tour", alias=False)
     activity = setup["activity"]
+    schedule = setup["schedule"]
 
     client.force_login(users["admin"])
     response = client.post(
         reverse("settings_tour_activity_detail", args=[activity.id]),
         {
             "action": "save_current_schedule",
-            "current-name": "Summer season",
-            "current-active": "on",
-            "current-date_from": "2026-04-01",
-            "current-date_to": "2026-10-31",
-            "current-days_of_week": "[0,1,6]",
+            "current-schedule_name": "Summer season",
+            "current-schedule_status": "active",
+            "current-applies_from": "2026-04-01",
+            "current-applies_until": "2026-10-31",
+            "current-repeat_days": ["0", "1", "6"],
             "current-timezone": "Europe/Istanbul",
-            "current-priority": "10",
-            "current-slot_lines": "10:00,80,150,fixed_time\n12:00,60,150,fixed_time",
+            "current-notes": "Seasonal operating schedule.",
         },
     )
 
     assert response.status_code == 302
-    schedule = ActivitySchedule.objects.get(
-        activity=activity,
-        schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
-        name="Summer season",
-    )
+    schedule.refresh_from_db()
+    assert schedule.name == "Summer season"
     assert schedule.days_of_week == [0, 1, 6]
-    assert schedule.slots.count() == 2
+    assert schedule.date_from.isoformat() == "2026-04-01"
+
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "save_time_slot",
+            "schedule_id": str(schedule.id),
+            "start_time": "10:00",
+            "duration_minutes": "150",
+            "slot_kind": "fixed-time",
+            "capacity": "80",
+            "slot_status": "active",
+        },
+    )
+
+    assert response.status_code == 302
     assert (
         ActivityScheduleSlot.objects.get(
             schedule=schedule,
@@ -122,13 +133,13 @@ def test_schedule_tab_adds_exception(client, users):
         {
             "action": "save_schedule_exception",
             "schedule_id": str(schedule.id),
-            "exception_type": ActivityScheduleException.ExceptionType.EXTRA_SLOT,
+            "special_date_kind": "extra-slot",
             "date": "2026-06-21",
             "start_time": "15:00",
             "end_time": "17:00",
             "capacity": "40",
             "reason": "One-off provider opening.",
-            "active": "on",
+            "special_date_status": "active",
         },
     )
 
@@ -204,9 +215,45 @@ def test_schedule_tab_renders_current_and_other_sections(client, users):
     )
 
     assert response.status_code == 200
-    assert b"Current schedule" in response.content
-    assert b"Other schedule" in response.content
+    assert b"Current Schedule" in response.content
+    assert b"Other Schedule" in response.content
     assert b"09:00" in response.content
+
+
+@pytest.mark.django_db
+def test_schedule_tab_uses_operator_labels_not_raw_fields(client, users):
+    setup = create_activity_setup(activity_name="Human Schedule Tour")
+
+    client.force_login(users["admin"])
+    response = client.get(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "scheduling"},
+    )
+    html = response.content.decode()
+
+    for raw_label in [
+        "schedule_kind",
+        "recurrence_mode",
+        "days_of_week",
+        "date_from",
+        "date_to",
+        "exception_type",
+        "slot_type",
+        "display_settings",
+    ]:
+        assert raw_label not in html
+    for human_label in [
+        "Current Schedule",
+        "Other Schedule",
+        "Effective dates",
+        "Repeats on",
+        "Available times",
+        "Capacity",
+        "Special dates",
+        "Blocked dates",
+    ]:
+        assert human_label in html
+    assert "No special dates or blocked dates have been added." in html
 
 
 @pytest.mark.django_db
@@ -218,7 +265,7 @@ def test_viewer_cannot_save_activity_schedule(client, users):
         reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
         {
             "action": "save_current_schedule",
-            "current-name": "Default season",
+            "current-schedule_name": "Default season",
         },
     )
 
@@ -226,9 +273,46 @@ def test_viewer_cannot_save_activity_schedule(client, users):
 
 
 @pytest.mark.django_db
-def test_operator_cannot_open_tour_activity_settings(client, users):
+def test_operator_can_view_tour_activity_settings_without_mutation_actions(
+    client, users
+):
+    setup = create_activity_setup(activity_name="Operator Visible Tour")
     client.force_login(users["operator"])
 
-    response = client.get(reverse("settings_tour_activities"))
+    list_response = client.get(reverse("settings_tour_activities"))
+    detail_response = client.get(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "scheduling"},
+    )
 
-    assert response.status_code == 403
+    assert list_response.status_code == 200
+    assert detail_response.status_code == 200
+    html = detail_response.content.decode()
+    assert "Add time slot" not in html
+    assert "Add special date" not in html
+    assert "Save schedule details" not in html
+    assert "Available times" in html
+
+
+@pytest.mark.django_db
+def test_schedule_validation_error_stays_near_human_field(client, users):
+    setup = create_activity_setup(activity_name="Invalid Schedule Tour")
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {
+            "action": "save_current_schedule",
+            "current-schedule_name": "Invalid season",
+            "current-schedule_status": "active",
+            "current-applies_from": "2026-10-31",
+            "current-applies_until": "2026-04-01",
+            "current-timezone": "Europe/Istanbul",
+            "current-notes": "",
+        },
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Applies until" in html
+    assert "Applies until must be after Applies from." in html

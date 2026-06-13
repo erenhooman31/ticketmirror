@@ -106,7 +106,7 @@ def test_operator_settings_hide_restricted_admin_sections(client, users):
     assert response.status_code == 200
     assert b"Provider Aliases" in response.content
     assert b"Reports / Exports" in response.content
-    assert b"Tours &amp; Activities" not in response.content
+    assert b"Tours &amp; Activities" in response.content
     assert b"Users &amp; Roles" not in response.content
     assert b"Customer Fields" not in response.content
 
@@ -116,9 +116,18 @@ def test_restricted_settings_urls_deny_operator(client, users):
     client.force_login(users["operator"])
 
     for url in [
-        reverse("settings_tour_activities"),
         reverse("core:settings_users_roles"),
         reverse("core:settings_customer_fields"),
     ]:
         response = client.get(url)
         assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_operator_can_open_tours_and_activities_readonly(client, users):
+    client.force_login(users["operator"])
+
+    response = client.get(reverse("settings_tour_activities"))
+
+    assert response.status_code == 200
+    assert b"New activity" not in response.content

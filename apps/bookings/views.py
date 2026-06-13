@@ -29,9 +29,10 @@ from apps.ingestion.models import RawEmail
 
 from .forms import (
     ActivityPeopleRuleForm,
-    ActivityScheduleExceptionForm,
-    ActivityScheduleSectionForm,
     BookingEditForm,
+    OperatorScheduleExceptionForm,
+    OperatorScheduleSectionForm,
+    OperatorScheduleSlotForm,
     ProviderAliasForm,
     TourActivityForm,
 )
@@ -207,7 +208,7 @@ def booking_edit(request, booking_id):
     )
 
 
-@admin_required
+@viewer_required
 def tour_activity_list(request):
     activities = (
         TourActivity.objects.prefetch_related(
@@ -221,14 +222,14 @@ def tour_activity_list(request):
     return render(
         request,
         "bookings/tour_activity_list.html",
-        {"activities": activities, "can_edit_activities": True},
+        {"activities": activities, "can_edit_activities": is_admin(request.user)},
     )
 
 
 @admin_required
 def tour_activity_new(request):
     if request.method == "POST":
-        if not can_mutate(request.user):
+        if not is_admin(request.user):
             raise PermissionDenied
         form = TourActivityForm(request.POST)
         if form.is_valid():
@@ -250,7 +251,7 @@ def tour_activity_new(request):
     )
 
 
-@admin_required
+@viewer_required
 def tour_activity_detail(request, activity_id):
     activity = get_object_or_404(TourActivity, id=activity_id)
     active_tab = request.GET.get("tab", "general")
@@ -286,7 +287,7 @@ def tour_activity_detail(request, activity_id):
                 else ActivitySchedule.ScheduleKind.OTHER
             )
             instance = _schedule_for_kind(activity, schedule_kind)
-            form = ActivityScheduleSectionForm(
+            form = OperatorScheduleSectionForm(
                 request.POST,
                 instance=instance,
                 schedule_kind=schedule_kind,
@@ -308,36 +309,87 @@ def tour_activity_detail(request, activity_id):
                     schedule_forms={schedule_kind: form},
                 ),
             )
-        if action == "save_schedule_exception":
+        if action == "save_time_slot":
             schedule = get_object_or_404(
                 ActivitySchedule,
                 id=request.POST.get("schedule_id"),
                 activity=activity,
             )
-            form = ActivityScheduleExceptionForm(request.POST, schedule=schedule)
+            slot = None
+            if request.POST.get("slot_id"):
+                slot = get_object_or_404(
+                    ActivityScheduleSlot,
+                    id=request.POST["slot_id"],
+                    schedule=schedule,
+                )
+            form = OperatorScheduleSlotForm(request.POST, instance=slot)
             if form.is_valid():
-                form.save()
-                messages.success(request, "Schedule exception saved.")
+                form.save(schedule=schedule)
+                messages.success(request, "Available time saved.")
                 return _redirect_activity_tab(activity, "scheduling")
-            active_tab = "scheduling"
             return render(
                 request,
                 "bookings/tour_activity_detail.html",
                 _activity_context(
                     request,
                     activity=activity,
-                    active_tab=active_tab,
-                    exception_forms={schedule.id: form},
+                    active_tab="scheduling",
+                    slot_forms={schedule.id if slot is None else slot.id: form},
                 ),
             )
-        if action == "delete_schedule_exception":
+        if action == "deactivate_time_slot":
+            slot = get_object_or_404(
+                ActivityScheduleSlot,
+                id=request.POST.get("slot_id"),
+                schedule__activity=activity,
+            )
+            slot.active = False
+            slot.save(update_fields=["active", "updated_at"])
+            messages.success(request, "Available time deactivated.")
+            return _redirect_activity_tab(activity, "scheduling")
+        if action in {"save_special_date", "save_schedule_exception"}:
+            schedule = get_object_or_404(
+                ActivitySchedule,
+                id=request.POST.get("schedule_id"),
+                activity=activity,
+            )
+            exception = None
+            if request.POST.get("special_date_id"):
+                exception = get_object_or_404(
+                    ActivityScheduleException,
+                    id=request.POST["special_date_id"],
+                    schedule=schedule,
+                )
+            form = OperatorScheduleExceptionForm(
+                request.POST,
+                schedule=schedule,
+                instance=exception,
+            )
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Special date saved.")
+                return _redirect_activity_tab(activity, "scheduling")
+            return render(
+                request,
+                "bookings/tour_activity_detail.html",
+                _activity_context(
+                    request,
+                    activity=activity,
+                    active_tab="scheduling",
+                    exception_forms={
+                        schedule.id if exception is None else exception.id: form
+                    },
+                ),
+            )
+        if action in {"deactivate_special_date", "delete_schedule_exception"}:
             exception = get_object_or_404(
                 ActivityScheduleException,
                 id=request.POST.get("exception_id"),
                 schedule__activity=activity,
             )
-            exception.delete()
-            messages.success(request, "Schedule exception deleted.")
+            exception.active = False
+            exception.save(update_fields=["active", "updated_at"])
+            messages.success(request, "Special date deactivated.")
             return _redirect_activity_tab(activity, "scheduling")
         if action == "save_people":
             form = ActivityPeopleRuleForm(request.POST, instance=people_rule)
@@ -500,6 +552,7 @@ def _activity_context(
     people_form=None,
     alias_form=None,
     exception_forms=None,
+    slot_forms=None,
 ):
     current_schedule = (
         _schedule_for_kind(
@@ -519,27 +572,36 @@ def _activity_context(
     )
     schedule_forms = schedule_forms or {}
     exception_forms = exception_forms or {}
+    slot_forms = slot_forms or {}
+    current_schedule_form = schedule_forms.get(
+        ActivitySchedule.ScheduleKind.CURRENT
+    ) or (
+        OperatorScheduleSectionForm(
+            instance=current_schedule,
+            schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+            activity=activity,
+            prefix=ActivitySchedule.ScheduleKind.CURRENT,
+        )
+        if current_schedule
+        else None
+    )
+    other_schedule_form = schedule_forms.get(ActivitySchedule.ScheduleKind.OTHER) or (
+        OperatorScheduleSectionForm(
+            instance=other_schedule,
+            schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+            activity=activity,
+            prefix=ActivitySchedule.ScheduleKind.OTHER,
+        )
+        if other_schedule
+        else None
+    )
     return {
         "activity": activity,
         "active_tab": active_tab,
         "general_form": general_form
         or (TourActivityForm(instance=activity) if activity else None),
-        "current_schedule_form": schedule_forms.get(
-            ActivitySchedule.ScheduleKind.CURRENT
-        )
-        or ActivityScheduleSectionForm(
-            instance=current_schedule,
-            schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
-            activity=activity,
-            prefix=ActivitySchedule.ScheduleKind.CURRENT,
-        ),
-        "other_schedule_form": schedule_forms.get(ActivitySchedule.ScheduleKind.OTHER)
-        or ActivityScheduleSectionForm(
-            instance=other_schedule,
-            schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
-            activity=activity,
-            prefix=ActivitySchedule.ScheduleKind.OTHER,
-        ),
+        "current_schedule_form": current_schedule_form,
+        "other_schedule_form": other_schedule_form,
         "people_form": people_form
         or (
             ActivityPeopleRuleForm(instance=activity.people_rule)
@@ -554,15 +616,19 @@ def _activity_context(
         ),
         "current_schedule": current_schedule,
         "other_schedule": other_schedule,
-        "current_exception_form": exception_forms.get(
-            current_schedule.id if current_schedule else None
-        )
-        or ActivityScheduleExceptionForm(schedule=current_schedule),
-        "other_exception_form": exception_forms.get(
-            other_schedule.id if other_schedule else None
-        )
-        or ActivityScheduleExceptionForm(schedule=other_schedule),
-        "can_edit_activities": can_mutate(request.user),
+        "current_schedule_panel": _schedule_panel(
+            current_schedule,
+            current_schedule_form,
+            slot_forms=slot_forms,
+            exception_forms=exception_forms,
+        ),
+        "other_schedule_panel": _schedule_panel(
+            other_schedule,
+            other_schedule_form,
+            slot_forms=slot_forms,
+            exception_forms=exception_forms,
+        ),
+        "can_edit_activities": is_admin(request.user),
     }
 
 
@@ -574,6 +640,97 @@ def _schedule_for_kind(activity, schedule_kind):
         .order_by("priority", "id")
         .first()
     )
+
+
+def _schedule_panel(schedule, schedule_form, *, slot_forms, exception_forms):
+    if not schedule:
+        return None
+    slots = list(schedule.slots.order_by("start_time", "id"))
+    exceptions = list(schedule.exceptions.order_by("date", "start_time", "id"))
+    active_slots = [slot for slot in slots if slot.active]
+    total_capacity = sum(slot.capacity for slot in active_slots)
+    return {
+        "schedule": schedule,
+        "form": schedule_form,
+        "slot_form": slot_forms.get(schedule.id) or OperatorScheduleSlotForm(),
+        "special_date_form": exception_forms.get(schedule.id)
+        or OperatorScheduleExceptionForm(schedule=schedule),
+        "slots": [
+            {
+                "slot": slot,
+                "form": slot_forms.get(slot.id)
+                or OperatorScheduleSlotForm(instance=slot),
+                "status_label": "Active" if slot.active else "Inactive",
+            }
+            for slot in slots
+        ],
+        "special_dates": [
+            {
+                "item": exception,
+                "form": exception_forms.get(exception.id)
+                or OperatorScheduleExceptionForm(
+                    schedule=schedule,
+                    instance=exception,
+                ),
+                "type_label": _special_date_type_label(exception),
+                "time_label": _special_date_time_label(exception),
+                "capacity_label": _special_date_capacity_label(exception),
+                "status_label": "Active" if exception.active else "Inactive",
+            }
+            for exception in exceptions
+        ],
+        "status_label": "Active" if schedule.active else "Inactive",
+        "effective_label": _schedule_effective_label(schedule),
+        "repeat_labels": _schedule_repeat_labels(schedule),
+        "active_slot_count": len(active_slots),
+        "capacity_label": (
+            f"{total_capacity} seats across {len(active_slots)} active times"
+            if active_slots
+            else "No active capacity"
+        ),
+    }
+
+
+def _schedule_effective_label(schedule):
+    if schedule.date_from and schedule.date_to:
+        return f"{schedule.date_from:%b %d, %Y} - {schedule.date_to:%b %d, %Y}"
+    if schedule.date_from:
+        return f"From {schedule.date_from:%b %d, %Y}"
+    if schedule.date_to:
+        return f"Until {schedule.date_to:%b %d, %Y}"
+    return "No date limits"
+
+
+def _schedule_repeat_labels(schedule):
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    if not schedule.days_of_week:
+        return ["Every day"]
+    return [labels[day] for day in schedule.days_of_week if day in range(7)]
+
+
+def _special_date_type_label(exception):
+    labels = {
+        ActivityScheduleException.ExceptionType.BLOCKED: "Blocked",
+        ActivityScheduleException.ExceptionType.CLOSED: "Closed",
+        ActivityScheduleException.ExceptionType.OVERRIDE_CAPACITY: "Capacity override",
+        ActivityScheduleException.ExceptionType.EXTRA_SLOT: "Extra slot",
+        ActivityScheduleException.ExceptionType.REMOVED_SLOT: "Removed slot",
+    }
+    return labels.get(exception.exception_type, exception.get_exception_type_display())
+
+
+def _special_date_time_label(exception):
+    if exception.start_time and exception.end_time:
+        return f"{exception.start_time:%H:%M} - {exception.end_time:%H:%M}"
+    if exception.start_time:
+        return exception.start_time.strftime("%H:%M")
+    return "All day"
+
+
+def _special_date_capacity_label(exception):
+    if exception.capacity is None:
+        return "-"
+    return str(exception.capacity)
 
 
 def _redirect_activity_tab(activity, tab):

@@ -1,109 +1,237 @@
-<section class="tm-card p-3">
-  <h2 class="h6">{{ title }}</h2>
-  <form method="post">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="{{ action }}">
-    {% for field in form %}
-      <div class="mb-3 {% if field.field.widget.input_type == 'checkbox' %}form-check{% endif %}">
-        {% if field.field.widget.input_type == 'checkbox' %}
-          {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {% else %}
-          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-          {{ field }}
-        {% endif %}
-        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-      </div>
-    {% endfor %}
-    {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
-    <button class="btn btn-primary" type="submit">Save {{ title|lower }}</button>
-  </form>
-
-<div class="border-top mt-3 pt-3">
-  <h3 class="h6">Configured slots</h3>
-  {% if schedule and schedule.slots.all %}
-    <div class="table-responsive">
-      <table class="table table-sm align-middle mb-0">
-        <thead>
-          <tr>
-            <th>Start</th>
-            <th>End</th>
-            <th>Duration</th>
-            <th>Type</th>
-            <th>Capacity</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for slot in schedule.slots.all %}
-            <tr>
-              <td>{{ slot.start_time|time:"H:i" }}</td>
-              <td>{% if slot.end_time %}{{ slot.end_time|time:"H:i" }}{% else %}-{% endif %}</td>
-              <td>{{ slot.duration_minutes }} min</td>
-              <td>{{ slot.get_slot_type_display }}</td>
-              <td>{{ slot.capacity }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+<section class="tm-card p-3 h-100">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h2 class="h5 mb-1">{{ title }}</h2>
+      {% if other_schedule %}
+        <div class="small tm-muted">Used for alternate, future, or seasonal availability.</div>
+      {% endif %}
     </div>
-  {% else %}
-    <div class="tm-muted small">No slots configured for this schedule.</div>
-  {% endif %}
-</div>
+    <span class="badge {% if panel.schedule.active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ panel.status_label }}</span>
+  </div>
 
-<div class="border-top mt-3 pt-3">
-  <h3 class="h6">Exceptions and blocked periods</h3>
-  {% if schedule and schedule.exceptions.all %}
-    <div class="vstack gap-2 mb-3">
-      {% for exception in schedule.exceptions.all %}
-        <div class="d-flex flex-wrap justify-content-between gap-2 border-bottom pb-2">
-          <div>
-            <div class="fw-semibold">{{ exception.date }} / {{ exception.get_exception_type_display }}</div>
-            <div class="small tm-muted">
-              {% if exception.start_time %}{{ exception.start_time|time:"H:i" }}{% else %}All times{% endif %}
-              {% if exception.end_time %}-{{ exception.end_time|time:"H:i" }}{% endif %}
-              {% if exception.capacity != None %} / capacity {{ exception.capacity }}{% endif %}
-              {% if not exception.active %} / inactive{% endif %}
-            </div>
-            {% if exception.reason %}<div class="small">{{ exception.reason }}</div>{% endif %}
-          </div>
-          <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="delete_schedule_exception">
-            <input type="hidden" name="exception_id" value="{{ exception.id }}">
-            <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
-          </form>
-        </div>
+  <div class="border rounded p-3 mb-3">
+    <div class="fw-semibold">{{ panel.schedule.name|default:title }}</div>
+    <div class="small tm-muted">Effective dates: {{ panel.effective_label }}</div>
+    <div class="d-flex flex-wrap gap-1 mt-2">
+      {% for day in panel.repeat_labels %}
+        <span class="badge text-bg-light border">{{ day }}</span>
       {% endfor %}
     </div>
-  {% else %}
-    <div class="tm-muted small mb-3">No exceptions configured for this schedule.</div>
-  {% endif %}
+    <div class="row g-2 mt-2 small">
+      <div class="col-6">
+        <div class="tm-muted">Available times</div>
+        <div class="fw-semibold">{{ panel.active_slot_count }}</div>
+      </div>
+      <div class="col-6">
+        <div class="tm-muted">Capacity</div>
+        <div class="fw-semibold">{{ panel.capacity_label }}</div>
+      </div>
+    </div>
+  </div>
 
-  {% if schedule %}
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="save_schedule_exception">
-      <input type="hidden" name="schedule_id" value="{{ schedule.id }}">
-      <div class="row g-3">
-        {% for field in exception_form %}
-          <div class="col-md-6 {% if field.name == 'reason' %}col-md-12{% endif %} {% if field.field.widget.input_type == 'checkbox' %}d-flex align-items-end{% endif %}">
-            {% if field.field.widget.input_type == 'checkbox' %}
-              <label class="form-check mb-0">
+  <div class="border-top pt-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 class="h6 mb-0">Schedule details</h3>
+      {% if can_edit %}<span class="small tm-muted">Edit below</span>{% endif %}
+    </div>
+    {% if can_edit %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="{{ action }}">
+        <div class="row g-3">
+          {% for field in panel.form %}
+            <div class="{% if field.name == 'notes' or field.name == 'repeat_days' %}col-12{% else %}col-md-6{% endif %}">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {% if field.name == 'repeat_days' %}
+                <div class="d-flex flex-wrap gap-2">
+                  {% for choice in field %}
+                    <label class="btn btn-sm btn-outline-secondary mb-0">{{ choice.tag }} {{ choice.choice_label }}</label>
+                  {% endfor %}
+                </div>
+              {% else %}
                 {{ field }}
-                <span class="form-check-label">{{ field.label }}</span>
-              </label>
-            {% else %}
+              {% endif %}
+              {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+        {% for error in panel.form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
+        <button class="btn btn-primary mt-3" type="submit">Save schedule details</button>
+      </form>
+    {% else %}
+      <dl class="row mb-0 small">
+        <dt class="col-5">Schedule status</dt>
+        <dd class="col-7">{{ panel.status_label }}</dd>
+        <dt class="col-5">Timezone</dt>
+        <dd class="col-7">{{ panel.schedule.timezone }}</dd>
+        <dt class="col-5">Notes</dt>
+        <dd class="col-7">{{ panel.schedule.notes|default:"-" }}</dd>
+      </dl>
+    {% endif %}
+  </div>
+
+  <div class="border-top mt-3 pt-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h3 class="h6 mb-0">Available times</h3>
+      {% if can_edit %}<span class="small tm-muted">Add time slot</span>{% endif %}
+    </div>
+    {% if panel.slots %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Duration</th>
+              <th>Type</th>
+              <th>Capacity</th>
+              <th>Status</th>
+              {% if can_edit %}<th>Actions</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in panel.slots %}
+              <tr>
+                <td>{{ row.slot.start_time|time:"H:i" }}</td>
+                <td>{{ row.slot.duration_minutes }} min</td>
+                <td>{{ row.slot.get_slot_type_display }}</td>
+                <td>{{ row.slot.capacity }}</td>
+                <td>{{ row.status_label }}</td>
+                {% if can_edit %}
+                  <td>
+                    <form method="post" class="vstack gap-2">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="save_time_slot">
+                      <input type="hidden" name="schedule_id" value="{{ panel.schedule.id }}">
+                      <input type="hidden" name="slot_id" value="{{ row.slot.id }}">
+                      <div class="row g-2">
+                        {% for field in row.form %}
+                          <div class="col-6">
+                            <label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                          </div>
+                        {% endfor %}
+                      </div>
+                      <button class="btn btn-sm btn-outline-primary" type="submit">Edit</button>
+                    </form>
+                    <form method="post" class="mt-2">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="deactivate_time_slot">
+                      <input type="hidden" name="slot_id" value="{{ row.slot.id }}">
+                      <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="tm-muted small">No time slots have been added to this schedule yet.</div>
+    {% endif %}
+
+    {% if can_edit %}
+      <form method="post" class="border rounded p-3 mt-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_time_slot">
+        <input type="hidden" name="schedule_id" value="{{ panel.schedule.id }}">
+        <div class="row g-2">
+          {% for field in panel.slot_form %}
+            <div class="col-md-6">
               <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
               {{ field }}
-            {% endif %}
-            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-          </div>
-        {% endfor %}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+        {% for error in panel.slot_form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
+        <button class="btn btn-outline-primary mt-3" type="submit">Add time slot</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="border-top mt-3 pt-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h3 class="h6 mb-0">Special dates / Blocked dates</h3>
+      {% if can_edit %}<span class="small tm-muted">Add special date</span>{% endif %}
+    </div>
+    {% if panel.special_dates %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Capacity impact</th>
+              <th>Reason</th>
+              <th>Status</th>
+              {% if can_edit %}<th>Actions</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in panel.special_dates %}
+              <tr>
+                <td>{{ row.item.date }}</td>
+                <td>{{ row.time_label }}</td>
+                <td>{{ row.type_label }}</td>
+                <td>{{ row.capacity_label }}</td>
+                <td>{{ row.item.reason|default:"-" }}</td>
+                <td>{{ row.status_label }}</td>
+                {% if can_edit %}
+                  <td>
+                    <form method="post" class="vstack gap-2">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="save_special_date">
+                      <input type="hidden" name="schedule_id" value="{{ panel.schedule.id }}">
+                      <input type="hidden" name="special_date_id" value="{{ row.item.id }}">
+                      <div class="row g-2">
+                        {% for field in row.form %}
+                          <div class="{% if field.name == 'reason' %}col-12{% else %}col-6{% endif %}">
+                            <label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                          </div>
+                        {% endfor %}
+                      </div>
+                      <button class="btn btn-sm btn-outline-primary" type="submit">Edit</button>
+                    </form>
+                    <form method="post" class="mt-2">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="deactivate_special_date">
+                      <input type="hidden" name="exception_id" value="{{ row.item.id }}">
+                      <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      {% for error in exception_form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
-      <button class="btn btn-outline-primary mt-3" type="submit">Add exception</button>
-    </form>
-  {% endif %}
-</div>
+    {% else %}
+      <div class="tm-muted small">No special dates or blocked dates have been added.</div>
+    {% endif %}
+
+    {% if can_edit %}
+      <form method="post" class="border rounded p-3 mt-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_special_date">
+        <input type="hidden" name="schedule_id" value="{{ panel.schedule.id }}">
+        <div class="row g-2">
+          {% for field in panel.special_date_form %}
+            <div class="{% if field.name == 'reason' %}col-12{% else %}col-md-6{% endif %}">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+        {% for error in panel.special_date_form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
+        <button class="btn btn-outline-primary mt-3" type="submit">Add special date</button>
+      </form>
+    {% endif %}
+  </div>
 </section>

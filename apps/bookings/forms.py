@@ -116,155 +116,266 @@ class TourActivityForm(forms.ModelForm):
         return instance
 
 
-class ActivityScheduleSectionForm(forms.ModelForm):
-    slot_lines = forms.CharField(
+DAY_CHOICES = [
+    ("0", "Mon"),
+    ("1", "Tue"),
+    ("2", "Wed"),
+    ("3", "Thu"),
+    ("4", "Fri"),
+    ("5", "Sat"),
+    ("6", "Sun"),
+]
+
+STATUS_CHOICES = [
+    ("active", "Active"),
+    ("inactive", "Inactive"),
+]
+
+SLOT_TYPE_FORM_CHOICES = [
+    ("fixed-time", "Fixed time"),
+    ("half-day", "Half day"),
+    ("full-day", "Full day"),
+    ("open-time", "Open time"),
+    ("private-group", "Private group"),
+]
+SLOT_TYPE_TO_MODEL = {
+    "fixed-time": ActivityScheduleSlot.SlotType.FIXED_TIME,
+    "half-day": ActivityScheduleSlot.SlotType.HALF_DAY,
+    "full-day": ActivityScheduleSlot.SlotType.FULL_DAY,
+    "open-time": ActivityScheduleSlot.SlotType.OPEN_TIME,
+    "private-group": ActivityScheduleSlot.SlotType.PRIVATE_GROUP,
+}
+MODEL_SLOT_TYPE_TO_FORM = {value: key for key, value in SLOT_TYPE_TO_MODEL.items()}
+
+SPECIAL_DATE_TYPE_CHOICES = [
+    ("blocked", "Blocked"),
+    ("closed", "Closed"),
+    ("capacity-override", "Capacity override"),
+    ("extra-slot", "Extra slot"),
+    ("removed-slot", "Removed slot"),
+]
+SPECIAL_DATE_TO_MODEL = {
+    "blocked": ActivityScheduleException.ExceptionType.BLOCKED,
+    "closed": ActivityScheduleException.ExceptionType.CLOSED,
+    "capacity-override": ActivityScheduleException.ExceptionType.OVERRIDE_CAPACITY,
+    "extra-slot": ActivityScheduleException.ExceptionType.EXTRA_SLOT,
+    "removed-slot": ActivityScheduleException.ExceptionType.REMOVED_SLOT,
+}
+MODEL_SPECIAL_DATE_TO_FORM = {
+    value: key for key, value in SPECIAL_DATE_TO_MODEL.items()
+}
+
+
+class OperatorScheduleSectionForm(forms.Form):
+    schedule_name = forms.CharField(
+        label="Schedule name",
+        max_length=120,
         required=False,
-        widget=forms.Textarea(attrs={"rows": 5}),
-        help_text="One line per slot: HH:MM,capacity,duration_minutes,slot_type",
+    )
+    schedule_status = forms.ChoiceField(
+        label="Schedule status",
+        choices=STATUS_CHOICES,
+    )
+    applies_from = forms.DateField(
+        label="Applies from",
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    applies_until = forms.DateField(
+        label="Applies until",
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    repeat_days = forms.MultipleChoiceField(
+        label="Repeats on",
+        choices=DAY_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Leave all days unchecked to repeat every day.",
+    )
+    timezone = forms.CharField(label="Timezone", max_length=80)
+    notes = forms.CharField(
+        label="Notes",
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
     )
 
-    class Meta:
-        model = ActivitySchedule
-        fields = [
-            "name",
-            "active",
-            "date_from",
-            "date_to",
-            "days_of_week",
-            "timezone",
-            "priority",
-            "recurrence_mode",
-            "notes",
-        ]
-        widgets = {
-            "date_from": forms.DateInput(attrs={"type": "date"}),
-            "date_to": forms.DateInput(attrs={"type": "date"}),
-            "notes": forms.Textarea(attrs={"rows": 3}),
-        }
-
-    def __init__(self, *args, schedule_kind, activity=None, **kwargs):
+    def __init__(self, *args, schedule_kind, activity=None, instance=None, **kwargs):
         self.schedule_kind = schedule_kind
         self.activity = activity
+        self.instance = instance
+        if instance and not args and "initial" not in kwargs:
+            kwargs["initial"] = {
+                "schedule_name": instance.name,
+                "schedule_status": "active" if instance.active else "inactive",
+                "applies_from": instance.date_from,
+                "applies_until": instance.date_to,
+                "repeat_days": [str(day) for day in instance.days_of_week or []],
+                "timezone": instance.timezone,
+                "notes": instance.notes,
+            }
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", "form-control")
-        self.fields["active"].widget.attrs["class"] = "form-check-input"
-        self.fields["days_of_week"].help_text = (
-            "Use 0-6 where Monday is 0. Leave empty for every day."
-        )
-        self.fields["recurrence_mode"].required = False
-        self.fields["notes"].required = False
-        if self.instance.pk:
-            self.fields["slot_lines"].initial = "\n".join(
-                _slot_to_line(slot)
-                for slot in self.instance.slots.order_by("start_time")
-            )
-
-    def clean_days_of_week(self):
-        value = self.cleaned_data.get("days_of_week")
-        if value is None or value == "":
-            return []
-        if not isinstance(value, list):
-            raise ValidationError("Days of week must be a JSON list such as [0,1,2].")
-        cleaned = []
-        for day in value:
-            try:
-                day_int = int(day)
-            except (TypeError, ValueError) as exc:
-                raise ValidationError("Days of week values must be 0-6.") from exc
-            if day_int not in range(7):
-                raise ValidationError("Days of week values must be 0-6.")
-            if day_int not in cleaned:
-                cleaned.append(day_int)
-        return cleaned
+        self.fields["repeat_days"].widget.attrs["class"] = "tm-weekday-list"
 
     def clean(self):
         cleaned = super().clean()
-        date_from = cleaned.get("date_from")
-        date_to = cleaned.get("date_to")
-        if date_from and date_to and date_to < date_from:
-            raise ValidationError("Schedule end date must be after the start date.")
-        if not cleaned.get("recurrence_mode"):
-            cleaned["recurrence_mode"] = ActivitySchedule.RecurrenceMode.WEEKLY
+        applies_from = cleaned.get("applies_from")
+        applies_until = cleaned.get("applies_until")
+        if applies_from and applies_until and applies_until < applies_from:
+            self.add_error(
+                "applies_until",
+                "Applies until must be after Applies from.",
+            )
+        cleaned["repeat_days"] = [int(day) for day in cleaned.get("repeat_days", [])]
         self._validate_unresolved_overlap(cleaned)
-        cleaned["parsed_slots"] = _parse_slot_lines(
-            cleaned.get("slot_lines", ""),
-            self.add_error,
-        )
         return cleaned
 
     def save(self, *, activity):
-        schedule = super().save(commit=False)
+        schedule = self.instance or ActivitySchedule()
         schedule.activity = activity
         schedule.schedule_kind = self.schedule_kind
+        schedule.name = self.cleaned_data["schedule_name"]
+        schedule.active = self.cleaned_data["schedule_status"] == "active"
+        schedule.date_from = self.cleaned_data["applies_from"]
+        schedule.date_to = self.cleaned_data["applies_until"]
+        schedule.days_of_week = self.cleaned_data["repeat_days"]
+        schedule.timezone = self.cleaned_data["timezone"]
+        schedule.notes = self.cleaned_data["notes"]
+        schedule.recurrence_mode = ActivitySchedule.RecurrenceMode.WEEKLY
+        if schedule.priority is None:
+            schedule.priority = 100
         schedule.save()
-        schedule.slots.all().delete()
-        for slot in self.cleaned_data["parsed_slots"]:
-            ActivityScheduleSlot.objects.create(schedule=schedule, **slot)
         return schedule
 
     def _validate_unresolved_overlap(self, cleaned):
-        if not self.activity or not cleaned.get("active"):
+        if not self.activity or cleaned.get("schedule_status") != "active":
             return
-        priority = cleaned.get("priority")
-        if priority is None:
-            return
+        priority = self.instance.priority if self.instance else 100
         queryset = ActivitySchedule.objects.filter(
             activity=self.activity,
             active=True,
             schedule_kind=self.schedule_kind,
             priority=priority,
         )
-        if self.instance.pk:
+        if self.instance and self.instance.pk:
             queryset = queryset.exclude(pk=self.instance.pk)
-        date_from = cleaned.get("date_from")
-        date_to = cleaned.get("date_to")
+        applies_from = cleaned.get("applies_from")
+        applies_until = cleaned.get("applies_until")
         for schedule in queryset:
             if _date_ranges_overlap(
-                date_from,
-                date_to,
+                applies_from,
+                applies_until,
                 schedule.date_from,
                 schedule.date_to,
             ):
-                raise ValidationError(
-                    "Another active schedule of the same type and priority overlaps "
-                    "this date range."
+                self.add_error(
+                    "applies_from",
+                    "Another active schedule of the same type overlaps these dates.",
                 )
+                break
 
 
-class ActivityScheduleExceptionForm(forms.ModelForm):
-    class Meta:
-        model = ActivityScheduleException
-        fields = [
-            "exception_type",
-            "date",
-            "start_time",
-            "end_time",
-            "capacity",
-            "reason",
-            "active",
-        ]
-        widgets = {
-            "date": forms.DateInput(attrs={"type": "date"}),
-            "start_time": forms.TimeInput(attrs={"type": "time"}),
-            "end_time": forms.TimeInput(attrs={"type": "time"}),
-            "reason": forms.Textarea(attrs={"rows": 2}),
-        }
+class OperatorScheduleSlotForm(forms.Form):
+    start_time = forms.TimeField(
+        label="Time",
+        widget=forms.TimeInput(attrs={"type": "time"}),
+    )
+    duration_minutes = forms.IntegerField(
+        label="Duration",
+        min_value=1,
+        widget=forms.NumberInput(attrs={"min": "1"}),
+    )
+    slot_kind = forms.ChoiceField(label="Type", choices=SLOT_TYPE_FORM_CHOICES)
+    capacity = forms.IntegerField(
+        label="Capacity",
+        min_value=0,
+        widget=forms.NumberInput(attrs={"min": "0"}),
+    )
+    slot_status = forms.ChoiceField(label="Status", choices=STATUS_CHOICES)
 
-    def __init__(self, *args, schedule=None, **kwargs):
-        self.schedule = schedule
+    def __init__(self, *args, instance=None, **kwargs):
+        self.instance = instance
+        if instance and not args and "initial" not in kwargs:
+            kwargs["initial"] = {
+                "start_time": instance.start_time,
+                "duration_minutes": instance.duration_minutes,
+                "slot_kind": MODEL_SLOT_TYPE_TO_FORM.get(instance.slot_type),
+                "capacity": instance.capacity,
+                "slot_status": "active" if instance.active else "inactive",
+            }
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", "form-control")
-        self.fields["active"].widget.attrs["class"] = "form-check-input"
-        self.fields["capacity"].required = False
-        self.fields["start_time"].required = False
-        self.fields["end_time"].required = False
-        self.fields["reason"].required = False
+
+    def save(self, *, schedule):
+        slot = self.instance or ActivityScheduleSlot(schedule=schedule)
+        slot.schedule = schedule
+        slot.start_time = self.cleaned_data["start_time"]
+        slot.duration_minutes = self.cleaned_data["duration_minutes"]
+        slot.end_time = _end_time(slot.start_time, slot.duration_minutes)
+        slot.slot_type = SLOT_TYPE_TO_MODEL[self.cleaned_data["slot_kind"]]
+        slot.capacity = self.cleaned_data["capacity"]
+        slot.active = self.cleaned_data["slot_status"] == "active"
+        slot.save()
+        return slot
+
+
+class OperatorScheduleExceptionForm(forms.Form):
+    special_date_kind = forms.ChoiceField(
+        label="Type",
+        choices=SPECIAL_DATE_TYPE_CHOICES,
+    )
+    date = forms.DateField(
+        label="Date",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    start_time = forms.TimeField(
+        label="Time",
+        required=False,
+        widget=forms.TimeInput(attrs={"type": "time"}),
+    )
+    end_time = forms.TimeField(
+        label="End time",
+        required=False,
+        widget=forms.TimeInput(attrs={"type": "time"}),
+    )
+    capacity = forms.IntegerField(
+        label="Capacity",
+        min_value=0,
+        required=False,
+        widget=forms.NumberInput(attrs={"min": "0"}),
+    )
+    reason = forms.CharField(
+        label="Reason",
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2}),
+    )
+    special_date_status = forms.ChoiceField(label="Status", choices=STATUS_CHOICES)
+
+    def __init__(self, *args, schedule=None, instance=None, **kwargs):
+        self.schedule = schedule
+        self.instance = instance
+        if instance and not args and "initial" not in kwargs:
+            kwargs["initial"] = {
+                "special_date_kind": MODEL_SPECIAL_DATE_TO_FORM.get(
+                    instance.exception_type
+                ),
+                "date": instance.date,
+                "start_time": instance.start_time,
+                "end_time": instance.end_time,
+                "capacity": instance.capacity,
+                "reason": instance.reason,
+                "special_date_status": "active" if instance.active else "inactive",
+            }
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control")
 
     def clean(self):
         cleaned = super().clean()
-        exception_type = cleaned.get("exception_type")
+        special_date_type = SPECIAL_DATE_TO_MODEL.get(cleaned.get("special_date_kind"))
         date = cleaned.get("date")
         start_time = cleaned.get("start_time")
         end_time = cleaned.get("end_time")
@@ -272,23 +383,21 @@ class ActivityScheduleExceptionForm(forms.ModelForm):
 
         if self.schedule and date:
             if self.schedule.date_from and date < self.schedule.date_from:
-                raise ValidationError("Exception date is before the schedule starts.")
+                self.add_error("date", "Date is before this schedule starts.")
             if self.schedule.date_to and date > self.schedule.date_to:
-                raise ValidationError("Exception date is after the schedule ends.")
+                self.add_error("date", "Date is after this schedule ends.")
 
         if start_time and end_time and end_time <= start_time:
-            raise ValidationError("Exception end time must be after start time.")
+            self.add_error("end_time", "End time must be after the start time.")
 
         capacity_required = {
             ActivityScheduleException.ExceptionType.EXTRA_SLOT,
             ActivityScheduleException.ExceptionType.OVERRIDE_CAPACITY,
         }
-        if exception_type in capacity_required and capacity is None:
-            raise ValidationError("Capacity is required for this exception type.")
-        if capacity is not None and capacity < 0:
-            raise ValidationError("Capacity cannot be negative.")
+        if special_date_type in capacity_required and capacity is None:
+            self.add_error("capacity", "Capacity is required for this type.")
         if (
-            exception_type
+            special_date_type
             in {
                 ActivityScheduleException.ExceptionType.EXTRA_SLOT,
                 ActivityScheduleException.ExceptionType.REMOVED_SLOT,
@@ -296,17 +405,23 @@ class ActivityScheduleExceptionForm(forms.ModelForm):
             }
             and not start_time
         ):
-            raise ValidationError("Start time is required for this exception type.")
-
+            self.add_error("start_time", "Time is required for this type.")
         return cleaned
 
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        if self.schedule:
-            instance.schedule = self.schedule
-        if commit:
-            instance.save()
-        return instance
+    def save(self):
+        exception = self.instance or ActivityScheduleException(schedule=self.schedule)
+        exception.schedule = self.schedule
+        exception.exception_type = SPECIAL_DATE_TO_MODEL[
+            self.cleaned_data["special_date_kind"]
+        ]
+        exception.date = self.cleaned_data["date"]
+        exception.start_time = self.cleaned_data["start_time"]
+        exception.end_time = self.cleaned_data["end_time"]
+        exception.capacity = self.cleaned_data["capacity"]
+        exception.reason = self.cleaned_data["reason"]
+        exception.active = self.cleaned_data["special_date_status"] == "active"
+        exception.save()
+        return exception
 
 
 class ActivityPeopleRuleForm(forms.ModelForm):
@@ -386,80 +501,6 @@ class ProviderAliasForm(forms.ModelForm):
         self.fields["needs_manual_confirmation"].widget.attrs[
             "class"
         ] = "form-check-input"
-
-
-def _slot_to_line(slot):
-    return ",".join(
-        [
-            slot.start_time.strftime("%H:%M"),
-            str(slot.capacity),
-            str(slot.duration_minutes),
-            slot.slot_type,
-        ]
-    )
-
-
-def _parse_slot_lines(value, add_error):
-    rows = []
-    seen = set()
-    valid_slot_types = {choice[0] for choice in ActivityScheduleSlot.SlotType.choices}
-    for line_number, raw_line in enumerate(value.splitlines(), start=1):
-        line = raw_line.strip()
-        if not line:
-            continue
-        parts = [part.strip() for part in line.split(",")]
-        if len(parts) not in {2, 3, 4}:
-            add_error(
-                "slot_lines",
-                f"Line {line_number}: use HH:MM,capacity,duration_minutes,slot_type.",
-            )
-            continue
-        time_text = parts[0]
-        capacity_text = parts[1]
-        duration_text = parts[2] if len(parts) >= 3 and parts[2] else "120"
-        slot_type = (
-            parts[3]
-            if len(parts) == 4 and parts[3]
-            else ActivityScheduleSlot.SlotType.FIXED_TIME
-        )
-        try:
-            start_time = forms.TimeField(input_formats=["%H:%M"]).clean(time_text)
-        except ValidationError:
-            add_error("slot_lines", f"Line {line_number}: invalid time '{time_text}'.")
-            continue
-        try:
-            capacity = int(capacity_text)
-            duration = int(duration_text)
-        except ValueError:
-            add_error(
-                "slot_lines",
-                f"Line {line_number}: capacity and duration must be numbers.",
-            )
-            continue
-        if capacity < 0:
-            add_error("slot_lines", f"Line {line_number}: capacity cannot be negative.")
-            continue
-        if duration < 1:
-            add_error("slot_lines", f"Line {line_number}: duration must be positive.")
-            continue
-        if slot_type not in valid_slot_types:
-            add_error("slot_lines", f"Line {line_number}: invalid slot type.")
-            continue
-        if start_time in seen:
-            add_error("slot_lines", f"Line {line_number}: duplicate time {time_text}.")
-            continue
-        seen.add(start_time)
-        rows.append(
-            {
-                "start_time": start_time,
-                "end_time": _end_time(start_time, duration),
-                "duration_minutes": duration,
-                "slot_type": slot_type,
-                "capacity": capacity,
-                "active": True,
-            }
-        )
-    return rows
 
 
 def _end_time(start_time, duration_minutes):

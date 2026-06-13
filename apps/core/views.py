@@ -166,18 +166,19 @@ def settings_users_roles(request):
 
 
 def _settings_sections(user):
-    sections = []
+    sections = [
+        {
+            "title": "Tours & Activities",
+            "description": (
+                "View activities, provider aliases, seasonal schedules, "
+                "slots, and capacity setup."
+            ),
+            "url": reverse("settings_tour_activities"),
+        },
+    ]
     if is_admin(user):
         sections.extend(
             [
-                {
-                    "title": "Tours & Activities",
-                    "description": (
-                        "Configure activities, provider aliases, seasonal "
-                        "schedules, slots, and capacity setup."
-                    ),
-                    "url": reverse("settings_tour_activities"),
-                },
                 {
                     "title": "Providers",
                     "description": (
