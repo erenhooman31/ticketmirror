@@ -1,0 +1,30 @@
+---------- Forwarded message ---------
+From: Viator <notifications@viator.example>
+Date: Sat, Apr 12, 2025 at 5:59 AM
+Subject: Action Required: New Booking for Sun, Apr 13, 2025 (BR-1247362085)
+To: bookings@example.test
+
+Add this booking to your reservation system
+
+Booking Confirmation
+You have a new reservation for Guided Bosphorus Cruise Boat Tour In Istanbul.
+
+Booking Details
+Booking Reference: BR-1247362085
+Tour Name: Guided Bosphorus Cruise Boat Tour In Istanbul
+Travel Date: Sun, Apr 13, 2025
+Lead Traveler Name: Alex Sample
+Traveler Names: Alex Sample, Jordan Sample
+Travelers: 2 Adults
+Product Code: 307447P5
+Tour Grade: Guided Bosphorus Cruise Boat Tour In Istanbul 10:00
+Tour Grade Code: TG1~10:00
+Tour Grade Description: Guided Bosphorus Cruise Boat Tour In Istanbul
+Tour Language: English - Guide
+Location: Fatih, Turkiye
+Net Rate: EUR 10.00
+Meeting Point: Sea Land Travel Agency, Sample Street No:8/2, Istanbul
+Special Requirements: No
+Phone: +1 555 010 1001
+
+Optional: Acknowledge this booking for your records.

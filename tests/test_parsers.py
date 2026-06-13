@@ -57,6 +57,122 @@ def test_parse_viator_new_booking():
     assert parsed.warnings == []
 
 
+def test_parse_realistic_getyourguide_new_booking():
+    parsed = parse_by_provider(
+        "getyourguide",
+        "Urgent: New booking received - S259500 - GYGZXCVB1234",
+        "supplier@getyourguide.example",
+        fixture("real_getyourguide_new.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "GYGZXCVB1234"
+    assert parsed.raw_product_name == "Istanbul: Luxury Yacht on Bosphorus"
+    assert parsed.travel_date.isoformat() == "2026-04-12"
+    assert parsed.start_time.isoformat() == "17:00:00"
+    assert parsed.traveler_count == 9
+    assert parsed.lead_traveler_email == "alex.sample@example.test"
+    assert parsed.lead_traveler_phone == "+1 555 010 1000"
+    assert parsed.language == "English"
+
+
+def test_parse_realistic_tiqets_new_booking():
+    parsed = parse_by_provider(
+        "tiqets",
+        "Booking notification from Tiqets.com (order number: 1640917411)",
+        "orders@tiqets.example",
+        fixture("real_tiqets_new.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "1640917411"
+    assert parsed.provider_order_reference == "1640917411"
+    assert (
+        parsed.raw_product_name
+        == "Istanbul: Guided Bosphorus Sightseeing Cruise + Audio Guide"
+    )
+    assert parsed.travel_date.isoformat() == "2026-06-12"
+    assert parsed.start_time.isoformat() == "19:00:00"
+    assert parsed.traveler_count == 4
+    assert parsed.language == "French"
+
+
+def test_parse_realistic_viator_pending_request():
+    parsed = parse_by_provider(
+        "viator",
+        "URGENT Booking Request: Please Respond: Thu, Jun 04, 2026 (#BR-1406321057)",
+        "notifications@viator.example",
+        fixture("real_viator_request.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "BR-1406321057"
+    assert parsed.event_type == EVENT_REQUEST
+    assert parsed.raw_product_name == "Istanbul Private Luxury Yacht on Bosphorus"
+    assert parsed.raw_option_name == "2 Hours Yacht 20:00"
+    assert parsed.provider_product_code == "307447P7"
+    assert parsed.provider_option_code == "TG3~20:00"
+    assert parsed.travel_date.isoformat() == "2026-06-04"
+    assert parsed.start_time.isoformat() == "20:00:00"
+    assert parsed.traveler_count == 4
+    assert parsed.language == "Spanish - Audio"
+
+
+def test_parse_realistic_viator_new_booking():
+    parsed = parse_by_provider(
+        "viator",
+        "Action Required: New Booking for Sun, Apr 13, 2025 (BR-1247362085)",
+        "notifications@viator.example",
+        fixture("real_viator_new.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "BR-1247362085"
+    assert parsed.raw_product_name == "Guided Bosphorus Cruise Boat Tour In Istanbul"
+    assert (
+        parsed.raw_option_name == "Guided Bosphorus Cruise Boat Tour In Istanbul 10:00"
+    )
+    assert parsed.travel_date.isoformat() == "2025-04-13"
+    assert parsed.start_time.isoformat() == "10:00:00"
+    assert parsed.traveler_count == 2
+
+
+def test_parse_realistic_tripster_russian_new_booking():
+    subject = (
+        "Новый заказ на 1 июля в 08:30 "
+        "«Великолепный Стамбул в Европе и Азии» · №6645992"
+    )
+    parsed = parse_by_provider(
+        "tripster",
+        subject,
+        "orders@experience.tripster.example",
+        fixture("real_tripster_new_ru.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "6645992"
+    assert parsed.raw_product_name == "Великолепный Стамбул в Европе и Азии"
+    assert parsed.travel_date.isoformat() == "2026-07-01"
+    assert parsed.start_time.isoformat() == "08:30:00"
+    assert parsed.traveler_count == 3
+    assert parsed.lead_traveler_email == "alexey.ivanov@example.test"
+
+
+def test_parse_realistic_sputnik8_russian_new_booking():
+    subject = (
+        "Новая бронь на экскурсию "
+        "'Морская прогулка по Босфору с аудиогидом' "
+        "на 12 апреля в 19:00 (воскресенье), заказ 5349319"
+    )
+    parsed = parse_by_provider(
+        "sputnik8",
+        subject,
+        "orders@sputnik8.example",
+        fixture("real_sputnik8_new_ru.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "5349319"
+    assert parsed.raw_product_name == "Морская прогулка по Босфору с аудиогидом"
+    assert parsed.travel_date.isoformat() == "2026-04-12"
+    assert parsed.start_time.isoformat() == "19:00:00"
+    assert parsed.traveler_count == 2
+
+
 def test_parse_getyourguide_update():
     parsed = parse_by_provider(
         "getyourguide",

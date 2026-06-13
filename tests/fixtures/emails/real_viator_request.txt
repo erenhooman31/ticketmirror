@@ -1,0 +1,32 @@
+---------- Forwarded message ---------
+From: Viator <notifications@viator.example>
+Date: Thu, Jun 4, 2026 at 4:40 PM
+Subject: URGENT Booking Request: Please Respond: Thu, Jun 04, 2026 (#BR-1406321057)
+To: bookings@example.test
+
+Immediate action required!
+
+Urgent Booking Request
+Alex Sample wants to make a last-minute booking for Thu, Jun 04, 2026.
+This booking is worth EUR 150.00.
+
+Booking Details
+Booking Reference: BR-1406321057
+Tour Name: Istanbul Private Luxury Yacht on Bosphorus
+Travel Date: Thu, Jun 04, 2026
+Lead Traveler Name: Alex Sample
+Traveler Names: Alex Sample, Jordan Sample, Taylor Sample, Morgan Sample
+Travelers: 4 Adults
+Product Code: 307447P7
+Tour Option: 2 Hours Yacht 20:00
+Tour Grade Code: TG3~20:00
+Tour Grade Description: Duration: 2 hours
+Tour Language: Spanish - Audio
+Location: Fatih, Turkiye
+Net Rate: EUR 150.00
+Meeting Point: SeaLand Travel Agency (Eminonu), Sample Street No:8/2, Istanbul
+Special Requirements: No
+Phone: +1 555 010 1000
+
+Accept Booking
+Reject Booking

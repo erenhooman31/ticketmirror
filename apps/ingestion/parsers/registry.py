@@ -27,13 +27,13 @@ PROVIDER_PATTERNS = {
     },
     "tripster": {
         "sender": [r"tripster"],
-        "subject": [r"tripster"],
-        "body": [r"Tripster", r"\bTS-[A-Z0-9-]+\b"],
+        "subject": [r"tripster", r"Новый заказ"],
+        "body": [r"Tripster", r"experience\.tripster", r"\bTS-[A-Z0-9-]+\b"],
     },
     "sputnik8": {
         "sender": [r"sputnik8"],
-        "subject": [r"sputnik8"],
-        "body": [r"Sputnik8", r"\bSP8-[A-Z0-9-]+\b"],
+        "subject": [r"sputnik8", r"Новая бронь"],
+        "body": [r"Sputnik8", r"\bSP8-[A-Z0-9-]+\b", r"Participants \(tickets\)"],
     },
     "klook": {
         "sender": [r"klook"],

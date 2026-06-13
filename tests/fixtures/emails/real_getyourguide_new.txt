@@ -1,0 +1,40 @@
+---------- Forwarded message ---------
+From: GetYourGuide <supplier@getyourguide.example>
+Date: Sun, Apr 12, 2026 at 1:09 PM
+Subject: Urgent: New booking received - S259500 - GYGZXCVB1234
+To: Supply Partner <bookings@example.test>
+
+[image: logo]
+
+Hi Supply Partner, great news!
+
+You've received a last-minute booking:
+
+[image: Istanbul: Luxury Yacht on Bosphorus]
+Istanbul: Luxury Yacht on Bosphorus
+Istanbul Bosphorus Private Luxury Yacht
+
+[image: ticket-booking]
+Reference number
+*GYGZXCVB1234*
+
+[image: calendar]
+Date
+*April 12, 2026 5:00 PM*
+
+[image: users]
+Number of participants
+*1 x* Group up to 10 (*9* Persons)
+
+[image: single-person]
+Main customer
+Alex Sample
+alex.sample@example.test
+Phone: +1 555 010 1000
+Language: English
+
+[image: currency]
+Price
+EUR 115.00
+
+Open booking

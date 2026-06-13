@@ -1,0 +1,17 @@
+---------- Forwarded message ---------
+From: Sputnik8 <orders@sputnik8.example>
+Date: Sun, Apr 12, 2026 at 2:18 PM
+Subject: Новая бронь на экскурсию 'Морская прогулка по Босфору с аудиогидом' на 12 апреля в 19:00 (воскресенье), заказ 5349319
+To: bookings@example.test
+
+New booking
+
+Excursion: Морская прогулка по Босфору с аудиогидом
+Date and time: April 12th at 7:00 PM (Sunday)
+Participants (tickets): Adults (7+): 2 pcs.
+Name: Alex Sample
+Phone: +1 555 010 1003
+Email: alex.sample@example.test
+Meeting point: Sea Land Travel Agency, Sample Street No:8/2, Istanbul
+
+Please confirm the time and date of the order.

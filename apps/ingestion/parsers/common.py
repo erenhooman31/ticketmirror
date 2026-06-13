@@ -45,14 +45,26 @@ def normalize_whitespace(value: str | None) -> str:
 
 
 def labeled_value(text: str, labels: list[str]) -> str:
-    for label in labels:
+    lines = text.splitlines()
+    for label in sorted(labels, key=len, reverse=True):
         pattern = re.compile(
-            rf"^\s*{re.escape(label)}\s*[:#-]\s*(?P<value>.+?)\s*$",
+            rf"^\s*{re.escape(label)}\s*(?P<separator>[:#-]|\s)\s*(?P<value>.+?)\s*$",
             re.IGNORECASE | re.MULTILINE,
         )
         match = pattern.search(text)
         if match:
-            return normalize_whitespace(match.group("value"))
+            value = _clean_labeled_value(match.group("value"))
+            if _short_label_false_positive(label, value, match.group("separator")):
+                continue
+            return value
+
+        for index, line in enumerate(lines):
+            if normalize_whitespace(line).lower() != label.lower():
+                continue
+            for candidate in lines[index + 1 : index + 6]:
+                value = _clean_labeled_value(candidate)
+                if value and not value.lower().startswith("[image:"):
+                    return value
     return ""
 
 
@@ -71,6 +83,10 @@ def parse_date_flexible(value: str | None) -> date | None:
     if not value:
         return None
     value = re.sub(r"(?<=\d)(st|nd|rd|th)\b", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\bat\b\s+\d{1,2}:\d{2}\s*(?:AM|PM)?", "", value, flags=re.I)
+    value_without_time = re.sub(
+        r"\s+\d{1,2}:\d{2}\s*(?:AM|PM)?$", "", value, flags=re.I
+    )
     formats = [
         "%Y-%m-%d",
         "%d/%m/%Y",
@@ -80,14 +96,21 @@ def parse_date_flexible(value: str | None) -> date | None:
         "%d %b %Y",
         "%B %d, %Y",
         "%b %d, %Y",
+        "%B %d %Y",
+        "%b %d %Y",
+        "%B %d, %Y %I:%M %p",
+        "%b %d, %Y %I:%M %p",
         "%A, %B %d, %Y",
         "%A, %d %B %Y",
+        "%a, %b %d, %Y",
+        "%A, %b %d, %Y",
     ]
-    for date_format in formats:
-        try:
-            return datetime.strptime(value, date_format).date()
-        except ValueError:
-            continue
+    for candidate in (value, value_without_time):
+        for date_format in formats:
+            try:
+                return datetime.strptime(candidate, date_format).date()
+            except ValueError:
+                continue
     return None
 
 
@@ -97,6 +120,17 @@ def parse_time_flexible(value: str | None) -> time | None:
         return None
     value = value.replace(".", ":")
     value = re.sub(r"\s+", " ", value).upper()
+    time_match = re.search(r"\b(\d{1,2}):(\d{2})\s*(AM|PM)?\b", value)
+    if time_match:
+        hour = int(time_match.group(1))
+        minute = int(time_match.group(2))
+        marker = time_match.group(3)
+        if marker == "PM" and hour < 12:
+            hour += 12
+        if marker == "AM" and hour == 12:
+            hour = 0
+        if hour <= 23 and minute <= 59:
+            return time(hour=hour, minute=minute)
     formats = ["%H:%M", "%H:%M:%S", "%I:%M %p", "%I %p"]
     for time_format in formats:
         try:
@@ -168,6 +202,8 @@ def extract_traveler_count(text: str) -> int | None:
         r"(?:traveler|traveller|participant|guest|ticket|person|people|pax)s?\s*[:#-]?\s*(\d+)",
         r"(\d+)\s*(?:traveler|traveller|participant|guest|ticket|person|people|pax)s?\b",
         r"(?:adult|adults)\s*[:#-]?\s*(\d+)",
+        r"\b(?:adult|adults)\s+(\d+)\b",
+        r"\b(\d+)\s*(?:pcs|шт|чел|человек)\b",
     ]
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -332,7 +368,7 @@ def parse_labeled_booking(
         )
         or None
     )
-    email = extract_email(body_text)
+    email = _lead_email(body_text, sender)
     phone = extract_phone(body_text)
     traveler_names = split_names(
         labeled_value(body_text, ["Traveler names", "Travellers", "Participants"])
@@ -424,6 +460,13 @@ def _labeled_traveler_count(text: str, labels: list[str]) -> int | None:
     value = labeled_value(text, labels)
     if not value:
         return None
+    preferred = re.search(
+        r"(\d+)[^\w\d]*(?:persons|people|participants|guests|adults|pcs|чел|человек)\b",
+        value,
+        re.IGNORECASE,
+    )
+    if preferred:
+        return int(preferred.group(1))
     match = re.search(r"\d+", value)
     return int(match.group(0)) if match else None
 
@@ -448,6 +491,52 @@ def _address_header_value(line: str) -> str:
 def _plain_header_value(line: str) -> str:
     _name, value = line.split(":", 1)
     return normalize_whitespace(value)
+
+
+def _clean_labeled_value(value: str | None) -> str:
+    value = normalize_whitespace(value)
+    if not value:
+        return ""
+    value = value.strip("* \t")
+    return normalize_whitespace(value)
+
+
+def _short_label_false_positive(label: str, value: str, separator: str) -> bool:
+    if separator != " ":
+        return False
+    if " " in label:
+        return False
+    first_word = value.split(" ", 1)[0].rstrip(":").lower()
+    return first_word in {
+        "code",
+        "id",
+        "name",
+        "grade",
+        "language",
+        "date",
+        "time",
+        "location",
+        "point",
+        "reference",
+    }
+
+
+def _lead_email(body_text: str, sender: str) -> str | None:
+    explicit = re.search(
+        r"^Email\s*[:#-]?\s*(?P<email>\S+@\S+)$", body_text, re.I | re.M
+    )
+    if explicit:
+        return explicit.group("email")
+    emails = []
+    for line in body_text.splitlines():
+        if line.strip().lower().startswith(("from:", "to:", "subject:", "date:")):
+            continue
+        emails.extend(EMAIL_RE.findall(line))
+    sender_email = extract_email(sender or "")
+    for email in emails:
+        if email != sender_email:
+            return email
+    return emails[0] if emails else None
 
 
 def _normalize_currency(currency: str) -> str:

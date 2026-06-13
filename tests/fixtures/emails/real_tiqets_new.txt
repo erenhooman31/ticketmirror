@@ -1,0 +1,28 @@
+---------- Forwarded message ---------
+From: Tiqets <orders@tiqets.example>
+Date: Fri, Jun 12, 2026 at 5:47 PM
+Subject: Booking notification from Tiqets.com (order number: 1640917411)
+To: bookings@example.test
+
+[image: Tiqets for Venues]
+Booking notification from Tiqets.com (order number: 1640917411)
+
+Selected language: French
+Istanbul: Guided Bosphorus Sightseeing Cruise + Audio Guide
+Reference ID 1640917411
+Visit date Jun 12, 2026
+Time 19:00
+Adult 4
+First name Alex
+Last name Sample
+Email alex.sample@example.test
+Phone +1 555 010 1000
+
+Customer Data *Adulte*
+   - full name : Alex Sample
+   - full name : Jordan Sample
+   - full name : Taylor Sample
+   - full name : Morgan Sample
+
+Best wishes,
+Tiqets
