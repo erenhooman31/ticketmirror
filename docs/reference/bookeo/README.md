@@ -1,41 +1,43 @@
-# Bookeo-Inspired Feature Reference
+# Bookeo-Inspired Feature References
 
-These notes are a functional reference workspace for TicketMirror planning. Bookeo is used only as a source of operational workflow inspiration.
+This directory captures neutral functional observations from a live Bookeo operator session inspected on 2026-06-13. The purpose is to help plan TicketMirror operator features without copying Bookeo branding, visual design, wording, icons, CSS, layout, or trade dress.
 
-Do not copy Bookeo branding, exact visual design, text, icons, CSS, layout proportions, colors, or trade dress. TicketMirror implementations should use our own product language, data model, styling, and interaction details.
-
-## Purpose
-
-Use this directory to describe operational screens before implementing them:
-
-- What the operator sees.
-- What actions the operator can take.
-- What data is shown.
-- What filters, date controls, and toggles exist.
-- What happens after clicking rows, buttons, tabs, or menu items.
-- Acceptance criteria for TicketMirror behavior.
+Bookeo is reference material only. TicketMirror features must use TicketMirror terminology, data models, permission rules, audit behavior, and interface design.
 
 ## Files
 
-- `screen-template.md`: reusable template for documenting a screen.
-- `workflows.md`: cross-screen operator workflows and expected outcomes.
-- `feature-backlog.md`: candidate features to evaluate and prioritize.
+- `screen-template.md`: reusable format for documenting a TicketMirror screen before implementation.
+- `feature-backlog.md`: candidate TicketMirror features grouped by the observed functional area that inspired them.
+- `workflows.md`: cross-screen operator and admin workflows with expected outcomes and acceptance direction.
+
+## Observed Functional Areas
+
+The opened Bookeo session exposed these areas:
+
+- Operations home: recent event stream, booking-change messages, agenda, capacity counts, unread/all filters, day-range controls, and print.
+- Schedule calendar: date picker, previous/next/today navigation, category and product grouping, search by customer or booking identifier, row/box display modes, canceled visibility, capacity blocks, new-booking entry points, print, and iCal export.
+- Customer directory: customer search, alphabet filter, pagination, contact rows, new customer, merge, import, export, waiver search, and display preferences.
+- Marketing and distribution tools: public booking entry links, promotions, vouchers, prepaid packages, referral/social growth tools, review collection, social media, distribution channels, outbound campaigns, abandoned-booking follow-up, customer account area, memberships, and conversion analytics.
+- Administration settings: business profile, regional and localization settings, theme/layout controls, notifications, reminders, post-visit email, custom messages/terms, taxes, tours and activities, resources, closure periods, booking preferences, waiting lists, customer-detail requirements, waivers, pricing seasons, and third-party integrations.
+- Account/help/session links: account settings, help, and sign out. These are noted only as navigation primitives; they are not TicketMirror feature commitments.
 
 ## Reference Rules
 
-- Describe behavior, not visual cloning.
-- Prefer TicketMirror terms such as booking, provider, product, tour, activity, schedule, capacity, review queue, and audit event.
-- Avoid provider or traveler personal data in examples.
-- Keep examples anonymized and deterministic.
-- Convert any observed third-party workflow into our own acceptance criteria before implementation.
+- Describe operator jobs and system behavior, not Bookeo visuals or copy.
+- Do not preserve Bookeo product names, icons, colors, button text, screenshots, CSS, or layout proportions.
+- Do not use real traveler names, emails, phone numbers, booking numbers, or voucher values.
+- Convert observations into TicketMirror acceptance criteria before implementation.
+- Prefer TicketMirror terms: booking, provider, product, activity, schedule, slot, capacity, review queue, raw email, parser event, audit event, operator, viewer, and admin.
+- Treat public booking, payments, customer self-service, marketing automation, and third-party sync as out of scope unless explicitly selected.
 
 ## Implementation Gate
 
-A feature reference is ready for implementation when it includes:
+A reference item is ready to become an implementation task when it includes:
 
-- User role and permission expectations.
-- Data dependencies and source models.
+- Roles and permission boundaries.
+- Data shown and source model or service.
+- Filters, controls, and query behavior.
+- Click behavior, navigation behavior, and non-JavaScript fallback where relevant.
 - Empty, loading, success, error, and permission-denied states.
-- Click behavior and navigation behavior.
-- Audit or logging requirements.
-- Acceptance criteria that can become tests.
+- Audit/logging requirements and masking requirements.
+- Acceptance criteria that can be converted into tests.
