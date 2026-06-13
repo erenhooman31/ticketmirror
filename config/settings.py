@@ -10,6 +10,7 @@ env = environ.Env(
     DJANGO_ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
     ALLOWED_HOSTS=(list, []),
     CSRF_TRUSTED_ORIGINS=(list, []),
+    DJANGO_SECURE_SSL_REDIRECT=(bool, False),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -93,6 +94,8 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -114,3 +117,39 @@ GMAIL_MAILBOX = env("GMAIL_MAILBOX", default="")
 GMAIL_PUBSUB_TOPIC = env("GMAIL_PUBSUB_TOPIC", default="")
 GMAIL_WEBHOOK_AUDIENCE = env("GMAIL_WEBHOOK_AUDIENCE", default="")
 GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", default="")
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = env("DJANGO_SECURE_SSL_REDIRECT")
+SESSION_COOKIE_SECURE = env.bool("DJANGO_SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SECURE = env.bool("DJANGO_CSRF_COOKIE_SECURE", default=not DEBUG)
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": env("DJANGO_LOG_LEVEL", default="INFO"),
+    },
+    "loggers": {
+        "django.server": {
+            "handlers": ["console"],
+            "level": env("DJANGO_LOG_LEVEL", default="INFO"),
+            "propagate": False,
+        },
+    },
+}

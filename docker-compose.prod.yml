@@ -1,0 +1,118 @@
+services:
+  web:
+    build:
+      context: .
+    command: >
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers ${GUNICORN_WORKERS:-3}
+      --timeout ${GUNICORN_TIMEOUT:-60}
+      --access-logfile -
+      --error-logfile -
+    env_file:
+      - ${TICKETMIRROR_ENV_FILE:-.env.prod}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/healthz/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+    command: celery -A config worker -l info
+    env_file:
+      - ${TICKETMIRROR_ENV_FILE:-.env.prod}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - media_data:/app/media
+
+  beat:
+    build:
+      context: .
+    command: celery -A config beat -l info --schedule=/tmp/celerybeat-schedule
+    env_file:
+      - ${TICKETMIRROR_ENV_FILE:-.env.prod}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - media_data:/app/media
+
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - ${TICKETMIRROR_ENV_FILE:-.env.prod}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ticketmirror}
+      POSTGRES_USER: ${POSTGRES_USER:-ticketmirror}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deployment/backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-tickets.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    volumes:
+      - ./deployment/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - static_data:/srv/static:ro
+      - media_data:/srv/media:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_data:
+  media_data:
+  caddy_data:
+  caddy_config:

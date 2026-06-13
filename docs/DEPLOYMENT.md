@@ -1,32 +1,87 @@
 # Deployment
 
-The MVP is deployable as a Dockerized Django application with PostgreSQL, Redis, and a Celery worker.
+This guide describes a small private-server production deployment for
+ticketmirror. The production stack is isolated in its own Docker Compose file,
+env file, containers, database volume, Redis volume, and backups folder.
 
-## Services
+The examples assume the app will run at `tickets.example.com`. Replace that with
+the real subdomain before deploying.
 
-`docker-compose.yml` defines:
+## Production Stack
 
-- `web`: Django development server for local use.
-- `worker`: Celery worker.
-- `postgres`: PostgreSQL 16.
-- `redis`: Redis 7.
+`docker-compose.prod.yml` defines:
 
-Production deployment should run Django through a production server such as Gunicorn, run Celery workers separately, and use managed PostgreSQL and Redis where appropriate.
+- `web`: Gunicorn running Django.
+- `worker`: Celery worker for Gmail ingestion and parsing jobs.
+- `beat`: Celery beat scheduler process.
+- `postgres`: PostgreSQL 16 with persisted database data.
+- `redis`: Redis 7 with append-only persistence.
+- `caddy`: HTTPS reverse proxy, static file server, and media file server.
 
-## Environment
+Persistent storage:
 
-Start from `.env.example` and provide real values through environment variables. Required production settings include:
+- `postgres_data`: PostgreSQL data.
+- `redis_data`: Redis append-only data.
+- `static_data`: `collectstatic` output shared between `web` and `caddy`.
+- `media_data`: Django media files, if any are added later.
+- `caddy_data` and `caddy_config`: Caddy certificates and runtime state.
+- `deployment/backups`: PostgreSQL dump files created by backup scripts.
+
+## Server Prerequisites
+
+Install on the server:
+
+- Docker Engine
+- Docker Compose v2
+- Git
+- A firewall that allows inbound `80/tcp` and `443/tcp`
+
+DNS:
+
+1. Create an `A` or `AAAA` record for the app subdomain.
+2. Point it at the server public IP.
+3. Wait for DNS to resolve before starting Caddy, because HTTPS certificate
+   issuance depends on the domain reaching this server.
+
+## Production Env File
+
+Copy the production example and edit real values on the server:
+
+```bash
+cp .env.prod.example .env.prod
+chmod 600 .env.prod
+```
+
+Required production values:
 
 - `DJANGO_SECRET_KEY`
 - `DJANGO_DEBUG=false`
-- `ALLOWED_HOSTS`
-- `CSRF_TRUSTED_ORIGINS`
+- `ALLOWED_HOSTS=tickets.example.com`
+- `CSRF_TRUSTED_ORIGINS=https://tickets.example.com`
+- `DJANGO_SECURE_SSL_REDIRECT=true`
+- `DJANGO_SESSION_COOKIE_SECURE=true`
+- `DJANGO_CSRF_COOKIE_SECURE=true`
+- `DOMAIN=tickets.example.com`
+- `ACME_EMAIL`
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
 - `DATABASE_URL`
 - `REDIS_URL`
 - `CELERY_BROKER_URL`
 - `CELERY_RESULT_BACKEND`
 
-Gmail integration variables must be provided only through the environment. Never commit real Gmail secrets.
+Optional bootstrap admin values:
+
+- `DJANGO_SUPERUSER_USERNAME`
+- `DJANGO_SUPERUSER_EMAIL`
+- `DJANGO_SUPERUSER_PASSWORD`
+
+If the bootstrap admin values are blank, `create_initial_admin` exits without
+creating an account. Remove `DJANGO_SUPERUSER_PASSWORD` after the first deploy if
+you do not need repeatable bootstrap behavior.
+
+Gmail values are configured later and must remain environment-only:
 
 - `GMAIL_MAILBOX`
 - `GMAIL_CLIENT_ID`
@@ -36,23 +91,164 @@ Gmail integration variables must be provided only through the environment. Never
 - `GMAIL_WEBHOOK_AUDIENCE`
 - `GOOGLE_CLOUD_PROJECT`
 
-After deployment, run `python manage.py setup_gmail_watch` once and schedule
-`python manage.py renew_gmail_watch` before the Gmail watch expires. Also
-schedule `daily_reconciliation_sync` through Celery beat or another scheduler so
-recent Gmail messages are re-queued periodically.
+Do not commit `.env.prod` or any real credential file.
 
-## Release Steps
+## First Deploy
 
-Typical release sequence:
+From the repository root on the server:
 
-1. Build the image.
-2. Run tests and checks.
-3. Apply database migrations.
-4. Start or restart web and worker services.
-5. Verify the dashboard, admin login, and worker health.
+```bash
+chmod +x deployment/*.sh
+deployment/deploy.sh
+```
 
-## Operational Notes
+The deploy script:
 
-Back up PostgreSQL regularly. Raw emails can contain personal data and should be protected according to internal data retention policies.
+1. Builds the application image.
+2. Starts PostgreSQL and Redis.
+3. Runs migrations.
+4. Runs `collectstatic`.
+5. Runs `create_initial_admin`.
+6. Starts `web`, `worker`, `beat`, and `caddy`.
+7. Prints Compose service status.
 
-Logging should avoid printing full raw email bodies or credentials. Future production settings should add structured logging, secure cookie settings, HTTPS enforcement, and monitored Celery queues.
+To run the same steps manually:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml build
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres redis
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm web python manage.py migrate --noinput
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm web python manage.py collectstatic --noinput
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm web python manage.py create_initial_admin
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d web worker beat caddy
+```
+
+## Static And Media Files
+
+Django writes static files to `STATIC_ROOT=/app/staticfiles` during
+`collectstatic`. The `static_data` Docker volume is mounted into both:
+
+- `web` at `/app/staticfiles`
+- `caddy` at `/srv/static`
+
+Caddy serves `/static/*` directly from that volume.
+
+`MEDIA_ROOT=/app/media` is mounted as `media_data`. Caddy serves `/media/*` with
+`Content-Disposition: attachment` so any future uploaded files are not rendered
+inline by default. The app currently does not require user-uploaded media.
+
+## Healthchecks And Restarts
+
+Production services use `restart: unless-stopped`.
+
+Healthchecks are configured for:
+
+- `web`: `GET /healthz/`
+- `postgres`: `pg_isready`
+- `redis`: `redis-cli ping`
+
+`caddy` waits for the `web` healthcheck before starting.
+
+## Operations
+
+View service state:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+```
+
+View logs:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f web worker beat caddy
+```
+
+Run Django commands:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm web python manage.py check
+```
+
+Run tests before deploying a new build:
+
+```bash
+python -m pytest
+```
+
+## Backups
+
+Create a PostgreSQL custom-format dump:
+
+```bash
+deployment/backup_postgres.sh
+```
+
+Backups are written to `deployment/backups/ticketmirror_<timestamp>.dump`.
+Copy these dumps off the server regularly. The local backups directory is a
+convenience, not a complete backup strategy.
+
+Restore a dump:
+
+```bash
+deployment/restore_postgres.sh deployment/backups/ticketmirror_YYYYMMDDTHHMMSSZ.dump
+```
+
+The restore script requires typing `RESTORE` before it writes to the production
+database.
+
+## systemd
+
+An optional systemd unit is provided at `deployment/ticketmirror.service`.
+Assuming the repository lives at `/opt/ticketmirror`:
+
+```bash
+sudo cp deployment/ticketmirror.service /etc/systemd/system/ticketmirror.service
+sudo systemctl daemon-reload
+sudo systemctl enable ticketmirror
+sudo systemctl start ticketmirror
+```
+
+The systemd unit starts and stops the production Compose stack. Continue to use
+`deployment/deploy.sh` for migrations and static collection during releases.
+
+## Gmail Watch Setup
+
+After Gmail credentials and Pub/Sub are configured:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm web python manage.py setup_gmail_watch
+```
+
+Renew the watch before expiration:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm web python manage.py renew_gmail_watch
+```
+
+Reconcile recent messages after an outage:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm web python manage.py sync_recent_gmail --limit 100
+```
+
+## Release Checklist
+
+1. Pull or copy the new code into the isolated ticketmirror directory.
+2. Confirm `.env.prod` is present and not tracked by Git.
+3. Run tests locally or in CI.
+4. Run `deployment/backup_postgres.sh`.
+5. Run `deployment/deploy.sh`.
+6. Check `docker compose --env-file .env.prod -f docker-compose.prod.yml ps`.
+7. Open the app over HTTPS and confirm login, dashboard, reports, and admin.
+
+## Security Notes
+
+- Keep `DJANGO_DEBUG=false` in production.
+- Keep `.env.prod` outside version control.
+- Use a long random `DJANGO_SECRET_KEY`.
+- Use strong database and admin passwords.
+- Restrict SSH access to trusted operators.
+- Keep PostgreSQL and Redis ports unexposed; only Caddy publishes `80` and `443`.
+- Raw emails can contain personal data. Protect backups accordingly.
+- Logs are written to stdout for container collection and should not include raw
+  email bodies or full traveler contact details.

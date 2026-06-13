@@ -1,0 +1,16 @@
+[Unit]
+Description=ticketmirror production Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ticketmirror
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker compose --env-file /opt/ticketmirror/.env.prod -f /opt/ticketmirror/docker-compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose --env-file /opt/ticketmirror/.env.prod -f /opt/ticketmirror/docker-compose.prod.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

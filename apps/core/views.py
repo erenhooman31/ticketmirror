@@ -1,11 +1,16 @@
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q, Sum
+from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 
 from apps.bookings.models import Booking, ReviewQueueItem
 from apps.bookings.services import capacity_snapshot
 from apps.ingestion.models import RawEmail
+
+
+def healthz(request):
+    return JsonResponse({"status": "ok"})
 
 
 @login_required
