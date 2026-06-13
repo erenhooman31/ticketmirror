@@ -5,8 +5,14 @@
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
     <div>
-      <h1 class="h3 mb-1">{% if activity %}{{ activity.name }}{% else %}New activity{% endif %}</h1>
-      <div class="tm-muted">Settings / Tours & Activities</div>
+      {% if show_scheduling_tab %}
+        <h1 class="h3 mb-1">Schedule</h1>
+        <div class="fw-semibold">{{ activity.name }}</div>
+        <div class="tm-muted">Define when this activity is available and how many seats are available.</div>
+      {% else %}
+        <h1 class="h3 mb-1">{% if activity %}{{ activity.name }}{% else %}New activity{% endif %}</h1>
+        <div class="tm-muted">Settings / Tours & Activities</div>
+      {% endif %}
     </div>
     <a class="btn btn-outline-secondary" href="{% url 'settings_tour_activities' %}">Back</a>
   </div>
@@ -19,16 +25,303 @@
     {% endif %}
   </ul>
 
-  {% if active_tab == "scheduling" and activity %}
-    <div class="row g-3">
-      <div class="col-lg-6">
-        {% include "bookings/partials/schedule_form.html" with panel=current_schedule_panel action="save_current_schedule" title="Current Schedule" can_edit=can_edit_activities other_schedule=False %}
+  {% if show_scheduling_tab %}
+    {% url 'settings_tour_activity_detail' activity.id as detail_url %}
+
+    <section class="tm-card p-3 mb-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+        <div>
+          <h2 class="h5 mb-1">Current schedule</h2>
+          <div class="tm-muted">
+            {% if current_schedule.date_from and current_schedule.date_to %}
+              This schedule is effective from {{ current_schedule.date_from }} to {{ current_schedule.date_to }}
+            {% else %}
+              This schedule has no date limits
+            {% endif %}
+          </div>
+        </div>
+        {% if can_edit_activities %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ detail_url }}?tab=scheduling&edit_schedule=current">Edit schedule</a>
+        {% endif %}
       </div>
-      <div class="col-lg-6">
-        {% include "bookings/partials/schedule_form.html" with panel=other_schedule_panel action="save_other_schedule" title="Other Schedule" can_edit=can_edit_activities other_schedule=True %}
+
+      <div class="table-responsive">
+        <table class="tm-week-grid" data-testid="weekly-schedule-grid">
+          <thead>
+            <tr>
+              {% for day in current_schedule_grid %}
+                <th>
+                  {{ day.name }}
+                  {% if can_edit_activities and current_schedule %}
+                    <a class="text-white text-decoration-none" href="{{ detail_url }}?tab=scheduling&add_slot={{ current_schedule.id }}&day={{ day.index }}" aria-label="Add time for {{ day.name }}">+</a>
+                  {% endif %}
+                </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {% for day in current_schedule_grid %}
+                <td>
+                  {% for slot in day.slots %}
+                    <div class="tm-week-slot">
+                      {% if can_edit_activities %}
+                        <a class="text-decoration-none" href="{{ detail_url }}?tab=scheduling&edit_slot={{ slot.id }}">
+                          <strong>{{ slot.start_time|time:"H:i" }}</strong><br>
+                          <small>{{ slot.capacity }} seats</small>
+                        </a>
+                      {% else %}
+                        <strong>{{ slot.start_time|time:"H:i" }}</strong><br>
+                        <small>{{ slot.capacity }} seats</small>
+                      {% endif %}
+                    </div>
+                  {% empty %}
+                    <div class="tm-week-empty">No times</div>
+                  {% endfor %}
+                </td>
+              {% endfor %}
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
-  {% elif active_tab == "people" and activity %}
+
+      {% if can_edit_activities and current_schedule %}
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="copy_current_schedule">
+            <button class="btn btn-outline-secondary" type="submit">Copy schedule</button>
+          </form>
+          <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling&change_seats=1">Change seats for all times</a>
+        </div>
+      {% endif %}
+    </section>
+
+    {% if can_edit_activities and editor_type %}
+      <section class="tm-card p-3 mb-3">
+        {% if editor_type == "slot" %}
+          <h2 class="h6">{% if editor_slot %}Edit time{% else %}Add time{% endif %}</h2>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_time_slot">
+            <input type="hidden" name="schedule_id" value="{{ editor_schedule.id }}">
+            {% if editor_slot %}<input type="hidden" name="slot_id" value="{{ editor_slot.id }}">{% endif %}
+            <div class="row g-3">
+              {% for field in slot_form %}
+                <div class="{% if field.name == 'slot_days' %}col-12{% else %}col-md-3{% endif %}">
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {% if field.name == 'slot_days' %}
+                    <div class="d-flex flex-wrap gap-2">
+                      {% for choice in field %}
+                        <label class="btn btn-sm btn-outline-secondary mb-0">{{ choice.tag }} {{ choice.choice_label }}</label>
+                      {% endfor %}
+                    </div>
+                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                  {% else %}
+                    {{ field }}
+                  {% endif %}
+                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <button class="btn btn-primary" type="submit">Save</button>
+              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            </div>
+          </form>
+          {% if editor_slot %}
+            <form method="post" class="mt-2">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="deactivate_time_slot">
+              <input type="hidden" name="slot_id" value="{{ editor_slot.id }}">
+              <button class="btn btn-outline-danger" type="submit">Delete</button>
+            </form>
+          {% endif %}
+        {% elif editor_type == "schedule" %}
+          <h2 class="h6">{% if editor_schedule %}Edit schedule{% else %}New schedule{% endif %}</h2>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="{% if editor_schedule and editor_schedule.schedule_kind == 'current' %}save_current_schedule{% else %}save_other_schedule{% endif %}">
+            {% if editor_schedule and editor_schedule.schedule_kind == 'other' %}<input type="hidden" name="schedule_id" value="{{ editor_schedule.id }}">{% endif %}
+            <div class="row g-3">
+              {% for field in schedule_editor_form %}
+                <div class="{% if field.name == 'notes' or field.name == 'repeat_days' %}col-12{% else %}col-md-4{% endif %}">
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {% if field.name == 'repeat_days' %}
+                    <div class="d-flex flex-wrap gap-2">
+                      {% for choice in field %}
+                        <label class="btn btn-sm btn-outline-secondary mb-0">{{ choice.tag }} {{ choice.choice_label }}</label>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    {{ field }}
+                  {% endif %}
+                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <button class="btn btn-primary" type="submit">Save</button>
+              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            </div>
+          </form>
+          {% if editor_schedule %}
+            <div class="mt-3">
+              <h3 class="h6">Weekly grid</h3>
+              <div class="tm-muted small">Open this schedule after saving to add or edit times.</div>
+            </div>
+          {% endif %}
+        {% elif editor_type == "change_seats" %}
+          <h2 class="h6">Change seats for all times</h2>
+          <form method="post" class="row g-3 align-items-end">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="change_all_seats">
+            <input type="hidden" name="schedule_id" value="{{ current_schedule.id }}">
+            <div class="col-md-3">
+              <label class="form-label" for="{{ change_seats_form.capacity.id_for_label }}">Seats</label>
+              {{ change_seats_form.capacity }}
+              {% for error in change_seats_form.capacity.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-auto">
+              <button class="btn btn-primary" type="submit">Save</button>
+              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            </div>
+          </form>
+        {% elif editor_type == "additional_time" %}
+          <h2 class="h6">{% if editor_exception %}Edit additional time{% else %}Add additional time{% endif %}</h2>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_additional_time">
+            <input type="hidden" name="schedule_id" value="{{ current_schedule.id }}">
+            {% if editor_exception %}<input type="hidden" name="exception_id" value="{{ editor_exception.id }}">{% endif %}
+            <div class="row g-3">
+              {% for field in additional_time_form %}
+                <div class="col-md-3">
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <button class="btn btn-primary" type="submit">Save</button>
+              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            </div>
+          </form>
+        {% elif editor_type == "blocked_date" %}
+          <h2 class="h6">{% if editor_exception %}Edit blocked date{% else %}Add blocked date{% endif %}</h2>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_blocked_date">
+            <input type="hidden" name="schedule_id" value="{{ current_schedule.id }}">
+            {% if editor_exception %}<input type="hidden" name="exception_id" value="{{ editor_exception.id }}">{% endif %}
+            <div class="row g-3">
+              {% for field in blocked_date_form %}
+                <div class="{% if field.name == 'reason' %}col-md-6{% else %}col-md-3{% endif %}">
+                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {{ field }}
+                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <button class="btn btn-primary" type="submit">Save</button>
+              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            </div>
+          </form>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    <section class="tm-card p-3 mb-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h2 class="h5 mb-0">Other schedules</h2>
+        {% if can_edit_activities %}
+          <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&edit_schedule=new_other">New / change schedule</a>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Start</th>
+              <th>End</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in other_schedules %}
+              <tr>
+                <td>{{ row.start|default:"-" }}</td>
+                <td>{{ row.end|default:"-" }}</td>
+                <td>{{ row.name }}</td>
+                <td>{{ row.status_label }}</td>
+                <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_schedule={{ row.schedule.id }}">Edit</a>{% else %}-{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="tm-muted text-center py-3">No other schedules have been added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="tm-card p-3 mb-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h2 class="h5 mb-0">Additional times</h2>
+        {% if can_edit_activities %}
+          <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_additional=1">Add additional time</a>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Date</th><th>Time</th><th>Seats</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>
+            {% for row in additional_times %}
+              <tr>
+                <td>{{ row.date }}</td>
+                <td>{{ row.time_label }}</td>
+                <td>{{ row.capacity_label }}</td>
+                <td>{{ row.status_label }}</td>
+                <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_additional={{ row.item.id }}">Edit</a>{% else %}-{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="tm-muted text-center py-3">No additional times have been added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="tm-card p-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h2 class="h5 mb-0">Blocked dates</h2>
+        {% if can_edit_activities %}
+          <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_blocked=1">Add blocked date</a>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Date</th><th>Time</th><th>Reason</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>
+            {% for row in blocked_dates %}
+              <tr>
+                <td>{{ row.date }}</td>
+                <td>{{ row.time_label }}</td>
+                <td>{{ row.item.reason|default:"-" }}</td>
+                <td>{{ row.status_label }}</td>
+                <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_blocked={{ row.item.id }}">Edit</a>{% else %}-{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="tm-muted text-center py-3">No blocked dates have been added.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% elif active_tab == 'people' and activity %}
     <form method="post" class="tm-card p-3">
       {% csrf_token %}
       <input type="hidden" name="action" value="save_people">

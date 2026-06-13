@@ -278,8 +278,15 @@ class OperatorScheduleSectionForm(forms.Form):
 
 
 class OperatorScheduleSlotForm(forms.Form):
+    slot_days = forms.MultipleChoiceField(
+        label="Day",
+        choices=DAY_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Leave all days unchecked to use every day.",
+    )
     start_time = forms.TimeField(
-        label="Time",
+        label="Start",
         widget=forms.TimeInput(attrs={"type": "time"}),
     )
     duration_minutes = forms.IntegerField(
@@ -299,6 +306,7 @@ class OperatorScheduleSlotForm(forms.Form):
         self.instance = instance
         if instance and not args and "initial" not in kwargs:
             kwargs["initial"] = {
+                "slot_days": [str(day) for day in instance.days_of_week or []],
                 "start_time": instance.start_time,
                 "duration_minutes": instance.duration_minutes,
                 "slot_kind": MODEL_SLOT_TYPE_TO_FORM.get(instance.slot_type),
@@ -308,6 +316,10 @@ class OperatorScheduleSlotForm(forms.Form):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", "form-control")
+        self.fields["slot_days"].widget.attrs["class"] = "tm-weekday-list"
+
+    def clean_slot_days(self):
+        return [int(day) for day in self.cleaned_data.get("slot_days", [])]
 
     def save(self, *, schedule):
         slot = self.instance or ActivityScheduleSlot(schedule=schedule)
@@ -317,6 +329,7 @@ class OperatorScheduleSlotForm(forms.Form):
         slot.end_time = _end_time(slot.start_time, slot.duration_minutes)
         slot.slot_type = SLOT_TYPE_TO_MODEL[self.cleaned_data["slot_kind"]]
         slot.capacity = self.cleaned_data["capacity"]
+        slot.days_of_week = self.cleaned_data["slot_days"]
         slot.active = self.cleaned_data["slot_status"] == "active"
         slot.save()
         return slot
@@ -422,6 +435,102 @@ class OperatorScheduleExceptionForm(forms.Form):
         exception.active = self.cleaned_data["special_date_status"] == "active"
         exception.save()
         return exception
+
+
+class OperatorAdditionalTimeForm(forms.Form):
+    date = forms.DateField(label="Date", widget=forms.DateInput(attrs={"type": "date"}))
+    start_time = forms.TimeField(
+        label="Start",
+        widget=forms.TimeInput(attrs={"type": "time"}),
+    )
+    capacity = forms.IntegerField(
+        label="Seats",
+        min_value=0,
+        widget=forms.NumberInput(attrs={"min": "0"}),
+    )
+    status = forms.ChoiceField(label="Status", choices=STATUS_CHOICES)
+
+    def __init__(self, *args, schedule=None, instance=None, **kwargs):
+        self.schedule = schedule
+        self.instance = instance
+        if instance and not args and "initial" not in kwargs:
+            kwargs["initial"] = {
+                "date": instance.date,
+                "start_time": instance.start_time,
+                "capacity": instance.capacity,
+                "status": "active" if instance.active else "inactive",
+            }
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control")
+
+    def save(self):
+        exception = self.instance or ActivityScheduleException(schedule=self.schedule)
+        exception.schedule = self.schedule
+        exception.exception_type = ActivityScheduleException.ExceptionType.EXTRA_SLOT
+        exception.date = self.cleaned_data["date"]
+        exception.start_time = self.cleaned_data["start_time"]
+        exception.end_time = None
+        exception.capacity = self.cleaned_data["capacity"]
+        exception.reason = ""
+        exception.active = self.cleaned_data["status"] == "active"
+        exception.save()
+        return exception
+
+
+class OperatorBlockedDateForm(forms.Form):
+    date = forms.DateField(label="Date", widget=forms.DateInput(attrs={"type": "date"}))
+    start_time = forms.TimeField(
+        label="Time",
+        required=False,
+        widget=forms.TimeInput(attrs={"type": "time"}),
+    )
+    reason = forms.CharField(
+        label="Reason",
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 2}),
+    )
+    status = forms.ChoiceField(label="Status", choices=STATUS_CHOICES)
+
+    def __init__(self, *args, schedule=None, instance=None, **kwargs):
+        self.schedule = schedule
+        self.instance = instance
+        if instance and not args and "initial" not in kwargs:
+            kwargs["initial"] = {
+                "date": instance.date,
+                "start_time": instance.start_time,
+                "reason": instance.reason,
+                "status": "active" if instance.active else "inactive",
+            }
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control")
+
+    def save(self):
+        exception = self.instance or ActivityScheduleException(schedule=self.schedule)
+        exception.schedule = self.schedule
+        exception.exception_type = ActivityScheduleException.ExceptionType.BLOCKED
+        exception.date = self.cleaned_data["date"]
+        exception.start_time = self.cleaned_data["start_time"]
+        exception.end_time = None
+        exception.capacity = None
+        exception.reason = self.cleaned_data["reason"]
+        exception.active = self.cleaned_data["status"] == "active"
+        exception.save()
+        return exception
+
+
+class ChangeSeatsForm(forms.Form):
+    capacity = forms.IntegerField(
+        label="Seats",
+        min_value=0,
+        widget=forms.NumberInput(attrs={"min": "0"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control")
 
 
 class ActivityPeopleRuleForm(forms.ModelForm):

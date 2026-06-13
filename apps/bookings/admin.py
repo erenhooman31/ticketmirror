@@ -95,6 +95,7 @@ class ActivityScheduleSlotInline(admin.TabularInline):
         "duration_minutes",
         "slot_type",
         "capacity",
+        "days_of_week",
         "active",
     )
 
@@ -139,6 +140,7 @@ class ActivityScheduleSlotAdmin(admin.ModelAdmin):
         "duration_minutes",
         "slot_type",
         "capacity",
+        "days_of_week",
         "active",
     )
     list_filter = ("slot_type", "active", "schedule__activity")

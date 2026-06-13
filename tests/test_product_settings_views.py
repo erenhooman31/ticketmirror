@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import date, time
 
 import pytest
 from django.urls import reverse
@@ -6,11 +6,13 @@ from helpers import create_activity_setup
 
 from apps.accounts.models import UserProfile
 from apps.bookings.models import (
+    ActivitySchedule,
     ActivityScheduleException,
     ActivityScheduleSlot,
     ProviderAlias,
     TourActivity,
 )
+from apps.bookings.services import get_daily_capacity_summary
 
 
 @pytest.fixture
@@ -215,9 +217,22 @@ def test_schedule_tab_renders_current_and_other_sections(client, users):
     )
 
     assert response.status_code == 200
-    assert b"Current Schedule" in response.content
-    assert b"Other Schedule" in response.content
+    assert b"Current schedule" in response.content
+    assert b"Other schedules" in response.content
+    assert b'data-testid="weekly-schedule-grid"' in response.content
+    for day in [
+        b"Monday",
+        b"Tuesday",
+        b"Wednesday",
+        b"Thursday",
+        b"Friday",
+        b"Saturday",
+        b"Sunday",
+    ]:
+        assert day in response.content
     assert b"09:00" in response.content
+    assert b"Additional times" in response.content
+    assert b"Blocked dates" in response.content
 
 
 @pytest.mark.django_db
@@ -243,17 +258,140 @@ def test_schedule_tab_uses_operator_labels_not_raw_fields(client, users):
     ]:
         assert raw_label not in html
     for human_label in [
-        "Current Schedule",
-        "Other Schedule",
-        "Effective dates",
-        "Repeats on",
-        "Available times",
-        "Capacity",
-        "Special dates",
+        "Schedule",
+        "Current schedule",
+        "Other schedules",
+        "Additional times",
         "Blocked dates",
+        "Copy schedule",
+        "Change seats for all times",
     ]:
         assert human_label in html
-    assert "No special dates or blocked dates have been added." in html
+    assert "No additional times have been added." in html
+    assert "No blocked dates have been added." in html
+
+
+@pytest.mark.django_db
+def test_weekly_grid_uses_slot_weekdays_and_capacity(client, users):
+    setup = create_activity_setup(activity_name="Grid Day Tour")
+    schedule = setup["schedule"]
+    monday_slot = setup["slot"]
+    monday_slot.days_of_week = [0]
+    monday_slot.capacity = 12
+    monday_slot.save()
+    every_day_slot = ActivityScheduleSlot.objects.create(
+        schedule=schedule,
+        start_time=time(15, 0),
+        duration_minutes=120,
+        slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        capacity=30,
+        days_of_week=[],
+        active=True,
+    )
+
+    client.force_login(users["admin"])
+    response = client.get(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "scheduling"},
+    )
+    grid = response.context["current_schedule_grid"]
+
+    assert monday_slot in grid[0]["slots"]
+    assert every_day_slot in grid[0]["slots"]
+    assert monday_slot not in grid[1]["slots"]
+    assert every_day_slot in grid[1]["slots"]
+    assert "12 seats" in response.content.decode()
+    assert "30 seats" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_multiple_other_schedules_render_as_rows(client, users):
+    setup = create_activity_setup(activity_name="Season Rows Tour")
+    activity = setup["activity"]
+    ActivitySchedule.objects.create(
+        activity=activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+        name="Summer season",
+        active=True,
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 8, 31),
+        priority=210,
+    )
+    ActivitySchedule.objects.create(
+        activity=activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+        name="Winter season",
+        active=False,
+        date_from=date(2026, 12, 1),
+        date_to=date(2027, 2, 28),
+        priority=220,
+    )
+
+    client.force_login(users["admin"])
+    response = client.get(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {"tab": "scheduling"},
+    )
+    html = response.content.decode()
+
+    assert "Summer season" in html
+    assert "Winter season" in html
+    assert "2026" in html
+    assert "edit_schedule=" in html
+
+
+@pytest.mark.django_db
+def test_additional_time_renders_and_affects_calendar(client, users):
+    setup = create_activity_setup(activity_name="Additional Time Tour")
+    schedule = setup["schedule"]
+    service_date = setup["date"]
+    ActivityScheduleException.objects.create(
+        schedule=schedule,
+        exception_type=ActivityScheduleException.ExceptionType.EXTRA_SLOT,
+        date=service_date,
+        start_time=time(15, 0),
+        capacity=40,
+        active=True,
+    )
+
+    client.force_login(users["admin"])
+    response = client.get(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "scheduling"},
+    )
+    rows = get_daily_capacity_summary(service_date)
+
+    assert "Additional times" in response.content.decode()
+    assert "15:00" in response.content.decode()
+    assert any(row["slot"] is None and row["capacity"] == 40 for row in rows)
+
+
+@pytest.mark.django_db
+def test_blocked_date_renders_separately_and_removes_calendar_availability(
+    client, users
+):
+    setup = create_activity_setup(activity_name="Blocked Date Tour")
+    schedule = setup["schedule"]
+    slot = setup["slot"]
+    service_date = setup["date"]
+    ActivityScheduleException.objects.create(
+        schedule=schedule,
+        exception_type=ActivityScheduleException.ExceptionType.BLOCKED,
+        date=service_date,
+        start_time=slot.start_time,
+        reason="Boat maintenance",
+        active=True,
+    )
+
+    client.force_login(users["admin"])
+    response = client.get(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "scheduling"},
+    )
+
+    assert "Blocked dates" in response.content.decode()
+    assert "Boat maintenance" in response.content.decode()
+    assert get_daily_capacity_summary(service_date) == []
 
 
 @pytest.mark.django_db
@@ -291,7 +429,8 @@ def test_operator_can_view_tour_activity_settings_without_mutation_actions(
     assert "Add time slot" not in html
     assert "Add special date" not in html
     assert "Save schedule details" not in html
-    assert "Available times" in html
+    assert "Current schedule" in html
+    assert "Other schedules" in html
 
 
 @pytest.mark.django_db

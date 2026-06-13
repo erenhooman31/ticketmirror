@@ -132,6 +132,7 @@ class ActivityScheduleSlot(TimeStampedModel):
     duration_minutes = models.PositiveIntegerField()
     slot_type = models.CharField(max_length=30, choices=SlotType.choices)
     capacity = models.PositiveIntegerField()
+    days_of_week = models.JSONField(default=list, blank=True)
     active = models.BooleanField(default=True)
 
     class Meta:

@@ -30,6 +30,9 @@ from apps.ingestion.models import RawEmail
 from .forms import (
     ActivityPeopleRuleForm,
     BookingEditForm,
+    ChangeSeatsForm,
+    OperatorAdditionalTimeForm,
+    OperatorBlockedDateForm,
     OperatorScheduleExceptionForm,
     OperatorScheduleSectionForm,
     OperatorScheduleSlotForm,
@@ -258,7 +261,7 @@ def tour_activity_detail(request, activity_id):
     people_rule, _created = ActivityPeopleRule.objects.get_or_create(activity=activity)
 
     if request.method == "POST":
-        if not can_mutate(request.user):
+        if not is_admin(request.user):
             raise PermissionDenied
         action = request.POST.get("action", "save_general")
         if action == "save_general":
@@ -287,6 +290,15 @@ def tour_activity_detail(request, activity_id):
                 else ActivitySchedule.ScheduleKind.OTHER
             )
             instance = _schedule_for_kind(activity, schedule_kind)
+            if schedule_kind == ActivitySchedule.ScheduleKind.OTHER:
+                instance = None
+                if request.POST.get("schedule_id"):
+                    instance = get_object_or_404(
+                        ActivitySchedule,
+                        id=request.POST["schedule_id"],
+                        activity=activity,
+                        schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+                    )
             form = OperatorScheduleSectionForm(
                 request.POST,
                 instance=instance,
@@ -295,7 +307,13 @@ def tour_activity_detail(request, activity_id):
                 prefix=schedule_kind,
             )
             if form.is_valid():
-                form.save(activity=activity)
+                schedule = form.save(activity=activity)
+                if (
+                    schedule.schedule_kind == ActivitySchedule.ScheduleKind.OTHER
+                    and schedule.priority == 100
+                ):
+                    schedule.priority = _next_schedule_priority(activity)
+                    schedule.save(update_fields=["priority", "updated_at"])
                 messages.success(request, "Schedule saved.")
                 return _redirect_activity_tab(activity, "scheduling")
             active_tab = "scheduling"
@@ -307,6 +325,38 @@ def tour_activity_detail(request, activity_id):
                     activity=activity,
                     active_tab=active_tab,
                     schedule_forms={schedule_kind: form},
+                    editor_type="schedule",
+                    editor_schedule=instance,
+                ),
+            )
+        if action == "copy_current_schedule":
+            current_schedule = _schedule_for_kind(
+                activity, ActivitySchedule.ScheduleKind.CURRENT
+            )
+            if current_schedule:
+                _copy_schedule_to_other(current_schedule)
+                messages.success(request, "Current schedule copied.")
+            return _redirect_activity_tab(activity, "scheduling")
+        if action == "change_all_seats":
+            schedule = get_object_or_404(
+                ActivitySchedule,
+                id=request.POST.get("schedule_id"),
+                activity=activity,
+            )
+            form = ChangeSeatsForm(request.POST)
+            if form.is_valid():
+                schedule.slots.update(capacity=form.cleaned_data["capacity"])
+                messages.success(request, "Seats updated for all times.")
+                return _redirect_activity_tab(activity, "scheduling")
+            return render(
+                request,
+                "bookings/tour_activity_detail.html",
+                _activity_context(
+                    request,
+                    activity=activity,
+                    active_tab="scheduling",
+                    change_seats_form=form,
+                    editor_type="change_seats",
                 ),
             )
         if action == "save_time_slot":
@@ -335,6 +385,9 @@ def tour_activity_detail(request, activity_id):
                     activity=activity,
                     active_tab="scheduling",
                     slot_forms={schedule.id if slot is None else slot.id: form},
+                    editor_type="slot",
+                    editor_schedule=schedule,
+                    editor_slot=slot,
                 ),
             )
         if action == "deactivate_time_slot":
@@ -347,6 +400,79 @@ def tour_activity_detail(request, activity_id):
             slot.save(update_fields=["active", "updated_at"])
             messages.success(request, "Available time deactivated.")
             return _redirect_activity_tab(activity, "scheduling")
+        if action == "save_additional_time":
+            schedule = get_object_or_404(
+                ActivitySchedule,
+                id=request.POST.get("schedule_id"),
+                activity=activity,
+            )
+            exception = None
+            if request.POST.get("exception_id"):
+                exception = get_object_or_404(
+                    ActivityScheduleException,
+                    id=request.POST["exception_id"],
+                    schedule=schedule,
+                    exception_type=ActivityScheduleException.ExceptionType.EXTRA_SLOT,
+                )
+            form = OperatorAdditionalTimeForm(
+                request.POST,
+                schedule=schedule,
+                instance=exception,
+            )
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Additional time saved.")
+                return _redirect_activity_tab(activity, "scheduling")
+            return render(
+                request,
+                "bookings/tour_activity_detail.html",
+                _activity_context(
+                    request,
+                    activity=activity,
+                    active_tab="scheduling",
+                    additional_time_form=form,
+                    editor_type="additional_time",
+                    editor_exception=exception,
+                ),
+            )
+        if action == "save_blocked_date":
+            schedule = get_object_or_404(
+                ActivitySchedule,
+                id=request.POST.get("schedule_id"),
+                activity=activity,
+            )
+            exception = None
+            if request.POST.get("exception_id"):
+                exception = get_object_or_404(
+                    ActivityScheduleException,
+                    id=request.POST["exception_id"],
+                    schedule=schedule,
+                    exception_type__in=[
+                        ActivityScheduleException.ExceptionType.BLOCKED,
+                        ActivityScheduleException.ExceptionType.CLOSED,
+                    ],
+                )
+            form = OperatorBlockedDateForm(
+                request.POST,
+                schedule=schedule,
+                instance=exception,
+            )
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Blocked date saved.")
+                return _redirect_activity_tab(activity, "scheduling")
+            return render(
+                request,
+                "bookings/tour_activity_detail.html",
+                _activity_context(
+                    request,
+                    activity=activity,
+                    active_tab="scheduling",
+                    blocked_date_form=form,
+                    editor_type="blocked_date",
+                    editor_exception=exception,
+                ),
+            )
         if action in {"save_special_date", "save_schedule_exception"}:
             schedule = get_object_or_404(
                 ActivitySchedule,
@@ -376,9 +502,6 @@ def tour_activity_detail(request, activity_id):
                     request,
                     activity=activity,
                     active_tab="scheduling",
-                    exception_forms={
-                        schedule.id if exception is None else exception.id: form
-                    },
                 ),
             )
         if action in {"deactivate_special_date", "delete_schedule_exception"}:
@@ -551,8 +674,14 @@ def _activity_context(
     schedule_forms=None,
     people_form=None,
     alias_form=None,
-    exception_forms=None,
     slot_forms=None,
+    additional_time_form=None,
+    blocked_date_form=None,
+    change_seats_form=None,
+    editor_type=None,
+    editor_schedule=None,
+    editor_slot=None,
+    editor_exception=None,
 ):
     current_schedule = (
         _schedule_for_kind(
@@ -571,8 +700,16 @@ def _activity_context(
         else None
     )
     schedule_forms = schedule_forms or {}
-    exception_forms = exception_forms or {}
     slot_forms = slot_forms or {}
+    other_schedules = (
+        list(
+            activity.schedules.filter(schedule_kind=ActivitySchedule.ScheduleKind.OTHER)
+            .prefetch_related("slots", "exceptions")
+            .order_by("date_from", "priority", "id")
+        )
+        if activity
+        else []
+    )
     current_schedule_form = schedule_forms.get(
         ActivitySchedule.ScheduleKind.CURRENT
     ) or (
@@ -595,9 +732,46 @@ def _activity_context(
         if other_schedule
         else None
     )
+    if activity and active_tab == "scheduling" and is_admin(request.user):
+        (
+            editor_type,
+            editor_schedule,
+            editor_slot,
+            editor_exception,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
+        ) = _schedule_editor_context(
+            request,
+            activity=activity,
+            current_schedule=current_schedule,
+            current_schedule_form=current_schedule_form,
+            other_schedule_form=other_schedule_form,
+            additional_time_form=additional_time_form,
+            blocked_date_form=blocked_date_form,
+            change_seats_form=change_seats_form,
+            editor_type=editor_type,
+            editor_schedule=editor_schedule,
+            editor_slot=editor_slot,
+            editor_exception=editor_exception,
+        )
+    additional_times = _schedule_exceptions_for_activity(
+        activity,
+        {ActivityScheduleException.ExceptionType.EXTRA_SLOT},
+    )
+    blocked_dates = _schedule_exceptions_for_activity(
+        activity,
+        {
+            ActivityScheduleException.ExceptionType.BLOCKED,
+            ActivityScheduleException.ExceptionType.CLOSED,
+        },
+    )
     return {
         "activity": activity,
         "active_tab": active_tab,
+        "show_scheduling_tab": bool(activity and active_tab == "scheduling"),
         "general_form": general_form
         or (TourActivityForm(instance=activity) if activity else None),
         "current_schedule_form": current_schedule_form,
@@ -616,18 +790,35 @@ def _activity_context(
         ),
         "current_schedule": current_schedule,
         "other_schedule": other_schedule,
-        "current_schedule_panel": _schedule_panel(
-            current_schedule,
-            current_schedule_form,
-            slot_forms=slot_forms,
-            exception_forms=exception_forms,
+        "other_schedules": [
+            _other_schedule_row(schedule) for schedule in other_schedules
+        ],
+        "current_schedule_grid": _weekly_grid(current_schedule),
+        "additional_times": [
+            _exception_row(exception) for exception in additional_times
+        ],
+        "blocked_dates": [_exception_row(exception) for exception in blocked_dates],
+        "editor_type": editor_type,
+        "editor_schedule": editor_schedule,
+        "editor_slot": editor_slot,
+        "editor_exception": editor_exception,
+        "slot_form": slot_forms.get(
+            editor_slot.id
+            if editor_slot
+            else editor_schedule.id if editor_schedule else None
+        )
+        or _slot_form_for_editor(editor_type, editor_schedule, editor_slot, request),
+        "schedule_editor_form": (
+            current_schedule_form
+            if editor_schedule
+            and editor_schedule.schedule_kind == ActivitySchedule.ScheduleKind.CURRENT
+            else other_schedule_form
         ),
-        "other_schedule_panel": _schedule_panel(
-            other_schedule,
-            other_schedule_form,
-            slot_forms=slot_forms,
-            exception_forms=exception_forms,
-        ),
+        "additional_time_form": additional_time_form
+        or OperatorAdditionalTimeForm(schedule=current_schedule),
+        "blocked_date_form": blocked_date_form
+        or OperatorBlockedDateForm(schedule=current_schedule),
+        "change_seats_form": change_seats_form or ChangeSeatsForm(),
         "can_edit_activities": is_admin(request.user),
     }
 
@@ -642,53 +833,327 @@ def _schedule_for_kind(activity, schedule_kind):
     )
 
 
-def _schedule_panel(schedule, schedule_form, *, slot_forms, exception_forms):
+def _schedule_editor_context(
+    request,
+    *,
+    activity,
+    current_schedule,
+    current_schedule_form,
+    other_schedule_form,
+    additional_time_form,
+    blocked_date_form,
+    change_seats_form,
+    editor_type,
+    editor_schedule,
+    editor_slot,
+    editor_exception,
+):
+    if editor_type:
+        return (
+            editor_type,
+            editor_schedule,
+            editor_slot,
+            editor_exception,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
+        )
+    if request.GET.get("edit_slot"):
+        editor_slot = get_object_or_404(
+            ActivityScheduleSlot,
+            id=request.GET["edit_slot"],
+            schedule__activity=activity,
+        )
+        return (
+            "slot",
+            editor_slot.schedule,
+            editor_slot,
+            None,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
+        )
+    if request.GET.get("add_slot"):
+        editor_schedule = get_object_or_404(
+            ActivitySchedule,
+            id=request.GET["add_slot"],
+            activity=activity,
+        )
+        return (
+            "slot",
+            editor_schedule,
+            None,
+            None,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
+        )
+    if request.GET.get("edit_schedule"):
+        schedule_id = request.GET["edit_schedule"]
+        if schedule_id == "current":
+            editor_schedule = current_schedule
+            current_schedule_form = OperatorScheduleSectionForm(
+                instance=current_schedule,
+                schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+                activity=activity,
+                prefix=ActivitySchedule.ScheduleKind.CURRENT,
+            )
+        elif schedule_id == "new_other":
+            editor_schedule = None
+            other_schedule_form = OperatorScheduleSectionForm(
+                schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+                activity=activity,
+                prefix=ActivitySchedule.ScheduleKind.OTHER,
+                initial={
+                    "schedule_status": "inactive",
+                    "timezone": current_schedule.timezone if current_schedule else "",
+                },
+            )
+        else:
+            editor_schedule = get_object_or_404(
+                ActivitySchedule,
+                id=schedule_id,
+                activity=activity,
+                schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+            )
+            other_schedule_form = OperatorScheduleSectionForm(
+                instance=editor_schedule,
+                schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+                activity=activity,
+                prefix=ActivitySchedule.ScheduleKind.OTHER,
+            )
+        return (
+            "schedule",
+            editor_schedule,
+            None,
+            None,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
+        )
+    if request.GET.get("change_seats"):
+        return (
+            "change_seats",
+            current_schedule,
+            None,
+            None,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            ChangeSeatsForm(),
+        )
+    if request.GET.get("edit_additional"):
+        editor_exception = get_object_or_404(
+            ActivityScheduleException,
+            id=request.GET["edit_additional"],
+            schedule__activity=activity,
+            exception_type=ActivityScheduleException.ExceptionType.EXTRA_SLOT,
+        )
+        additional_time_form = OperatorAdditionalTimeForm(
+            schedule=editor_exception.schedule,
+            instance=editor_exception,
+        )
+        return (
+            "additional_time",
+            editor_exception.schedule,
+            None,
+            editor_exception,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
+        )
+    if request.GET.get("add_additional"):
+        return (
+            "additional_time",
+            current_schedule,
+            None,
+            None,
+            current_schedule_form,
+            other_schedule_form,
+            OperatorAdditionalTimeForm(schedule=current_schedule),
+            blocked_date_form,
+            change_seats_form,
+        )
+    if request.GET.get("edit_blocked"):
+        editor_exception = get_object_or_404(
+            ActivityScheduleException,
+            id=request.GET["edit_blocked"],
+            schedule__activity=activity,
+        )
+        blocked_date_form = OperatorBlockedDateForm(
+            schedule=editor_exception.schedule,
+            instance=editor_exception,
+        )
+        return (
+            "blocked_date",
+            editor_exception.schedule,
+            None,
+            editor_exception,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
+        )
+    if request.GET.get("add_blocked"):
+        return (
+            "blocked_date",
+            current_schedule,
+            None,
+            None,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            OperatorBlockedDateForm(schedule=current_schedule),
+            change_seats_form,
+        )
+    return (
+        editor_type,
+        editor_schedule,
+        editor_slot,
+        editor_exception,
+        current_schedule_form,
+        other_schedule_form,
+        additional_time_form,
+        blocked_date_form,
+        change_seats_form,
+    )
+
+
+def _slot_form_for_editor(editor_type, editor_schedule, editor_slot, request):
+    if editor_type != "slot" or not editor_schedule:
+        return OperatorScheduleSlotForm()
+    if editor_slot:
+        return OperatorScheduleSlotForm(instance=editor_slot)
+    initial = {
+        "duration_minutes": 120,
+        "slot_kind": "fixed-time",
+        "capacity": 250,
+        "slot_status": "active",
+    }
+    if request.GET.get("day") not in {None, ""}:
+        initial["slot_days"] = [request.GET["day"]]
+    first_slot = editor_schedule.slots.order_by("start_time").first()
+    if first_slot:
+        initial["duration_minutes"] = first_slot.duration_minutes
+        initial["slot_kind"] = "fixed-time"
+        initial["capacity"] = first_slot.capacity
+    return OperatorScheduleSlotForm(initial=initial)
+
+
+def _weekly_grid(schedule):
+    day_names = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
     if not schedule:
-        return None
-    slots = list(schedule.slots.order_by("start_time", "id"))
-    exceptions = list(schedule.exceptions.order_by("date", "start_time", "id"))
-    active_slots = [slot for slot in slots if slot.active]
-    total_capacity = sum(slot.capacity for slot in active_slots)
+        return [
+            {"index": index, "name": name, "slots": []}
+            for index, name in enumerate(day_names)
+        ]
+    slots = list(schedule.slots.filter(active=True).order_by("start_time", "id"))
+    rows = []
+    for index, name in enumerate(day_names):
+        if schedule.days_of_week and index not in schedule.days_of_week:
+            day_slots = []
+        else:
+            day_slots = [
+                slot
+                for slot in slots
+                if not slot.days_of_week or index in slot.days_of_week
+            ]
+        rows.append({"index": index, "name": name, "slots": day_slots})
+    return rows
+
+
+def _schedule_exceptions_for_activity(activity, exception_types):
+    if not activity:
+        return []
+    return (
+        ActivityScheduleException.objects.filter(
+            schedule__activity=activity,
+            exception_type__in=exception_types,
+        )
+        .select_related("schedule")
+        .order_by("date", "start_time", "id")
+    )
+
+
+def _exception_row(exception):
+    return {
+        "item": exception,
+        "date": exception.date,
+        "time_label": _special_date_time_label(exception),
+        "type_label": _special_date_type_label(exception),
+        "capacity_label": _special_date_capacity_label(exception),
+        "status_label": "Active" if exception.active else "Inactive",
+    }
+
+
+def _other_schedule_row(schedule):
     return {
         "schedule": schedule,
-        "form": schedule_form,
-        "slot_form": slot_forms.get(schedule.id) or OperatorScheduleSlotForm(),
-        "special_date_form": exception_forms.get(schedule.id)
-        or OperatorScheduleExceptionForm(schedule=schedule),
-        "slots": [
-            {
-                "slot": slot,
-                "form": slot_forms.get(slot.id)
-                or OperatorScheduleSlotForm(instance=slot),
-                "status_label": "Active" if slot.active else "Inactive",
-            }
-            for slot in slots
-        ],
-        "special_dates": [
-            {
-                "item": exception,
-                "form": exception_forms.get(exception.id)
-                or OperatorScheduleExceptionForm(
-                    schedule=schedule,
-                    instance=exception,
-                ),
-                "type_label": _special_date_type_label(exception),
-                "time_label": _special_date_time_label(exception),
-                "capacity_label": _special_date_capacity_label(exception),
-                "status_label": "Active" if exception.active else "Inactive",
-            }
-            for exception in exceptions
-        ],
+        "start": schedule.date_from,
+        "end": schedule.date_to,
+        "name": schedule.name or "Other schedule",
         "status_label": "Active" if schedule.active else "Inactive",
         "effective_label": _schedule_effective_label(schedule),
-        "repeat_labels": _schedule_repeat_labels(schedule),
-        "active_slot_count": len(active_slots),
-        "capacity_label": (
-            f"{total_capacity} seats across {len(active_slots)} active times"
-            if active_slots
-            else "No active capacity"
-        ),
     }
+
+
+def _next_schedule_priority(activity):
+    existing = (
+        activity.schedules.filter(schedule_kind=ActivitySchedule.ScheduleKind.OTHER)
+        .order_by("-priority")
+        .first()
+    )
+    if not existing:
+        return 200
+    return existing.priority + 10
+
+
+def _copy_schedule_to_other(schedule):
+    copy = ActivitySchedule.objects.create(
+        activity=schedule.activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+        name=f"Copy of {schedule.name or 'current schedule'}",
+        active=False,
+        date_from=schedule.date_from,
+        date_to=schedule.date_to,
+        days_of_week=schedule.days_of_week,
+        timezone=schedule.timezone,
+        priority=_next_schedule_priority(schedule.activity),
+        recurrence_mode=schedule.recurrence_mode,
+        notes=schedule.notes,
+    )
+    for slot in schedule.slots.all():
+        ActivityScheduleSlot.objects.create(
+            schedule=copy,
+            start_time=slot.start_time,
+            end_time=slot.end_time,
+            duration_minutes=slot.duration_minutes,
+            slot_type=slot.slot_type,
+            capacity=slot.capacity,
+            days_of_week=slot.days_of_week,
+            active=slot.active,
+        )
+    return copy
 
 
 def _schedule_effective_label(schedule):

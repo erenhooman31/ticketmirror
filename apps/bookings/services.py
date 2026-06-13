@@ -223,6 +223,8 @@ def get_daily_capacity_summary(service_date) -> list[dict[str, Any]]:
         for slot in schedule.slots.filter(active=True).select_related(
             "schedule", "schedule__activity"
         ):
+            if not _slot_applies_to_weekday(slot, service_date):
+                continue
             if _slot_removed_by_exception(slot, service_date):
                 continue
             rows.append(get_capacity_for_slot_date(slot, service_date))
@@ -412,6 +414,12 @@ def _schedule_applies_to_weekday(schedule, service_date):
     if not schedule.days_of_week:
         return True
     return service_date.weekday() in schedule.days_of_week
+
+
+def _slot_applies_to_weekday(slot, service_date):
+    if not slot.days_of_week:
+        return True
+    return service_date.weekday() in slot.days_of_week
 
 
 def _schedule_exceptions(schedule, service_date):
