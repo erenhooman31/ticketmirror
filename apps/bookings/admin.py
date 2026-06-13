@@ -51,6 +51,7 @@ class ProductAdmin(admin.ModelAdmin):
     inlines = [ProductVariantInline, ProductAliasForProductInline]
     list_display = (
         "canonical_name",
+        "nickname",
         "category",
         "active",
         "variant_count",
@@ -58,7 +59,7 @@ class ProductAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("category", "active")
-    search_fields = ("canonical_name", "category", "notes")
+    search_fields = ("canonical_name", "nickname", "category", "notes")
 
     @admin.display(description="Variants")
     def variant_count(self, obj):
@@ -129,6 +130,7 @@ class ProductAliasAdmin(admin.ModelAdmin):
 class CapacityRuleAdmin(admin.ModelAdmin):
     list_display = (
         "product_variant",
+        "schedule_name",
         "date_from",
         "date_to",
         "day_of_week",
@@ -139,6 +141,7 @@ class CapacityRuleAdmin(admin.ModelAdmin):
     )
     list_filter = ("active", "day_of_week", "product_variant__product")
     search_fields = (
+        "schedule_name",
         "product_variant__variant_name",
         "product_variant__product__canonical_name",
     )

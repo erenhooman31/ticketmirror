@@ -8,6 +8,11 @@ This backlog translates the observed Bookeo areas into TicketMirror feature cand
 - P2: useful after core operations are stable.
 - P3: out of scope for now, retained only as a reference.
 
+## Navigation Decision
+
+TicketMirror primary navigation is limited to Home, Calendar, Customers, and Settings.
+Admin-only workflows belong inside Settings and are controlled by role permissions rather than a separate Admin product section.
+
 ## P1 Candidates
 
 ### Operations Home

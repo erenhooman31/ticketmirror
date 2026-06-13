@@ -9,7 +9,7 @@
       <h1 class="h3 mb-1">{{ variant.product.canonical_name }}</h1>
       <div class="tm-muted">{{ selected_date }} · {{ variant.variant_name }} · {{ slot|time:"H:i"|default:"Open" }}</div>
     </div>
-    <a class="btn btn-outline-secondary" href="{% url 'bookings:daily' %}?date={{ selected_date|date:'Y-m-d' }}">Back to daily</a>
+    <a class="btn btn-outline-secondary" href="{% url 'bookings:daily' %}?{% if request.GET %}{{ request.GET.urlencode }}{% else %}date={{ selected_date|date:'Y-m-d' }}{% endif %}">Back to calendar</a>
   </div>
 
   <div class="row g-3 mb-4">

@@ -42,8 +42,14 @@ ticketmirror is not the source of truth. It stores raw provider emails first, pa
 
 5. Open the app:
 
-   - Dashboard: http://localhost:8000/
-   - Admin: http://localhost:8000/admin/
+   - Home: http://localhost:8000/
+   - Calendar: http://localhost:8000/bookings/daily/
+   - Customers: http://localhost:8000/customers/
+   - Settings: http://localhost:8000/settings/
+
+   Django's built-in `/admin/` can remain enabled for emergency superuser or
+   developer access, but normal product configuration should happen through
+   Settings.
 
 ## Useful Commands
 

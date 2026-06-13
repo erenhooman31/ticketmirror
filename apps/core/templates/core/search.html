@@ -1,12 +1,12 @@
 {% extends "base/base.html" %}
 
-{% block title %}Search - ticketmirror{% endblock %}
+{% block title %}Customers - ticketmirror{% endblock %}
 
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
     <div>
-      <h1 class="h3 mb-1">Search</h1>
-      <div class="tm-muted">Find bookings by reference, traveler, contact, provider, or raw product.</div>
+      <h1 class="h3 mb-1">Customers</h1>
+      <div class="tm-muted">Find traveler records and related bookings by reference, contact, provider, or raw product.</div>
     </div>
     <form class="d-flex gap-2" method="get">
       <input class="form-control" type="search" name="q" value="{{ query }}" placeholder="Reference, traveler, phone, email, provider">

@@ -1,0 +1,55 @@
+{% extends "base/base.html" %}
+
+{% block title %}Users & Roles - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">Users & Roles</h1>
+      <div class="tm-muted">Manage role-based access for internal users.</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{% url 'core:settings' %}">Back to settings</a>
+  </div>
+
+  <div class="tm-card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Email</th>
+            <th>Superuser</th>
+            <th>Role</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for managed_user in managed_users %}
+            <tr>
+              <td class="fw-semibold">{{ managed_user.username }}</td>
+              <td>{{ managed_user.email|default:"" }}</td>
+              <td>{% if managed_user.is_superuser %}<span class="badge text-bg-secondary">Yes</span>{% endif %}</td>
+              <td>
+                <form class="d-flex gap-2 align-items-center" method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="user_id" value="{{ managed_user.id }}">
+                  <select class="form-select form-select-sm" name="role">
+                    {% for value, label in role_options %}
+                      <option value="{{ value }}" {% if managed_user.profile.role == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-sm btn-primary" type="submit">Update role</button>
+                </form>
+              </td>
+              <td class="small tm-muted">
+                {% if managed_user == request.user %}Current user{% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="text-center tm-muted py-4">No users found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

@@ -9,6 +9,13 @@
     <style>
       body { background: #f6f7f9; color: #1f2933; }
       .tm-shell { max-width: 1480px; }
+      .tm-top-nav { background: linear-gradient(#255b99, #123e76); border-bottom: 1px solid #0b315f; box-shadow: inset 0 -1px 0 rgba(255,255,255,.12); }
+      .tm-top-nav .navbar-brand, .tm-top-nav .nav-link, .tm-top-nav .small { color: #fff; }
+      .tm-top-nav .navbar-brand { font-size: .88rem; }
+      .tm-top-nav .nav-link { border-left: 1px solid rgba(255,255,255,.12); font-size: .84rem; font-weight: 700; padding-left: 1.2rem; padding-right: 1.2rem; text-transform: uppercase; }
+      .tm-top-nav .nav-link:hover, .tm-top-nav .nav-link:focus { background: rgba(255,255,255,.12); color: #fff; }
+      .tm-top-nav .navbar-toggler { border-color: rgba(255,255,255,.45); }
+      .tm-top-nav .navbar-toggler-icon { filter: invert(1); }
       .tm-card { background: #fff; border: 1px solid #d9dee7; border-radius: 6px; }
       .tm-muted { color: #697586; }
       .tm-table tr[data-href] { cursor: pointer; }
@@ -18,10 +25,122 @@
       .tm-manual { border-left: 4px solid #b42318; padding-left: .5rem; }
       .tm-pre { white-space: pre-wrap; word-break: break-word; font-size: .875rem; }
       .badge-status { min-width: 7rem; }
+      .tm-calendar-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 1rem; align-items: start; }
+      .tm-calendar-rail { padding: 1rem; position: sticky; top: 1rem; }
+      .tm-calendar-main { min-width: 0; }
+      .tm-mini-calendar { width: 100%; table-layout: fixed; font-size: .82rem; text-align: center; }
+      .tm-mini-calendar th { color: #697586; font-weight: 600; padding: .25rem; }
+      .tm-mini-calendar td { padding: .12rem; }
+      .tm-mini-calendar a { display: block; border-radius: 4px; color: #1f2933; padding: .3rem 0; text-decoration: none; }
+      .tm-mini-calendar a:hover { background: #eef4ff; }
+      .tm-mini-calendar a.active { background: #0d6efd; color: #fff; font-weight: 650; }
+      .tm-mini-calendar a.muted { color: #9aa4b2; }
+      .tm-day-heading { background: #f8fafc; border-bottom: 1px solid #d9dee7; display: flex; justify-content: space-between; padding: .75rem 1rem; }
+      .tm-schedule-table th, .tm-schedule-table td { white-space: nowrap; vertical-align: middle; }
+      .tm-bookeo-home { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(420px, 1fr); gap: 6px; height: calc(100vh - 102px); min-height: 560px; }
+      .tm-bookeo-panel { background: #eef1f5; border: 1px solid #b9c2ce; border-radius: 3px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+      .tm-bookeo-panel-header { align-items: center; background: linear-gradient(#3474b7, #225a9d); color: #fff; display: flex; font-size: .98rem; font-weight: 750; gap: .45rem; letter-spacing: .01em; line-height: 1; padding: .45rem .55rem; text-transform: uppercase; }
+      .tm-panel-icon { border: 1px solid rgba(255,255,255,.75); border-radius: 2px; font-size: .62rem; font-weight: 800; line-height: 1; padding: .16rem .2rem; }
+      .tm-bookeo-panel-body { flex: 1; min-height: 0; overflow: auto; padding: .45rem; }
+      .tm-bookeo-footer { align-items: center; background: #dde2e9; border-top: 1px solid #bdc6d2; display: flex; flex-wrap: wrap; gap: .35rem; padding: .35rem .55rem; }
+      .tm-footer-pill { background: linear-gradient(#fff, #dfe6ef); border: 1px solid #9ca9b8; border-radius: 3px; color: #102f55; font-size: .82rem; font-weight: 650; line-height: 1.1; padding: .3rem .5rem; text-decoration: none; }
+      .tm-footer-pill:hover { background: #fff; color: #102f55; }
+      .tm-footer-pill.active { background: linear-gradient(#2d65a8, #184981); border-color: #163f70; color: #fff; }
+      .tm-footer-disabled { color: #5f6f82; opacity: .8; }
+      .tm-message-row { align-items: flex-start; background: #fff; border: 1px solid #e1e5eb; color: #1f2933; display: flex; gap: .45rem; margin-bottom: .35rem; min-height: 4.55rem; padding: .45rem .5rem; text-decoration: none; }
+      .tm-message-row:hover { background: #f8fbff; color: #1f2933; }
+      .tm-message-symbol { border: 2px solid #7e8792; border-radius: 50%; flex: 0 0 auto; height: .86rem; margin-top: .15rem; position: relative; width: .86rem; }
+      .tm-message-new .tm-message-symbol { border-color: #42b653; }
+      .tm-message-new .tm-message-symbol::after { background: #42b653; border-radius: 50%; content: ""; height: .3rem; left: .18rem; position: absolute; top: .18rem; width: .3rem; }
+      .tm-message-cancelled .tm-message-symbol { border-color: #d9534f; }
+      .tm-message-cancelled .tm-message-symbol::before, .tm-message-cancelled .tm-message-symbol::after { background: #d9534f; content: ""; height: 2px; left: .13rem; position: absolute; top: .31rem; transform: rotate(45deg); width: .45rem; }
+      .tm-message-cancelled .tm-message-symbol::after { transform: rotate(-45deg); }
+      .tm-message-warning .tm-message-symbol, .tm-message-error .tm-message-symbol { border-color: #e03a2d; }
+      .tm-message-content { display: grid; line-height: 1.14; min-width: 0; }
+      .tm-message-title { font-size: .86rem; }
+      .tm-message-title strong { color: #0d4f93; }
+      .tm-message-subtitle { color: #415063; font-size: .82rem; font-style: italic; }
+      .tm-message-product { color: #1f5590; font-size: .83rem; font-weight: 750; text-transform: uppercase; }
+      .tm-message-meta { color: #394657; font-size: .82rem; }
+      .tm-agenda-day h2 { color: #153d72; font-size: 1.32rem; font-weight: 500; margin: .25rem 0 .55rem; }
+      .tm-agenda-row { align-items: center; background: #fff; border: 1px solid #dfe5ec; color: #1f2933; display: flex; gap: .45rem; margin-bottom: .3rem; min-height: 2.45rem; padding: .3rem .45rem; text-decoration: none; }
+      .tm-agenda-row:hover { color: #1f2933; filter: brightness(.98); }
+      .tm-agenda-booked { background: #cef3d7; border-color: #b6e7c4; }
+      .tm-agenda-full { background: #f5d0d0; border-color: #e6aaa8; }
+      .tm-agenda-dot { background: #fff; border: 1px solid #cfd7e2; border-radius: 50%; box-shadow: inset .22rem 0 0 #eef3f8; flex: 0 0 auto; height: 1rem; width: 1rem; }
+      .tm-agenda-main { display: grid; line-height: 1.1; min-width: 0; }
+      .tm-agenda-title { font-size: .86rem; text-transform: uppercase; }
+      .tm-agenda-meta { color: #2c3948; font-size: .82rem; }
+      .tm-agenda-plus { align-items: center; background: #3cb64a; border-radius: 2px; color: #fff; display: inline-flex; flex: 0 0 auto; font-size: 1.15rem; font-weight: 800; height: 1.1rem; justify-content: center; line-height: 1; margin-left: auto; width: 1.1rem; }
+      .tm-date-form { align-items: center; display: flex; gap: .25rem; margin-left: auto; }
+      .tm-date-form input, .tm-date-form button { border: 1px solid #9ca9b8; border-radius: 3px; font-size: .8rem; padding: .22rem .35rem; }
+      .tm-date-form button { background: linear-gradient(#fff, #dfe6ef); color: #102f55; font-weight: 650; }
+      .tm-bookeo-empty { background: #fff; border: 1px solid #e1e5eb; color: #697586; font-size: .88rem; padding: 1rem; text-align: center; }
+      .tm-booking-modal .modal-dialog { max-width: 1080px; }
+      .tm-booking-modal .modal-content { border: 1px solid #6b7f98; border-radius: 3px; box-shadow: 0 14px 36px rgba(0,0,0,.38); }
+      .tm-booking-modal-header { background: linear-gradient(#284f8a, #173e75); border-bottom: 1px solid #0b315f; color: #fff; min-height: 2rem; padding: .28rem .55rem; }
+      .tm-booking-modal-header .modal-title { font-size: .98rem; font-weight: 750; line-height: 1.2; }
+      .tm-booking-modal-body { background: #eceff4; display: grid; gap: .45rem; grid-template-columns: minmax(0, 1fr) 112px; max-height: 78vh; overflow: hidden; padding: .45rem; }
+      .tm-booking-modal-main { background: #fff; min-height: 560px; min-width: 0; overflow: auto; }
+      .tm-booking-tabs { background: #d8dde5; border-bottom: 1px solid #b9c3d0; padding: .28rem .32rem 0; }
+      .tm-booking-tabs .nav-link { background: #c9d0da; border: 1px solid #adb8c6; border-bottom: 0; border-radius: 2px 2px 0 0; color: #24364b; font-size: .84rem; margin-right: .22rem; padding: .42rem .7rem; }
+      .tm-booking-tabs .nav-link.active { background: #fff; color: #102f55; font-weight: 650; }
+      .tm-booking-tab-content { padding: .6rem .72rem 1rem; }
+      .tm-modal-fieldset { border: 1px solid #e3e7ee; margin: 0 0 .75rem; padding: .55rem .55rem .7rem; }
+      .tm-modal-fieldset legend { color: #123e76; float: none; font-size: 1.1rem; font-weight: 750; margin: 0 0 .35rem; padding: 0; width: auto; }
+      .tm-modal-form-table { width: 100%; }
+      .tm-modal-form-table th { color: #164c86; font-size: .86rem; font-weight: 650; padding: .28rem .6rem .28rem 0; text-align: right; vertical-align: top; white-space: nowrap; width: 9rem; }
+      .tm-modal-form-table td { color: #1f2933; font-size: .86rem; padding: .22rem 0; vertical-align: top; }
+      .tm-modal-form-table select, .tm-modal-form-table button { border: 1px solid #a9b4c2; border-radius: 2px; font-size: .84rem; min-height: 1.5rem; }
+      .tm-modal-form-table button { background: #d7dde6; color: #394657; line-height: 1; min-width: 1.35rem; }
+      .tm-modal-form-table .tm-pax-input { border: 1px solid #a9b4c2; border-radius: 2px; font-size: .84rem; min-height: 1.5rem; text-align: center; width: 4.25rem; }
+      .tm-modal-form-table .tm-time-input { display: inline-block; width: 8rem; }
+      .tm-modal-form-table .tm-inline-label { color: #536273; display: inline-block; font-size: .8rem; margin: 0 .35rem 0 .6rem; }
+      .tm-json-field { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; }
+      .tm-stepper-label { margin-right: .35rem; }
+      .tm-modal-section-title { color: #123e76; font-size: 1.05rem; font-weight: 750; margin: .8rem 0 .35rem; }
+      .tm-modal-help { color: #394657; font-size: .86rem; margin-bottom: .7rem; }
+      .tm-modal-notes-table th, .tm-modal-audit-table th { color: #164c86; font-size: .82rem; white-space: nowrap; }
+      .tm-modal-notes-table td, .tm-modal-audit-table td { font-size: .82rem; vertical-align: top; }
+      .tm-booking-action-rail { align-self: stretch; background: #d9dee6; border-left: 1px solid #c0c9d4; display: flex; flex-direction: column; gap: .35rem; padding: .45rem; }
+      .tm-action-button { background: linear-gradient(#fff, #dfe6ef); border: 1px solid #8d9baa; border-radius: 3px; color: #102f55; display: block; font-size: .84rem; font-weight: 750; line-height: 1.1; padding: .52rem .35rem; text-align: left; text-decoration: none; width: 100%; }
+      .tm-action-button:hover { background: #fff; color: #102f55; }
+      .tm-action-button.primary { background: linear-gradient(#1f7acc, #0d5fab); border-color: #0b579d; color: #fff; }
+      .tm-action-note { color: #24364b; display: grid; font-size: .78rem; font-weight: 650; gap: .25rem; margin-bottom: .2rem; }
+      .tm-action-note textarea { border: 1px solid #9ca9b8; border-radius: 3px; font-size: .78rem; font-weight: 400; line-height: 1.2; padding: .28rem; resize: vertical; width: 100%; }
+      .tm-send-email-box { background: #eef2f6; border: 1px solid #c6ced9; color: #24364b; font-size: .78rem; margin-top: .45rem; padding: .4rem; }
+      .tm-send-email-box label { display: block; margin-top: .25rem; }
+      .tm-settings-shell { display: grid; gap: .45rem; grid-template-columns: minmax(0, 1fr) 112px; }
+      .tm-settings-main { background: #eceff4; border: 1px solid #c7d0dc; min-width: 0; }
+      .tm-settings-body { background: #f8f9fb; padding: .55rem; }
+      .tm-settings-body h1 { color: #123e76; font-size: 1.55rem; font-weight: 750; margin: .4rem 0 .65rem; }
+      .tm-settings-body h2 { color: #394657; font-size: .95rem; font-style: italic; font-weight: 700; margin: 0 0 .45rem; }
+      .tm-settings-fieldset { background: #fff; border: 1px solid #e2e7ee; margin: 0 0 .75rem; padding: .6rem; }
+      .tm-settings-fieldset legend { color: #123e76; float: none; font-size: 1.15rem; font-weight: 750; margin: 0 0 .55rem; padding: 0; width: auto; }
+      .tm-week-grid { border-collapse: collapse; table-layout: fixed; width: 100%; }
+      .tm-week-grid th { background: #2e68a8; border: 1px solid #d6dde7; color: #fff; font-size: .78rem; padding: .28rem; text-align: center; }
+      .tm-week-grid th span { color: #54c257; float: right; font-size: 1rem; font-weight: 900; line-height: .8; }
+      .tm-week-grid td { background: #fff; border: 1px solid #d6dde7; color: #1f2933; font-size: .78rem; min-height: 5rem; padding: .35rem; text-align: center; vertical-align: top; }
+      .tm-week-slot { border-bottom: 1px solid #edf0f4; padding: .25rem 0; }
+      .tm-week-slot small { color: #394657; }
+      .tm-week-empty { color: #9aa4b2; font-style: italic; padding: .5rem 0; }
+      .tm-seat-all-input { width: 6rem; }
+      .tm-settings-actions { background: #d9dee6; border: 1px solid #c0c9d4; display: flex; flex-direction: column; gap: .35rem; padding: .45rem; }
+      @media (max-width: 991.98px) {
+        .tm-calendar-layout { grid-template-columns: 1fr; }
+        .tm-calendar-rail { position: static; }
+        .tm-bookeo-home { grid-template-columns: 1fr; height: auto; }
+        .tm-bookeo-panel { min-height: 440px; }
+        .tm-booking-modal-body { grid-template-columns: 1fr; max-height: none; overflow: visible; }
+        .tm-booking-action-rail { border-left: 0; border-top: 1px solid #c0c9d4; }
+        .tm-booking-modal-main { min-height: 0; }
+        .tm-settings-shell { grid-template-columns: 1fr; }
+        .tm-settings-actions { flex-direction: row; }
+      }
     </style>
   </head>
   <body>
-    <nav class="navbar navbar-expand-lg bg-white border-bottom">
+    <nav class="navbar navbar-expand-lg tm-top-nav">
       <div class="container-fluid tm-shell">
         <a class="navbar-brand fw-semibold" href="{% url 'core:dashboard' %}">ticketmirror</a>
         {% if user.is_authenticated %}
@@ -29,23 +148,21 @@
             <span class="navbar-toggler-icon"></span>
           </button>
           <div class="collapse navbar-collapse" id="mainNav">
-            <div class="navbar-nav me-auto">
-              <a class="nav-link" href="{% url 'core:dashboard' %}">Dashboard</a>
-              <a class="nav-link" href="{% url 'bookings:daily' %}">Daily</a>
-              <a class="nav-link" href="{% url 'review_queue' %}">Review</a>
-              {% if user.is_superuser or user.profile.can_edit_bookings %}
-                <a class="nav-link" href="{% url 'product_aliases' %}">Aliases</a>
-              {% endif %}
-              <a class="nav-link" href="{% url 'reports:index' %}">Reports</a>
-              <a class="nav-link" href="/admin/">Admin</a>
+            <div class="navbar-nav me-auto" data-testid="primary-nav">
+              <a class="nav-link" href="{% url 'core:dashboard' %}">Home</a>
+              <a class="nav-link" href="{% url 'bookings:daily' %}">Calendar</a>
+              <a class="nav-link" href="{% url 'core:customers' %}">Customers</a>
+              <a class="nav-link" href="{% url 'core:settings' %}">Settings</a>
             </div>
-            <form method="get" action="{% url 'core:search' %}" class="d-flex align-items-center gap-2 me-3">
-              <input class="form-control form-control-sm" type="search" name="q" placeholder="Search" value="{{ request.GET.q|default:'' }}">
-            </form>
             <form method="post" action="{% url 'logout' %}" class="d-flex align-items-center gap-2">
               {% csrf_token %}
-              <span class="small tm-muted">{{ user.username }}</span>
-              <button class="btn btn-sm btn-outline-secondary" type="submit">Logout</button>
+              <span class="small">{{ user.username }}</span>
+              {% if user.is_superuser %}
+                <span class="badge text-bg-light">Admin</span>
+              {% elif user.profile %}
+                <span class="badge text-bg-light">{{ user.profile.get_role_display }}</span>
+              {% endif %}
+              <button class="btn btn-sm btn-outline-light" type="submit">Sign out</button>
             </form>
           </div>
         {% endif %}

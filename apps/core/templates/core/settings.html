@@ -1,0 +1,32 @@
+{% extends "base/base.html" %}
+
+{% block title %}Settings - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">Settings</h1>
+      <div class="tm-muted">Configuration and role-restricted setup for TicketMirror operations.</div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    {% for section in sections %}
+      <div class="col-md-6 col-xl-4">
+        <div class="tm-card p-3 h-100">
+          <h2 class="h6 mb-2">{{ section.title }}</h2>
+          <p class="tm-muted mb-3">{{ section.description }}</p>
+          {% if section.url %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ section.url }}">Open</a>
+          {% else %}
+            <span class="badge text-bg-secondary">Managed outside this screen</span>
+          {% endif %}
+        </div>
+      </div>
+    {% empty %}
+      <div class="col-12">
+        <div class="tm-card p-4 text-center tm-muted">No settings sections are available for your role.</div>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

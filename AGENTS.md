@@ -19,7 +19,7 @@ Do not build public customer pages. Do not build payment processing. Do not add 
 - Celery
 - Docker Compose
 - Server-rendered Django templates
-- Django admin for MVP operations
+- Django admin for emergency/developer console access only
 - Bootstrap or simple CSS
 - pytest
 - ruff and black
@@ -51,8 +51,10 @@ docker compose exec web python manage.py createsuperuser
 
 Open:
 
-- Dashboard: http://localhost:8000/
-- Admin: http://localhost:8000/admin/
+- Home: http://localhost:8000/
+- Calendar: http://localhost:8000/bookings/daily/
+- Customers: http://localhost:8000/customers/
+- Settings: http://localhost:8000/settings/
 
 For local Python-only checks, a virtualenv is acceptable:
 
@@ -133,7 +135,9 @@ Do not leave formatting-only churn mixed with unrelated behavior changes unless 
 
 ## UI Rules
 
-- Use Django templates and Django admin for the MVP.
+- Use Django templates and Settings pages for normal internal workflows.
+- Primary navigation is limited to Home, Calendar, Customers, Settings. Admin functionality is role-based inside Settings, not a separate Admin section.
+- Keep Django admin unlinked from the product UI; use it only as an emergency/developer console when explicitly needed.
 - Keep UI internal, operational, dense, and practical.
 - Prioritize date, product, time slot, capacity, booking status, review queue, and CSV export workflows.
 - Do not build marketing pages, customer booking pages, checkout pages, or public landing pages.

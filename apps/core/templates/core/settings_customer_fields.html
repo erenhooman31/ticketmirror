@@ -1,0 +1,43 @@
+{% extends "base/base.html" %}
+
+{% block title %}Customer Fields - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">Customer Fields</h1>
+      <div class="tm-muted">Operational rules for customer and participant data.</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{% url 'core:settings' %}">Back to settings</a>
+  </div>
+
+  <div class="tm-card p-3">
+    <h2 class="h6">Current policy</h2>
+    <p class="tm-muted mb-3">
+      TicketMirror currently stores provider-supplied customer fields from booking emails and applies role-based read/write controls on booking screens.
+      Field-specific requirements can be added here when the data model is ready.
+    </p>
+    <table class="table table-sm mb-0">
+      <thead>
+        <tr>
+          <th>Field group</th>
+          <th>Current behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Traveler contact</td>
+          <td>Stored from provider payloads when available; visible according to existing booking permissions.</td>
+        </tr>
+        <tr>
+          <td>Participants</td>
+          <td>Stored as provider values and editable operational fields where mutation is permitted.</td>
+        </tr>
+        <tr>
+          <td>Provider references</td>
+          <td>Required for stable booking matching and not editable as customer data.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

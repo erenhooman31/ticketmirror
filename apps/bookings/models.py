@@ -31,6 +31,7 @@ class Provider(TimeStampedModel):
 
 class Product(TimeStampedModel):
     canonical_name = models.CharField(max_length=180, unique=True)
+    nickname = models.CharField(max_length=180, blank=True)
     category = models.CharField(max_length=120, blank=True)
     active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
@@ -152,6 +153,7 @@ class CapacityRule(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="capacity_rules",
     )
+    schedule_name = models.CharField(max_length=120, blank=True)
     date_from = models.DateField(null=True, blank=True)
     date_to = models.DateField(null=True, blank=True)
     day_of_week = models.PositiveSmallIntegerField(null=True, blank=True)

@@ -11,7 +11,7 @@ The MVP is a Django monolith with a PostgreSQL database, Redis, and Celery:
 - Redis is used as the Celery broker and result backend.
 - Celery runs background ingestion tasks such as fetching Gmail messages.
 
-There is no separate frontend application. MVP user workflows should use Django templates and Django admin.
+There is no separate frontend application. Normal user workflows should use Django templates, with role-restricted configuration inside Settings. Django admin is reserved for emergency superuser or developer access.
 
 ## Data Flow
 

@@ -5,6 +5,31 @@ from django.urls import include, path
 from apps.bookings import views as booking_views
 
 urlpatterns = [
+    path(
+        "settings/products/",
+        booking_views.product_settings,
+        name="settings_product_settings",
+    ),
+    path(
+        "settings/products/new/",
+        booking_views.product_settings_new,
+        name="settings_product_settings_new",
+    ),
+    path(
+        "settings/products/<int:product_id>/",
+        booking_views.product_settings_edit,
+        name="settings_product_settings_edit",
+    ),
+    path(
+        "settings/provider-aliases/",
+        booking_views.product_aliases,
+        name="settings_provider_aliases",
+    ),
+    path(
+        "settings/provider-aliases/<int:alias_id>/approve/",
+        booking_views.approve_alias,
+        name="settings_approve_alias",
+    ),
     path("admin/", admin.site.urls),
     path(
         "accounts/login/",

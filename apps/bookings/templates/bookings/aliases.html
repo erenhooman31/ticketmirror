@@ -52,7 +52,7 @@
                 <td>{% if alias.approved %}<span class="badge text-bg-success">Approved</span>{% else %}<span class="badge text-bg-warning">Pending</span>{% endif %}</td>
                 <td class="text-end">
                   {% if can_edit_aliases and not alias.approved %}
-                    <form method="post" action="{% url 'approve_alias' alias.id %}">
+                    <form method="post" action="{% url 'settings_approve_alias' alias.id %}">
                       {% csrf_token %}
                       <button class="btn btn-sm btn-outline-success">Approve</button>
                     </form>

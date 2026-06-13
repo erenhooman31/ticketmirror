@@ -1,4 +1,8 @@
+import json
+
 from django import template
+from django.utils.html import conditional_escape
+from django.utils.safestring import mark_safe
 
 register = template.Library()
 
@@ -7,6 +11,8 @@ register = template.Library()
 def get_item(mapping, key):
     if not mapping:
         return None
+    if hasattr(mapping, "fields") and key in mapping.fields:
+        return mapping[key]
     return mapping.get(key)
 
 
@@ -27,3 +33,8 @@ def status_class(status):
         "parse_failed": "danger",
         "duplicate_ignored": "secondary",
     }.get(status, "secondary")
+
+
+@register.filter
+def json_dumps(value):
+    return mark_safe(conditional_escape(json.dumps(value, ensure_ascii=False)))

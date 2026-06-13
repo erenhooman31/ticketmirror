@@ -85,7 +85,9 @@ def booking_setup():
 def test_internal_pages_require_login(client, booking_setup):
     urls = [
         reverse("core:dashboard"),
+        reverse("core:customers"),
         reverse("core:search"),
+        reverse("core:settings"),
         reverse("bookings:daily"),
         reverse("bookings:detail", args=[booking_setup["booking"].id]),
         reverse("review_queue"),
@@ -115,10 +117,10 @@ def test_viewer_is_read_only_for_mutation_views(client, users, booking_setup):
         {"action": "resolve"},
     )
     alias_response = client.post(
-        reverse("approve_alias", args=[booking_setup["alias"].id])
+        reverse("settings_approve_alias", args=[booking_setup["alias"].id])
     )
     alias_create_response = client.post(
-        reverse("product_aliases"),
+        reverse("settings_provider_aliases"),
         {
             "provider": booking_setup["provider"].id,
             "raw_product_name": "Other",
@@ -138,7 +140,7 @@ def test_viewer_is_read_only_for_mutation_views(client, users, booking_setup):
 def test_viewer_can_read_aliases_without_form_actions(client, users, booking_setup):
     client.force_login(users["viewer"])
 
-    response = client.get(reverse("product_aliases"))
+    response = client.get(reverse("settings_provider_aliases"))
 
     assert response.status_code == 200
     assert b"Raw City Walk" in response.content
@@ -231,7 +233,7 @@ def test_alias_approval_is_audited(client, users, booking_setup):
     alias = booking_setup["alias"]
     client.force_login(users["operator"])
 
-    response = client.post(reverse("approve_alias", args=[alias.id]))
+    response = client.post(reverse("settings_approve_alias", args=[alias.id]))
 
     assert response.status_code == 302
     event = BookingEvent.objects.get(
@@ -278,7 +280,7 @@ def test_global_search_finds_supported_booking_fields(client, users, booking_set
         "Viator",
         "Raw City",
     ]:
-        response = client.get(reverse("core:search"), {"q": query})
+        response = client.get(reverse("core:customers"), {"q": query})
         assert response.status_code == 200
         assert b"BR-SEARCH-1" in response.content
 

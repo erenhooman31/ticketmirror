@@ -1,53 +1,165 @@
 {% extends "base/base.html" %}
 {% load booking_extras %}
 
-{% block title %}Daily operations - ticketmirror{% endblock %}
+{% block title %}Calendar - ticketmirror{% endblock %}
 
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
     <div>
-      <h1 class="h3 mb-1">Daily operations</h1>
-      <div class="tm-muted">{{ selected_date }}</div>
+      <h1 class="h3 mb-1">Calendar</h1>
+      <div class="tm-muted">{{ selected_date }} · {{ range_days }} day{% if range_days != 1 %}s{% endif %}</div>
     </div>
-    <form class="d-flex flex-wrap gap-2" method="get">
-      <input class="form-control" type="date" name="date" value="{{ selected_date|date:'Y-m-d' }}">
-      <input class="form-control" type="search" name="q" placeholder="Reference, traveler, phone, provider" value="{{ query }}">
-      <button class="btn btn-primary" type="submit">Filter</button>
-    </form>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary" href="{{ previous_url }}">Previous</a>
+      <a class="btn btn-outline-secondary" href="{{ today_url }}">Today</a>
+      <a class="btn btn-outline-secondary" href="{{ next_url }}">Next</a>
+      <a class="btn btn-primary" href="{% url 'reports:daily_manifest_csv' %}?date={{ selected_date|date:'Y-m-d' }}">Manifest CSV</a>
+    </div>
   </div>
 
-  <div class="tm-card">
-    <table class="table table-hover tm-table mb-0">
-      <thead>
-        <tr>
-          <th>Product</th>
-          <th>Variant</th>
-          <th>Slot</th>
-          <th class="text-end">Confirmed pax</th>
-          <th class="text-end">Pending pax</th>
-          <th class="text-end">Manual review pax</th>
-          <th class="text-end">Capacity</th>
-          <th class="text-end">Remaining</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-          <tr {% if row.slot_url %}data-href="{{ row.slot_url }}"{% endif %}>
-            <td>{{ row.product.canonical_name|default:"Unmapped product" }}</td>
-            <td>{{ row.variant.variant_name|default:"Unmapped variant" }}</td>
-            <td>{{ row.slot_label }}</td>
-            <td class="text-end">{{ row.confirmed }}</td>
-            <td class="text-end">{{ row.pending }}</td>
-            <td class="text-end">{{ row.manual_review }}</td>
-            <td class="text-end">{{ row.capacity|default_if_none:"" }}</td>
-            <td class="text-end fw-semibold {% if row.remaining < 0 %}text-danger{% endif %}">{{ row.remaining|default_if_none:"" }}</td>
-            <td><span class="badge text-bg-{% if row.status == 'ok' %}success{% elif row.status == 'tight' %}warning{% elif row.status == 'unknown' %}secondary{% else %}danger{% endif %}">{{ row.status }}</span></td>
+  <div class="tm-calendar-layout">
+    <aside class="tm-card tm-calendar-rail">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <a class="btn btn-sm btn-outline-secondary" href="{{ mini_calendar.previous_month_url }}">‹</a>
+        <div class="fw-semibold">{{ mini_calendar.month_label }}</div>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ mini_calendar.next_month_url }}">›</a>
+      </div>
+      <table class="tm-mini-calendar mb-4">
+        <thead>
+          <tr>
+            {% for weekday in mini_calendar.weekdays %}
+              <th>{{ weekday }}</th>
+            {% endfor %}
           </tr>
-        {% empty %}
-          <tr><td colspan="9" class="text-center tm-muted py-4">No bookings for this date.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for week in mini_calendar.weeks %}
+            <tr>
+              {% for day in week %}
+                <td>
+                  <a class="{% if day.is_selected %}active{% elif not day.is_current_month %}muted{% endif %}" href="{{ day.url }}">{{ day.day }}</a>
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <form method="get" class="vstack gap-3">
+        <div>
+          <label class="form-label small fw-semibold" for="calendar-date">Date</label>
+          <input id="calendar-date" class="form-control form-control-sm" type="date" name="date" value="{{ selected_date|date:'Y-m-d' }}">
+        </div>
+        <input type="hidden" name="range" value="{{ range_days }}">
+        <div>
+          <label class="form-label small fw-semibold" for="calendar-q">Search</label>
+          <input id="calendar-q" class="form-control form-control-sm" type="search" name="q" placeholder="Traveler, phone, email, reference" value="{{ query }}">
+        </div>
+        <div>
+          <label class="form-label small fw-semibold" for="calendar-category">Category</label>
+          <select id="calendar-category" class="form-select form-select-sm" name="category">
+            <option value="">All categories</option>
+            {% for category in category_options %}
+              <option value="{{ category }}" {% if category == filters.category %}selected{% endif %}>{{ category }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label small fw-semibold" for="calendar-product">Product</label>
+          <select id="calendar-product" class="form-select form-select-sm" name="product">
+            <option value="">All products</option>
+            {% for product in product_options %}
+              <option value="{{ product.id }}" {% if product.id == filters.product %}selected{% endif %}>{{ product.canonical_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label small fw-semibold" for="calendar-provider">Provider</label>
+          <select id="calendar-provider" class="form-select form-select-sm" name="provider">
+            <option value="">All providers</option>
+            {% for provider in provider_options %}
+              <option value="{{ provider.id }}" {% if provider.id == filters.provider %}selected{% endif %}>{{ provider.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="vstack gap-2">
+          <input type="hidden" name="show_cancelled" value="0">
+          <label class="form-check small">
+            <input class="form-check-input" type="checkbox" name="show_cancelled" value="1" {% if filters.show_cancelled %}checked{% endif %}>
+            Show canceled
+          </label>
+          <input type="hidden" name="show_manual_review" value="0">
+          <label class="form-check small">
+            <input class="form-check-input" type="checkbox" name="show_manual_review" value="1" {% if filters.show_manual_review %}checked{% endif %}>
+            Show manual review
+          </label>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">Apply filters</button>
+      </form>
+    </aside>
+
+    <section class="tm-calendar-main">
+      <div class="tm-card p-3 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+          <div class="d-flex flex-wrap gap-2">
+            {% for option in range_options %}
+              <a class="btn btn-sm {% if option.active %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ option.url }}">{{ option.days }} day{% if option.days != 1 %}s{% endif %}</a>
+            {% endfor %}
+          </div>
+          <div class="small tm-muted">
+            Capacity stays slot-wide when provider or search filters are active.
+          </div>
+        </div>
+      </div>
+
+      {% for section in day_sections %}
+        <div class="tm-card mb-3">
+          <div class="tm-day-heading">
+            <div>
+              <div class="fw-semibold">{{ section.label }}</div>
+              <div class="small tm-muted">{{ section.rows|length }} slot{% if section.rows|length != 1 %}s{% endif %}</div>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover tm-table tm-schedule-table mb-0">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Product</th>
+                  <th>Variant</th>
+                  <th class="text-end">Confirmed</th>
+                  <th class="text-end">Pending</th>
+                  <th class="text-end">Manual review</th>
+                  <th class="text-end">Canceled</th>
+                  <th class="text-end">Capacity</th>
+                  <th class="text-end">Remaining</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in section.rows %}
+                  <tr {% if row.slot_url %}data-href="{{ row.slot_url }}"{% endif %}>
+                    <td class="fw-semibold">{{ row.slot_label }}</td>
+                    <td>{{ row.product.canonical_name|default:"Unmapped product" }}</td>
+                    <td>{{ row.variant.variant_name|default:"Unmapped variant" }}</td>
+                    <td class="text-end">{{ row.confirmed }}</td>
+                    <td class="text-end">{{ row.pending }}</td>
+                    <td class="text-end {% if row.manual_review %}text-danger fw-semibold{% endif %}">{{ row.manual_review }}</td>
+                    <td class="text-end">{{ row.cancelled_count }}</td>
+                    <td class="text-end">{{ row.capacity|default_if_none:"" }}</td>
+                    <td class="text-end fw-semibold {% if row.remaining < 0 %}text-danger{% endif %}">{{ row.remaining|default_if_none:"" }}</td>
+                    <td><span class="badge text-bg-{% if row.status == 'ok' %}success{% elif row.status == 'tight' %}warning{% elif row.status == 'unknown' %}secondary{% else %}danger{% endif %}">{{ row.status }}</span></td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="10" class="text-center tm-muted py-4">No matching slots for this date.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% empty %}
+        <div class="tm-card p-4 text-center tm-muted">No dates in this range.</div>
+      {% endfor %}
+    </section>
   </div>
 {% endblock %}

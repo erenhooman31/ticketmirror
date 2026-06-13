@@ -1,81 +1,384 @@
 {% extends "base/base.html" %}
 {% load booking_extras %}
 
-{% block title %}Dashboard - ticketmirror{% endblock %}
+{% block title %}Home - ticketmirror{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
-    <div>
-      <h1 class="h3 mb-1">Operations dashboard</h1>
-      <div class="tm-muted">Internal booking mirror for {{ today }}</div>
-    </div>
-    <form class="d-flex gap-2" method="get">
-      <input class="form-control" type="date" name="date" value="{{ today|date:'Y-m-d' }}">
-      <button class="btn btn-primary" type="submit">Go</button>
-      <a class="btn btn-outline-secondary" href="{% url 'bookings:daily' %}?date={{ today|date:'Y-m-d' }}">Daily view</a>
-    </form>
-  </div>
+  <div class="tm-bookeo-home">
+    <section class="tm-bookeo-panel tm-bookeo-messages">
+      <div class="tm-bookeo-panel-header">
+        <span class="tm-panel-icon">MSG</span>
+        <span>MESSAGES</span>
+      </div>
+      <div class="tm-bookeo-panel-body">
+        {% for message in dashboard_messages %}
+          <a
+            class="tm-message-row tm-message-{{ message.kind }}"
+            {% if message.href %}href="{{ message.href }}"{% else %}href="#"{% endif %}
+            {% if message.booking and message.modal_id %}data-bs-toggle="modal" data-bs-target="#{{ message.modal_id }}"{% endif %}
+          >
+            <span class="tm-message-symbol"></span>
+            <span class="tm-message-content">
+              <span class="tm-message-title">
+                <strong>{{ message.created_at|date:"D, H:i" }}</strong> - {{ message.title }}
+              </span>
+              {% if message.subtitle %}
+                <span class="tm-message-subtitle">{{ message.subtitle }}</span>
+              {% endif %}
+              {% if message.product %}
+                <span class="tm-message-product">{{ message.product }}</span>
+              {% endif %}
+              {% if message.meta %}
+                <span class="tm-message-meta">{{ message.meta|truncatechars:120 }}</span>
+              {% endif %}
+            </span>
+          </a>
+        {% empty %}
+          <div class="tm-bookeo-empty">No messages yet.</div>
+        {% endfor %}
+      </div>
+      <div class="tm-bookeo-footer">
+        <a class="tm-footer-pill" href="{% url 'review_queue' %}">Review: {{ open_review_count }}</a>
+        <a class="tm-footer-pill" href="{% url 'core:customers' %}">All</a>
+        <a class="tm-footer-pill" href="{% url 'review_queue' %}">Unread</a>
+        <span class="tm-footer-pill tm-footer-disabled">Mark all as read</span>
+      </div>
+    </section>
 
-  <div class="row g-3 mb-4">
-    <div class="col-md-3">
-      <div class="tm-card p-3">
-        <div class="tm-label">Bookings today</div>
-        <div class="tm-kpi">{{ bookings_today_count }}</div>
+    <section class="tm-bookeo-panel tm-bookeo-agenda">
+      <div class="tm-bookeo-panel-header">
+        <span class="tm-panel-icon">CAL</span>
+        <span>AGENDA</span>
       </div>
-    </div>
-    <div class="col-md-3">
-      <div class="tm-card p-3">
-        <div class="tm-label">Confirmed pax</div>
-        <div class="tm-kpi">{{ confirmed_pax_today }}</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="tm-card p-3">
-        <div class="tm-label">Pending pax</div>
-        <div class="tm-kpi">{{ pending_pax_today }}</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="tm-card p-3">
-        <div class="tm-label">Open review</div>
-        <div class="tm-kpi">{{ open_review_count }}</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row g-3">
-    <div class="col-lg-4">
-      <div class="tm-card p-3 h-100">
-        <h2 class="h6">Exceptions</h2>
-        <div class="d-flex justify-content-between border-top py-2">
-          <span>Failed parser emails</span>
-          <strong>{{ failed_parser_count }}</strong>
-        </div>
-        <div class="d-flex justify-content-between border-top py-2">
-          <span>Capacity warnings</span>
-          <strong>{{ capacity_warning_count }}</strong>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-8">
-      <div class="tm-card p-3">
-        <h2 class="h6">Booking status</h2>
-        <table class="table table-sm mb-0">
-          <thead>
-            <tr><th>Status</th><th class="text-end">Count</th></tr>
-          </thead>
-          <tbody>
-            {% for row in status_counts %}
-              <tr>
-                <td><span class="badge text-bg-{{ row.status|status_class }}">{{ row.status }}</span></td>
-                <td class="text-end">{{ row.count }}</td>
-              </tr>
+      <div class="tm-bookeo-panel-body">
+        {% for section in agenda_sections %}
+          <div class="tm-agenda-day">
+            <h2>{{ section.label }}</h2>
+            {% for row in section.rows %}
+              <a class="tm-agenda-row tm-agenda-{{ row.status }}" href="{{ row.slot_url }}">
+                <span class="tm-agenda-dot"></span>
+                <span class="tm-agenda-main">
+                  <span class="tm-agenda-title">
+                    <strong>{{ row.time }}</strong> - {{ row.title }}
+                  </span>
+                  <span class="tm-agenda-meta">
+                    {{ row.booked }} booked{% if row.pending %}, {{ row.pending }} pending{% endif %}{% if row.manual_review %}, {{ row.manual_review }} review{% endif %}{% if row.available is not None %}, {{ row.available }} available{% else %}, capacity not set{% endif %}
+                  </span>
+                </span>
+                <span class="tm-agenda-plus">+</span>
+              </a>
             {% empty %}
-              <tr><td colspan="2" class="tm-muted">No bookings yet.</td></tr>
+              <div class="tm-bookeo-empty">No agenda slots for this date.</div>
             {% endfor %}
-          </tbody>
-        </table>
+          </div>
+        {% endfor %}
       </div>
-    </div>
+      <div class="tm-bookeo-footer tm-agenda-controls">
+        <a class="tm-footer-pill" href="{{ previous_url }}">Previous</a>
+        <a class="tm-footer-pill" href="{{ today_url }}">Today</a>
+        {% for option in range_options %}
+          <a class="tm-footer-pill {% if option.active %}active{% endif %}" href="{{ option.url }}">{{ option.days }} day{% if option.days != 1 %}s{% endif %}</a>
+        {% endfor %}
+        <a class="tm-footer-pill" href="{{ next_url }}">Next</a>
+        <form class="tm-date-form" method="get">
+          <input type="date" name="date" value="{{ selected_date|date:'Y-m-d' }}">
+          <input type="hidden" name="range" value="{{ range_days }}">
+          <button type="submit">Go</button>
+        </form>
+        <a class="tm-footer-pill" href="{% url 'bookings:daily' %}?date={{ selected_date|date:'Y-m-d' }}&range={{ range_days }}">Calendar</a>
+        <a class="tm-footer-pill" href="{% url 'reports:daily_manifest_csv' %}?date={{ selected_date|date:'Y-m-d' }}">Print</a>
+      </div>
+    </section>
   </div>
+
+  {% for message in dashboard_messages %}
+    {% if message.booking and message.modal_id %}
+      {% with booking=message.booking modal_id=message.modal_id %}
+        <div class="modal fade tm-booking-modal" id="{{ modal_id }}" tabindex="-1" aria-labelledby="{{ modal_id }}-title" aria-hidden="true">
+          <div class="modal-dialog modal-xl modal-dialog-centered">
+            <form class="modal-content" method="post" action="{% url 'bookings:edit' booking.id %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <div class="modal-header tm-booking-modal-header">
+                <h2 class="modal-title" id="{{ modal_id }}-title">
+                  {{ booking.lead_traveler_name|default:"Booking" }}:
+                  {{ booking.active_travel_date|date:"d F Y" }}
+                  {% if booking.active_start_time %}{{ booking.active_start_time|time:"H:i" }}{% endif %}
+                </h2>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body tm-booking-modal-body">
+                <div class="tm-booking-modal-main">
+                  <ul class="nav nav-tabs tm-booking-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link active" id="{{ modal_id }}-booking-tab" data-bs-toggle="tab" data-bs-target="#{{ modal_id }}-booking" type="button" role="tab">Booking</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="{{ modal_id }}-traveler-tab" data-bs-toggle="tab" data-bs-target="#{{ modal_id }}-traveler" type="button" role="tab">Traveler</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="{{ modal_id }}-notes-tab" data-bs-toggle="tab" data-bs-target="#{{ modal_id }}-notes" type="button" role="tab">Notes *</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="{{ modal_id }}-audit-tab" data-bs-toggle="tab" data-bs-target="#{{ modal_id }}-audit" type="button" role="tab">Audit</button>
+                    </li>
+                  </ul>
+
+                  <div class="tab-content tm-booking-tab-content">
+                    <div class="tab-pane fade show active" id="{{ modal_id }}-booking" role="tabpanel" aria-labelledby="{{ modal_id }}-booking-tab" tabindex="0">
+                      <fieldset class="tm-modal-fieldset">
+                        <legend>What</legend>
+                        <table class="tm-modal-form-table">
+                          <tbody>
+                            <tr>
+                              <th>Type:</th>
+                              <td>
+                                <select class="form-select form-select-sm" name="canonical_product" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
+                                  <option value="">Unmapped product</option>
+                                  {% for product in product_options %}
+                                    <option value="{{ product.id }}" {% if booking.canonical_product_id == product.id %}selected{% endif %}>{{ product.canonical_name }}</option>
+                                  {% endfor %}
+                                </select>
+                                <select class="form-select form-select-sm mt-1" name="canonical_variant" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
+                                  <option value="">Unmapped variant</option>
+                                  {% for variant in variant_options %}
+                                    <option value="{{ variant.id }}" {% if booking.canonical_variant_id == variant.id %}selected{% endif %}>{{ variant.product.canonical_name }} - {{ variant.variant_name }}</option>
+                                  {% endfor %}
+                                </select>
+                              </td>
+                            </tr>
+                            <tr>
+                              <th>Participants:</th>
+                              <td>
+                                <span class="tm-stepper-label">Adults</span>
+                                <button type="button" disabled>-</button>
+                                <input class="tm-pax-input" type="number" min="0" name="active_traveler_count" value="{{ booking.active_traveler_count|default:booking.provider_traveler_count|default:'0' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>
+                                <button type="button" disabled>+</button>
+                              </td>
+                            </tr>
+                            <tr>
+                              <th>Status:</th>
+                              <td>
+                                <select class="form-select form-select-sm" name="status" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
+                                  {% for value, label in booking_status_options %}
+                                    <option value="{{ value }}" {% if booking.status == value %}selected{% endif %}>{{ label }}</option>
+                                  {% endfor %}
+                                </select>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </fieldset>
+
+                      <fieldset class="tm-modal-fieldset">
+                        <legend>When</legend>
+                        <table class="tm-modal-form-table">
+                          <tbody>
+                            <tr>
+                              <th>Date:</th>
+                              <td><input class="form-control form-control-sm" type="date" name="active_travel_date" value="{{ booking.active_travel_date|date:'Y-m-d' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
+                            </tr>
+                            <tr>
+                              <th>Tour:</th>
+                              <td>
+                                <input class="form-control form-control-sm tm-time-input" type="time" name="active_start_time" value="{{ booking.active_start_time|time:'H:i' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>
+                                <span class="tm-inline-label">End</span>
+                                <input class="form-control form-control-sm tm-time-input" type="time" name="active_end_time" value="{{ booking.active_end_time|time:'H:i' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>
+                              </td>
+                            </tr>
+                            <tr>
+                              <th>Slot type:</th>
+                              <td>
+                                <select class="form-select form-select-sm" name="active_slot_type" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
+                                  <option value="">Default from variant</option>
+                                  {% for value, label in slot_type_options %}
+                                    <option value="{{ value }}" {% if booking.active_slot_type == value %}selected{% endif %}>{{ label }}</option>
+                                  {% endfor %}
+                                </select>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </fieldset>
+
+                      <fieldset class="tm-modal-fieldset">
+                        <legend>How</legend>
+                        <table class="tm-modal-form-table">
+                          <tbody>
+                            <tr>
+                              <th>Created:</th>
+                              <td>by {{ booking.provider.name }}{% if booking.last_email_received_at %}, {{ booking.last_email_received_at|date:"d/m/Y H:i" }}{% endif %}</td>
+                            </tr>
+                            <tr>
+                              <th>External ref:</th>
+                              <td>{{ booking.provider_order_reference|default:"" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Booking number:</th>
+                              <td>{{ booking.provider_booking_reference }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </fieldset>
+                    </div>
+
+                    <div class="tab-pane fade" id="{{ modal_id }}-traveler" role="tabpanel" aria-labelledby="{{ modal_id }}-traveler-tab" tabindex="0">
+                      <fieldset class="tm-modal-fieldset">
+                        <legend>Customer</legend>
+                        <table class="tm-modal-form-table">
+                          <tbody>
+                            <tr>
+                              <th>Name:</th>
+                              <td><input class="form-control form-control-sm" type="text" name="lead_traveler_name" value="{{ booking.lead_traveler_name|default:'' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
+                            </tr>
+                            <tr>
+                              <th>Email:</th>
+                              <td><input class="form-control form-control-sm" type="email" name="lead_traveler_email" value="{{ booking.lead_traveler_email|default:'' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
+                            </tr>
+                            <tr>
+                              <th>Phone:</th>
+                              <td><input class="form-control form-control-sm" type="text" name="lead_traveler_phone" value="{{ booking.lead_traveler_phone|default:'' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
+                            </tr>
+                            <tr>
+                              <th>Language:</th>
+                              <td><input class="form-control form-control-sm" type="text" name="language" value="{{ booking.language|default:'' }}" placeholder="default language" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
+                            </tr>
+                            <tr>
+                              <th>Pickup:</th>
+                              <td><textarea class="form-control form-control-sm" name="pickup_location" rows="2" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>{{ booking.pickup_location|default:"" }}</textarea></td>
+                            </tr>
+                            <tr>
+                              <th>Meeting point:</th>
+                              <td><textarea class="form-control form-control-sm" name="meeting_point" rows="2" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>{{ booking.meeting_point|default:"" }}</textarea></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </fieldset>
+
+                      <h3 class="tm-modal-section-title">Participants</h3>
+                      <fieldset class="tm-modal-fieldset">
+                        <legend>Lead traveler</legend>
+                        <table class="tm-modal-form-table">
+                          <tbody>
+                            <tr>
+                              <th>Select:</th>
+                              <td>{{ booking.lead_traveler_name|default:"not specified" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Names:</th>
+                              <td><textarea class="form-control form-control-sm tm-json-field" name="traveler_names" rows="3" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>{{ booking.traveler_names|json_dumps }}</textarea></td>
+                            </tr>
+                            <tr>
+                              <th>Ticket breakdown:</th>
+                              <td><textarea class="form-control form-control-sm tm-json-field" name="ticket_breakdown" rows="3" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>{{ booking.ticket_breakdown|json_dumps }}</textarea></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </fieldset>
+                    </div>
+
+                    <div class="tab-pane fade" id="{{ modal_id }}-notes" role="tabpanel" aria-labelledby="{{ modal_id }}-notes-tab" tabindex="0">
+                      <p class="tm-modal-help">Notes about this booking. These notes are not shown to the customer.</p>
+                      <fieldset class="tm-modal-fieldset">
+                        <legend>Alert</legend>
+                        <textarea class="form-control form-control-sm" name="special_requirements" rows="2" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>{{ booking.special_requirements|default:"" }}</textarea>
+                      </fieldset>
+                      <fieldset class="tm-modal-fieldset">
+                        <legend>Customer message</legend>
+                        <textarea class="form-control form-control-sm" name="customer_message" rows="3" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>{{ booking.customer_message|default:"" }}</textarea>
+                      </fieldset>
+                      <fieldset class="tm-modal-fieldset">
+                        <legend>Payments</legend>
+                        <table class="tm-modal-form-table">
+                          <tbody>
+                            <tr>
+                              <th>Status:</th>
+                              <td><input class="form-control form-control-sm" type="text" name="payment_status" value="{{ booking.payment_status|default:'' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
+                            </tr>
+                            <tr>
+                              <th>Price:</th>
+                              <td><textarea class="form-control form-control-sm tm-json-field" name="price" rows="3" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>{{ booking.price|json_dumps }}</textarea></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </fieldset>
+                      <table class="table table-sm tm-modal-notes-table">
+                        <tbody>
+                          <tr>
+                            <th>Provider import</th>
+                            <td>
+                              <div>Booking reference: {{ booking.provider_booking_reference }}</div>
+                              {% if booking.raw_product_name %}<div>Raw product: {{ booking.raw_product_name }}</div>{% endif %}
+                              {% if booking.raw_option_name %}<div>Raw option: {{ booking.raw_option_name }}</div>{% endif %}
+                              {% if booking.customer_message %}<div>Customer message: {{ booking.customer_message }}</div>{% endif %}
+                              {% if booking.special_requirements %}<div>Special requirements: {{ booking.special_requirements }}</div>{% endif %}
+                              {% if booking.language %}<div>Language: {{ booking.language }}</div>{% endif %}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div class="tab-pane fade" id="{{ modal_id }}-audit" role="tabpanel" aria-labelledby="{{ modal_id }}-audit-tab" tabindex="0">
+                      <table class="table table-sm tm-modal-audit-table">
+                        <thead>
+                          <tr>
+                            <th>Event</th>
+                            <th>When</th>
+                            <th>Source</th>
+                            <th>Changes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for event in booking.events.all %}
+                            <tr>
+                              <td>{{ event.get_event_type_display }}</td>
+                              <td>{{ event.created_at|date:"d/m/Y H:i" }}</td>
+                              <td>{{ event.get_source_display }}</td>
+                              <td>
+                                {% if event.old_values or event.new_values %}
+                                  <div>Old: {{ event.old_values }}</div>
+                                  <div>New: {{ event.new_values }}</div>
+                                {% endif %}
+                                {% if event.raw_email_id %}
+                                  <a href="{% url 'bookings:raw_email_detail' event.raw_email_id %}">Raw email</a>
+                                {% endif %}
+                              </td>
+                            </tr>
+                          {% empty %}
+                            <tr><td colspan="4" class="tm-muted">No audit events yet.</td></tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <aside class="tm-booking-action-rail">
+                  {% if user.is_superuser or user.profile.can_edit_bookings %}
+                    <label class="tm-action-note">
+                      Audit note
+                      <textarea name="reason" rows="3" required>Edited from dashboard popup.</textarea>
+                    </label>
+                    <button class="tm-action-button primary" type="submit">Save</button>
+                    <button class="tm-action-button" type="button" data-bs-dismiss="modal">Cancel</button>
+                    <a class="tm-action-button" href="{% url 'bookings:edit' booking.id %}">Edit</a>
+                  {% else %}
+                    <button class="tm-action-button primary" type="button" data-bs-dismiss="modal">Close</button>
+                  {% endif %}
+                  <button class="tm-action-button" type="button" onclick="window.print()">Print</button>
+                  <a class="tm-action-button" href="{% url 'bookings:detail' booking.id %}">Open full booking</a>
+                  <div class="tm-send-email-box">
+                    <div>Send email:</div>
+                    <label><input type="checkbox" disabled> customer</label>
+                    <label><input type="checkbox" disabled> other users</label>
+                  </div>
+                </aside>
+              </div>
+            </form>
+          </div>
+        </div>
+      {% endwith %}
+    {% endif %}
+  {% endfor %}
 {% endblock %}
