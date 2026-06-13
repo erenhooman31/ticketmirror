@@ -28,18 +28,53 @@ deterministic parser, and calls `upsert_booking_from_parsed()`.
 
 Do not commit real Gmail credentials. The integration must read credentials from environment variables:
 
+- `GMAIL_MAILBOX`
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
-- `GMAIL_INBOX_LABEL`
+- `GMAIL_PUBSUB_TOPIC`
+- `GMAIL_WEBHOOK_AUDIENCE`
+- `GOOGLE_CLOUD_PROJECT`
 
-The current Gmail module is scaffolding only. A production implementation should use least-privilege OAuth scopes and clear token rotation procedures.
+The Gmail client uses OAuth refresh-token placeholders from the environment and
+normalizes Gmail API messages into the payload shape required by `RawEmail`.
+Tests mock Gmail responses; no real Google credentials are required.
+
+## Gmail Setup Flow
+
+1. Create or choose the dedicated Gmail mailbox used for provider booking mail.
+2. Create a Google Cloud project and Pub/Sub topic for Gmail push notifications.
+3. Configure OAuth credentials with the least-privilege Gmail scopes needed to
+   read messages, history, and manage the mailbox watch.
+4. Store the mailbox address, OAuth client ID, client secret, refresh token,
+   Pub/Sub topic, webhook audience placeholder, and project ID as environment
+   variables. Do not commit real values.
+5. Deploy the application endpoint at `/ingestion/gmail/webhook/`.
+6. Run `python manage.py setup_gmail_watch` to register the Gmail watch.
+7. Run `python manage.py sync_recent_gmail --limit 100` after initial setup or
+   after an outage to queue recent messages for reconciliation.
+8. Run `python manage.py process_pending_emails` to retry raw emails that were
+   stored but not parsed.
+
+The webhook accepts Pub/Sub-style JSON, decodes `message.data`, minimally
+validates `emailAddress` and `historyId`, queues `process_gmail_notification`,
+and returns immediately.
+
+`GmailSyncState` stores the latest processed history ID and watch expiration per
+mailbox. Notification processing lists Gmail history since the stored history
+ID, queues individual message fetches, and updates the sync state after
+successful enqueueing.
 
 ## Error Handling
 
 Parsing failures should update the raw email processing state and preserve the error. Ambiguous product mapping should create a review queue item rather than guessing.
 
 Ingestion code should use database transactions around raw email state changes and booking upserts.
+
+Celery retries Gmail notification processing and message fetches with backoff.
+Duplicate Gmail messages are deduplicated by `RawEmail.gmail_message_id`. Pending
+raw emails can be retried with `process_pending_raw_emails`, and unexpected
+pending-email processing failures create parser-error review queue items.
 
 If a parser cannot find `provider_booking_reference`, ingestion must not create
 a normal booking. The raw email is marked `needs_review` and a

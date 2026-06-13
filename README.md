@@ -81,7 +81,8 @@ Required production values:
 
 - `DJANGO_SECRET_KEY`: Django secret key.
 - `DJANGO_DEBUG`: `false` outside local development.
-- `DJANGO_ALLOWED_HOSTS`: Comma-separated hostnames.
+- `ALLOWED_HOSTS`: Comma-separated hostnames.
+- `CSRF_TRUSTED_ORIGINS`: Comma-separated trusted origins for HTTPS deployments.
 - `DATABASE_URL`: PostgreSQL connection URL.
 - `REDIS_URL`: Redis URL used by the application.
 - `CELERY_BROKER_URL`: Celery broker URL.
@@ -89,10 +90,22 @@ Required production values:
 
 Gmail integration placeholders:
 
+- `GMAIL_MAILBOX`
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
-- `GMAIL_INBOX_LABEL`
+- `GMAIL_PUBSUB_TOPIC`
+- `GMAIL_WEBHOOK_AUDIENCE`
+- `GOOGLE_CLOUD_PROJECT`
+
+Gmail ingestion commands:
+
+```bash
+python manage.py setup_gmail_watch
+python manage.py renew_gmail_watch
+python manage.py sync_recent_gmail --limit 100
+python manage.py process_pending_emails
+```
 
 Do not commit real Gmail credentials or provider secrets.
 

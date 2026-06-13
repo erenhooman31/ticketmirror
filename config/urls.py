@@ -18,6 +18,7 @@ urlpatterns = [
     ),
     path("", include("apps.core.urls")),
     path("bookings/", include("apps.bookings.urls")),
+    path("ingestion/", include("apps.ingestion.urls")),
     path("review/", booking_views.review_queue, name="review_queue"),
     path(
         "review/<int:item_id>/action/",

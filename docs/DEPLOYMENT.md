@@ -19,13 +19,27 @@ Start from `.env.example` and provide real values through environment variables.
 
 - `DJANGO_SECRET_KEY`
 - `DJANGO_DEBUG=false`
-- `DJANGO_ALLOWED_HOSTS`
+- `ALLOWED_HOSTS`
+- `CSRF_TRUSTED_ORIGINS`
 - `DATABASE_URL`
 - `REDIS_URL`
 - `CELERY_BROKER_URL`
 - `CELERY_RESULT_BACKEND`
 
 Gmail integration variables must be provided only through the environment. Never commit real Gmail secrets.
+
+- `GMAIL_MAILBOX`
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_REFRESH_TOKEN`
+- `GMAIL_PUBSUB_TOPIC`
+- `GMAIL_WEBHOOK_AUDIENCE`
+- `GOOGLE_CLOUD_PROJECT`
+
+After deployment, run `python manage.py setup_gmail_watch` once and schedule
+`python manage.py renew_gmail_watch` before the Gmail watch expires. Also
+schedule `daily_reconciliation_sync` through Celery beat or another scheduler so
+recent Gmail messages are re-queued periodically.
 
 ## Release Steps
 

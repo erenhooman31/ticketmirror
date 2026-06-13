@@ -8,12 +8,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(
     DJANGO_DEBUG=(bool, False),
     DJANGO_ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
+    ALLOWED_HOSTS=(list, []),
+    CSRF_TRUSTED_ORIGINS=(list, []),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="unsafe-local-development-key")
 DEBUG = env("DJANGO_DEBUG")
-ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
+ALLOWED_HOSTS = env("ALLOWED_HOSTS") or env("DJANGO_ALLOWED_HOSTS")
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -107,3 +110,7 @@ GMAIL_CLIENT_ID = env("GMAIL_CLIENT_ID", default="")
 GMAIL_CLIENT_SECRET = env("GMAIL_CLIENT_SECRET", default="")
 GMAIL_REFRESH_TOKEN = env("GMAIL_REFRESH_TOKEN", default="")
 GMAIL_INBOX_LABEL = env("GMAIL_INBOX_LABEL", default="INBOX")
+GMAIL_MAILBOX = env("GMAIL_MAILBOX", default="")
+GMAIL_PUBSUB_TOPIC = env("GMAIL_PUBSUB_TOPIC", default="")
+GMAIL_WEBHOOK_AUDIENCE = env("GMAIL_WEBHOOK_AUDIENCE", default="")
+GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", default="")
