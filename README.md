@@ -120,8 +120,12 @@ Do not commit real Gmail credentials or provider secrets.
 
 ## CSV Exports
 
-The reports app contains a placeholder CSV export for bookings:
+The reports app contains CSV exports for bookings, daily manifests, capacity,
+and provider summaries:
 
 ```bash
 /reports/bookings.csv
+/reports/daily-manifest.csv
+/reports/capacity-summary.csv
+/reports/provider-summary.csv
 ```
