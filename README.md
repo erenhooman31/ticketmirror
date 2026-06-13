@@ -76,6 +76,12 @@ black --check .
 ruff check .
 ```
 
+Seed canonical products, variants, capacity rules, and provider aliases:
+
+```bash
+python manage.py seed_products --file data/sample_products.yml
+```
+
 ## Documentation
 
 - [Agent guidance](AGENTS.md)
@@ -83,6 +89,7 @@ ruff check .
 - [Database](docs/DATABASE.md)
 - [Ingestion](docs/INGESTION.md)
 - [Parsers](docs/PARSERS.md)
+- [Product seeds](docs/PRODUCT_SEEDS.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Final review](FINAL_REVIEW.md)
 
