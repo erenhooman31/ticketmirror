@@ -66,6 +66,11 @@ class ActivitySchedule(TimeStampedModel):
         CURRENT = "current", "Current"
         OTHER = "other", "Other"
 
+    class RecurrenceMode(models.TextChoices):
+        WEEKLY = "weekly", "Weekly"
+        DATE_SPECIFIC = "date_specific", "Date specific"
+        MANUAL = "manual", "Manual"
+
     activity = models.ForeignKey(
         TourActivity,
         on_delete=models.CASCADE,
@@ -83,6 +88,12 @@ class ActivitySchedule(TimeStampedModel):
     days_of_week = models.JSONField(default=list, blank=True)
     timezone = models.CharField(max_length=80, default=settings.TIME_ZONE)
     priority = models.PositiveIntegerField(default=100)
+    recurrence_mode = models.CharField(
+        max_length=30,
+        choices=RecurrenceMode.choices,
+        default=RecurrenceMode.WEEKLY,
+    )
+    notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ["activity__name", "schedule_kind", "priority", "date_from"]
@@ -136,6 +147,46 @@ class ActivityScheduleSlot(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.schedule} {self.start_time:%H:%M}"
+
+
+class ActivityScheduleException(TimeStampedModel):
+    class ExceptionType(models.TextChoices):
+        BLOCKED = "blocked", "Blocked"
+        CLOSED = "closed", "Closed"
+        OVERRIDE_CAPACITY = "override_capacity", "Override capacity"
+        EXTRA_SLOT = "extra_slot", "Extra slot"
+        REMOVED_SLOT = "removed_slot", "Removed slot"
+
+    schedule = models.ForeignKey(
+        ActivitySchedule,
+        on_delete=models.CASCADE,
+        related_name="exceptions",
+    )
+    exception_type = models.CharField(max_length=40, choices=ExceptionType.choices)
+    date = models.DateField()
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    capacity = models.PositiveIntegerField(null=True, blank=True)
+    reason = models.TextField(blank=True)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["schedule__activity__name", "date", "start_time", "id"]
+        indexes = [
+            models.Index(
+                fields=["schedule", "date", "active"],
+                name="schedule_exception_date_idx",
+            ),
+            models.Index(
+                fields=["exception_type", "active"],
+                name="schedule_exception_type_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        label = self.get_exception_type_display()
+        time_text = self.start_time.strftime("%H:%M") if self.start_time else "all day"
+        return f"{self.schedule} {self.date} {time_text} {label}"
 
 
 class ActivityPeopleRule(TimeStampedModel):

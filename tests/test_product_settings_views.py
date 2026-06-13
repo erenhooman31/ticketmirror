@@ -7,6 +7,7 @@ from helpers import create_activity_setup
 from apps.accounts.models import UserProfile
 from apps.bookings.models import (
     ActivitySchedule,
+    ActivityScheduleException,
     ActivityScheduleSlot,
     ProviderAlias,
     TourActivity,
@@ -107,6 +108,36 @@ def test_schedule_save_creates_current_schedule_slots(client, users):
         ).duration_minutes
         == 150
     )
+
+
+@pytest.mark.django_db
+def test_schedule_tab_adds_exception(client, users):
+    setup = create_activity_setup(activity_name="Exception Settings Tour", alias=False)
+    activity = setup["activity"]
+    schedule = setup["schedule"]
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "save_schedule_exception",
+            "schedule_id": str(schedule.id),
+            "exception_type": ActivityScheduleException.ExceptionType.EXTRA_SLOT,
+            "date": "2026-06-21",
+            "start_time": "15:00",
+            "end_time": "17:00",
+            "capacity": "40",
+            "reason": "One-off provider opening.",
+            "active": "on",
+        },
+    )
+
+    assert response.status_code == 302
+    exception = ActivityScheduleException.objects.get(schedule=schedule)
+    assert (
+        exception.exception_type == ActivityScheduleException.ExceptionType.EXTRA_SLOT
+    )
+    assert exception.capacity == 40
 
 
 @pytest.mark.django_db

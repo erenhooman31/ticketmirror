@@ -1,19 +1,109 @@
-<form method="post" class="tm-card p-3">
-  {% csrf_token %}
-  <input type="hidden" name="action" value="{{ action }}">
+<section class="tm-card p-3">
   <h2 class="h6">{{ title }}</h2>
-  {% for field in form %}
-    <div class="mb-3 {% if field.field.widget.input_type == 'checkbox' %}form-check{% endif %}">
-      {% if field.field.widget.input_type == 'checkbox' %}
-        {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-      {% else %}
-        <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
-      {% endif %}
-      {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-      {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="{{ action }}">
+    {% for field in form %}
+      <div class="mb-3 {% if field.field.widget.input_type == 'checkbox' %}form-check{% endif %}">
+        {% if field.field.widget.input_type == 'checkbox' %}
+          {{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {% else %}
+          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+        {% endif %}
+        {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+      </div>
+    {% endfor %}
+    {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+    <button class="btn btn-primary" type="submit">Save {{ title|lower }}</button>
+  </form>
+
+<div class="border-top mt-3 pt-3">
+  <h3 class="h6">Configured slots</h3>
+  {% if schedule and schedule.slots.all %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Start</th>
+            <th>End</th>
+            <th>Duration</th>
+            <th>Type</th>
+            <th>Capacity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for slot in schedule.slots.all %}
+            <tr>
+              <td>{{ slot.start_time|time:"H:i" }}</td>
+              <td>{% if slot.end_time %}{{ slot.end_time|time:"H:i" }}{% else %}-{% endif %}</td>
+              <td>{{ slot.duration_minutes }} min</td>
+              <td>{{ slot.get_slot_type_display }}</td>
+              <td>{{ slot.capacity }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-  {% endfor %}
-  {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
-  <button class="btn btn-primary" type="submit">Save {{ title|lower }}</button>
-</form>
+  {% else %}
+    <div class="tm-muted small">No slots configured for this schedule.</div>
+  {% endif %}
+</div>
+
+<div class="border-top mt-3 pt-3">
+  <h3 class="h6">Exceptions and blocked periods</h3>
+  {% if schedule and schedule.exceptions.all %}
+    <div class="vstack gap-2 mb-3">
+      {% for exception in schedule.exceptions.all %}
+        <div class="d-flex flex-wrap justify-content-between gap-2 border-bottom pb-2">
+          <div>
+            <div class="fw-semibold">{{ exception.date }} / {{ exception.get_exception_type_display }}</div>
+            <div class="small tm-muted">
+              {% if exception.start_time %}{{ exception.start_time|time:"H:i" }}{% else %}All times{% endif %}
+              {% if exception.end_time %}-{{ exception.end_time|time:"H:i" }}{% endif %}
+              {% if exception.capacity != None %} / capacity {{ exception.capacity }}{% endif %}
+              {% if not exception.active %} / inactive{% endif %}
+            </div>
+            {% if exception.reason %}<div class="small">{{ exception.reason }}</div>{% endif %}
+          </div>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_schedule_exception">
+            <input type="hidden" name="exception_id" value="{{ exception.id }}">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="tm-muted small mb-3">No exceptions configured for this schedule.</div>
+  {% endif %}
+
+  {% if schedule %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_schedule_exception">
+      <input type="hidden" name="schedule_id" value="{{ schedule.id }}">
+      <div class="row g-3">
+        {% for field in exception_form %}
+          <div class="col-md-6 {% if field.name == 'reason' %}col-md-12{% endif %} {% if field.field.widget.input_type == 'checkbox' %}d-flex align-items-end{% endif %}">
+            {% if field.field.widget.input_type == 'checkbox' %}
+              <label class="form-check mb-0">
+                {{ field }}
+                <span class="form-check-label">{{ field.label }}</span>
+              </label>
+            {% else %}
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+            {% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+      {% for error in exception_form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
+      <button class="btn btn-outline-primary mt-3" type="submit">Add exception</button>
+    </form>
+  {% endif %}
+</div>
+</section>

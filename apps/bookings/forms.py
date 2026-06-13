@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from .models import (
     ActivityPeopleRule,
     ActivitySchedule,
+    ActivityScheduleException,
     ActivityScheduleSlot,
     Booking,
     ProviderAlias,
@@ -132,14 +133,18 @@ class ActivityScheduleSectionForm(forms.ModelForm):
             "days_of_week",
             "timezone",
             "priority",
+            "recurrence_mode",
+            "notes",
         ]
         widgets = {
             "date_from": forms.DateInput(attrs={"type": "date"}),
             "date_to": forms.DateInput(attrs={"type": "date"}),
+            "notes": forms.Textarea(attrs={"rows": 3}),
         }
 
-    def __init__(self, *args, schedule_kind, **kwargs):
+    def __init__(self, *args, schedule_kind, activity=None, **kwargs):
         self.schedule_kind = schedule_kind
+        self.activity = activity
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", "form-control")
@@ -147,6 +152,8 @@ class ActivityScheduleSectionForm(forms.ModelForm):
         self.fields["days_of_week"].help_text = (
             "Use 0-6 where Monday is 0. Leave empty for every day."
         )
+        self.fields["recurrence_mode"].required = False
+        self.fields["notes"].required = False
         if self.instance.pk:
             self.fields["slot_lines"].initial = "\n".join(
                 _slot_to_line(slot)
@@ -177,6 +184,9 @@ class ActivityScheduleSectionForm(forms.ModelForm):
         date_to = cleaned.get("date_to")
         if date_from and date_to and date_to < date_from:
             raise ValidationError("Schedule end date must be after the start date.")
+        if not cleaned.get("recurrence_mode"):
+            cleaned["recurrence_mode"] = ActivitySchedule.RecurrenceMode.WEEKLY
+        self._validate_unresolved_overlap(cleaned)
         cleaned["parsed_slots"] = _parse_slot_lines(
             cleaned.get("slot_lines", ""),
             self.add_error,
@@ -192,6 +202,111 @@ class ActivityScheduleSectionForm(forms.ModelForm):
         for slot in self.cleaned_data["parsed_slots"]:
             ActivityScheduleSlot.objects.create(schedule=schedule, **slot)
         return schedule
+
+    def _validate_unresolved_overlap(self, cleaned):
+        if not self.activity or not cleaned.get("active"):
+            return
+        priority = cleaned.get("priority")
+        if priority is None:
+            return
+        queryset = ActivitySchedule.objects.filter(
+            activity=self.activity,
+            active=True,
+            schedule_kind=self.schedule_kind,
+            priority=priority,
+        )
+        if self.instance.pk:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        date_from = cleaned.get("date_from")
+        date_to = cleaned.get("date_to")
+        for schedule in queryset:
+            if _date_ranges_overlap(
+                date_from,
+                date_to,
+                schedule.date_from,
+                schedule.date_to,
+            ):
+                raise ValidationError(
+                    "Another active schedule of the same type and priority overlaps "
+                    "this date range."
+                )
+
+
+class ActivityScheduleExceptionForm(forms.ModelForm):
+    class Meta:
+        model = ActivityScheduleException
+        fields = [
+            "exception_type",
+            "date",
+            "start_time",
+            "end_time",
+            "capacity",
+            "reason",
+            "active",
+        ]
+        widgets = {
+            "date": forms.DateInput(attrs={"type": "date"}),
+            "start_time": forms.TimeInput(attrs={"type": "time"}),
+            "end_time": forms.TimeInput(attrs={"type": "time"}),
+            "reason": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, schedule=None, **kwargs):
+        self.schedule = schedule
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-control")
+        self.fields["active"].widget.attrs["class"] = "form-check-input"
+        self.fields["capacity"].required = False
+        self.fields["start_time"].required = False
+        self.fields["end_time"].required = False
+        self.fields["reason"].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        exception_type = cleaned.get("exception_type")
+        date = cleaned.get("date")
+        start_time = cleaned.get("start_time")
+        end_time = cleaned.get("end_time")
+        capacity = cleaned.get("capacity")
+
+        if self.schedule and date:
+            if self.schedule.date_from and date < self.schedule.date_from:
+                raise ValidationError("Exception date is before the schedule starts.")
+            if self.schedule.date_to and date > self.schedule.date_to:
+                raise ValidationError("Exception date is after the schedule ends.")
+
+        if start_time and end_time and end_time <= start_time:
+            raise ValidationError("Exception end time must be after start time.")
+
+        capacity_required = {
+            ActivityScheduleException.ExceptionType.EXTRA_SLOT,
+            ActivityScheduleException.ExceptionType.OVERRIDE_CAPACITY,
+        }
+        if exception_type in capacity_required and capacity is None:
+            raise ValidationError("Capacity is required for this exception type.")
+        if capacity is not None and capacity < 0:
+            raise ValidationError("Capacity cannot be negative.")
+        if (
+            exception_type
+            in {
+                ActivityScheduleException.ExceptionType.EXTRA_SLOT,
+                ActivityScheduleException.ExceptionType.REMOVED_SLOT,
+                ActivityScheduleException.ExceptionType.OVERRIDE_CAPACITY,
+            }
+            and not start_time
+        ):
+            raise ValidationError("Start time is required for this exception type.")
+
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.schedule:
+            instance.schedule = self.schedule
+        if commit:
+            instance.save()
+        return instance
 
 
 class ActivityPeopleRuleForm(forms.ModelForm):
@@ -354,3 +469,13 @@ def _end_time(start_time, duration_minutes):
     if end.date() != datetime(2000, 1, 1).date():
         return None
     return end.time()
+
+
+def _date_ranges_overlap(left_from, left_to, right_from, right_to):
+    low = datetime.min.date()
+    high = datetime.max.date()
+    left_start = left_from or low
+    left_end = left_to or high
+    right_start = right_from or low
+    right_end = right_to or high
+    return left_start <= right_end and right_start <= left_end

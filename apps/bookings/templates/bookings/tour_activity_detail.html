@@ -22,10 +22,10 @@
   {% if active_tab == "scheduling" and activity %}
     <div class="row g-3">
       <div class="col-lg-6">
-        {% include "bookings/partials/schedule_form.html" with form=current_schedule_form action="save_current_schedule" title="Current schedule" %}
+        {% include "bookings/partials/schedule_form.html" with form=current_schedule_form action="save_current_schedule" title="Current schedule" schedule=current_schedule exception_form=current_exception_form %}
       </div>
       <div class="col-lg-6">
-        {% include "bookings/partials/schedule_form.html" with form=other_schedule_form action="save_other_schedule" title="Other schedule" %}
+        {% include "bookings/partials/schedule_form.html" with form=other_schedule_form action="save_other_schedule" title="Other schedule" schedule=other_schedule exception_form=other_exception_form %}
       </div>
     </div>
   {% elif active_tab == "people" and activity %}

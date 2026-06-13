@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     ActivityPeopleRule,
     ActivitySchedule,
+    ActivityScheduleException,
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
@@ -30,6 +31,7 @@ class ActivityScheduleInline(admin.TabularInline):
         "date_from",
         "date_to",
         "days_of_week",
+        "recurrence_mode",
         "priority",
     )
     show_change_link = True
@@ -97,9 +99,23 @@ class ActivityScheduleSlotInline(admin.TabularInline):
     )
 
 
+class ActivityScheduleExceptionInline(admin.TabularInline):
+    model = ActivityScheduleException
+    extra = 0
+    fields = (
+        "exception_type",
+        "date",
+        "start_time",
+        "end_time",
+        "capacity",
+        "reason",
+        "active",
+    )
+
+
 @admin.register(ActivitySchedule)
 class ActivityScheduleAdmin(admin.ModelAdmin):
-    inlines = [ActivityScheduleSlotInline]
+    inlines = [ActivityScheduleSlotInline, ActivityScheduleExceptionInline]
     list_display = (
         "activity",
         "schedule_kind",
@@ -107,9 +123,10 @@ class ActivityScheduleAdmin(admin.ModelAdmin):
         "active",
         "date_from",
         "date_to",
+        "recurrence_mode",
         "priority",
     )
-    list_filter = ("schedule_kind", "active", "activity")
+    list_filter = ("schedule_kind", "recurrence_mode", "active", "activity")
     search_fields = ("name", "activity__name")
 
 
@@ -126,6 +143,21 @@ class ActivityScheduleSlotAdmin(admin.ModelAdmin):
     )
     list_filter = ("slot_type", "active", "schedule__activity")
     search_fields = ("schedule__name", "schedule__activity__name")
+
+
+@admin.register(ActivityScheduleException)
+class ActivityScheduleExceptionAdmin(admin.ModelAdmin):
+    list_display = (
+        "schedule",
+        "exception_type",
+        "date",
+        "start_time",
+        "end_time",
+        "capacity",
+        "active",
+    )
+    list_filter = ("exception_type", "active", "schedule__activity")
+    search_fields = ("schedule__name", "schedule__activity__name", "reason")
 
 
 @admin.register(ActivityPeopleRule)

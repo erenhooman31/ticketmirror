@@ -278,6 +278,8 @@ def seed_schedule(activity, schedule_kind, name, active, priority):
             "date_to": None,
             "days_of_week": [],
             "priority": priority,
+            "recurrence_mode": ActivitySchedule.RecurrenceMode.WEEKLY,
+            "notes": "Seeded from Bookeo-inspired scheduling inspection.",
         },
     )
 

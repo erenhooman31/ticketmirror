@@ -29,6 +29,7 @@ from apps.ingestion.models import RawEmail
 
 from .forms import (
     ActivityPeopleRuleForm,
+    ActivityScheduleExceptionForm,
     ActivityScheduleSectionForm,
     BookingEditForm,
     ProviderAliasForm,
@@ -37,6 +38,7 @@ from .forms import (
 from .models import (
     ActivityPeopleRule,
     ActivitySchedule,
+    ActivityScheduleException,
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
@@ -288,6 +290,7 @@ def tour_activity_detail(request, activity_id):
                 request.POST,
                 instance=instance,
                 schedule_kind=schedule_kind,
+                activity=activity,
                 prefix=schedule_kind,
             )
             if form.is_valid():
@@ -305,6 +308,37 @@ def tour_activity_detail(request, activity_id):
                     schedule_forms={schedule_kind: form},
                 ),
             )
+        if action == "save_schedule_exception":
+            schedule = get_object_or_404(
+                ActivitySchedule,
+                id=request.POST.get("schedule_id"),
+                activity=activity,
+            )
+            form = ActivityScheduleExceptionForm(request.POST, schedule=schedule)
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Schedule exception saved.")
+                return _redirect_activity_tab(activity, "scheduling")
+            active_tab = "scheduling"
+            return render(
+                request,
+                "bookings/tour_activity_detail.html",
+                _activity_context(
+                    request,
+                    activity=activity,
+                    active_tab=active_tab,
+                    exception_forms={schedule.id: form},
+                ),
+            )
+        if action == "delete_schedule_exception":
+            exception = get_object_or_404(
+                ActivityScheduleException,
+                id=request.POST.get("exception_id"),
+                schedule__activity=activity,
+            )
+            exception.delete()
+            messages.success(request, "Schedule exception deleted.")
+            return _redirect_activity_tab(activity, "scheduling")
         if action == "save_people":
             form = ActivityPeopleRuleForm(request.POST, instance=people_rule)
             if form.is_valid():
@@ -465,6 +499,7 @@ def _activity_context(
     schedule_forms=None,
     people_form=None,
     alias_form=None,
+    exception_forms=None,
 ):
     current_schedule = (
         _schedule_for_kind(
@@ -483,6 +518,7 @@ def _activity_context(
         else None
     )
     schedule_forms = schedule_forms or {}
+    exception_forms = exception_forms or {}
     return {
         "activity": activity,
         "active_tab": active_tab,
@@ -494,12 +530,14 @@ def _activity_context(
         or ActivityScheduleSectionForm(
             instance=current_schedule,
             schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+            activity=activity,
             prefix=ActivitySchedule.ScheduleKind.CURRENT,
         ),
         "other_schedule_form": schedule_forms.get(ActivitySchedule.ScheduleKind.OTHER)
         or ActivityScheduleSectionForm(
             instance=other_schedule,
             schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+            activity=activity,
             prefix=ActivitySchedule.ScheduleKind.OTHER,
         ),
         "people_form": people_form
@@ -516,6 +554,14 @@ def _activity_context(
         ),
         "current_schedule": current_schedule,
         "other_schedule": other_schedule,
+        "current_exception_form": exception_forms.get(
+            current_schedule.id if current_schedule else None
+        )
+        or ActivityScheduleExceptionForm(schedule=current_schedule),
+        "other_exception_form": exception_forms.get(
+            other_schedule.id if other_schedule else None
+        )
+        or ActivityScheduleExceptionForm(schedule=other_schedule),
         "can_edit_activities": can_mutate(request.user),
     }
 
@@ -672,7 +718,7 @@ def _capacity_rows(
             continue
         if filters["category"] and summary["activity"].category != filters["category"]:
             continue
-        if restrict_to_bookings and slot.id not in allowed_slot_ids:
+        if restrict_to_bookings and (not slot or slot.id not in allowed_slot_ids):
             continue
         rows.append(
             _calendar_row(
@@ -683,7 +729,8 @@ def _capacity_rows(
                 url_params,
             )
         )
-        seen_slot_ids.add(slot.id)
+        if slot:
+            seen_slot_ids.add(slot.id)
 
     for slot_id in allowed_slot_ids - seen_slot_ids:
         slot = ActivityScheduleSlot.objects.select_related(
@@ -717,7 +764,9 @@ def _summary_for_slot(selected_date, slot):
 def _calendar_row(selected_date, summary, filtered_bookings, filters, url_params):
     slot = summary["slot"]
     matching_slot_bookings = [
-        booking for booking in filtered_bookings if booking.schedule_slot_id == slot.id
+        booking
+        for booking in filtered_bookings
+        if slot and booking.schedule_slot_id == slot.id
     ]
     cancelled_count = sum(
         1
@@ -743,9 +792,10 @@ def _calendar_row(selected_date, summary, filtered_bookings, filters, url_params
 
 
 def _calendar_row_sort_key(row):
+    slot = row["slot"]
     return (
         row["date"],
-        row["slot"].start_time,
+        slot.start_time if slot else datetime.max.time(),
         row["activity"].name,
     )
 

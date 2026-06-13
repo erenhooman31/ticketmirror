@@ -1,12 +1,19 @@
 import csv
 from collections.abc import Mapping
+from datetime import time
 from io import StringIO
 from typing import Any
 
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 
-from .models import ActivitySchedule, ActivityScheduleSlot, Booking, BookingEvent
+from .models import (
+    ActivitySchedule,
+    ActivityScheduleException,
+    ActivityScheduleSlot,
+    Booking,
+    BookingEvent,
+)
 
 PROVIDER_TO_ACTIVE_FIELD_MAP = {
     "provider_travel_date": "active_travel_date",
@@ -180,7 +187,7 @@ def get_capacity_for_slot_date(
     confirmed_pax = _sum_pax(bookings, CONFIRMED_CAPACITY_STATUSES)
     pending_pax = _sum_pax(bookings, PENDING_CAPACITY_STATUSES)
     manual_review_pax = _sum_pax(bookings, MANUAL_REVIEW_CAPACITY_STATUSES)
-    capacity = slot.capacity
+    capacity = _capacity_for_slot(slot, service_date)
     remaining = capacity - confirmed_pax
     return {
         "date": service_date,
@@ -216,7 +223,10 @@ def get_daily_capacity_summary(service_date) -> list[dict[str, Any]]:
         for slot in schedule.slots.filter(active=True).select_related(
             "schedule", "schedule__activity"
         ):
+            if _slot_removed_by_exception(slot, service_date):
+                continue
             rows.append(get_capacity_for_slot_date(slot, service_date))
+        rows.extend(_extra_slot_rows(schedule, service_date))
 
     booking_slots = (
         Booking.objects.exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
@@ -225,7 +235,7 @@ def get_daily_capacity_summary(service_date) -> list[dict[str, Any]]:
         .values_list("schedule_slot_id", flat=True)
         .distinct()
     )
-    seen_slot_ids = {row["slot"].id for row in rows}
+    seen_slot_ids = {row["slot"].id for row in rows if row["slot"]}
     for slot in ActivityScheduleSlot.objects.filter(id__in=booking_slots).exclude(
         id__in=seen_slot_ids
     ):
@@ -378,6 +388,12 @@ def slot_label(slot: ActivityScheduleSlot | None) -> str:
     return slot.start_time.strftime("%H:%M")
 
 
+def exception_slot_label(exception: ActivityScheduleException) -> str:
+    if exception.start_time:
+        return f"{exception.start_time:%H:%M} Extra slot"
+    return "Extra slot"
+
+
 def _schedule_precedence_key(schedule):
     date_span = _schedule_date_span(schedule)
     kind_rank = (
@@ -398,6 +414,74 @@ def _schedule_applies_to_weekday(schedule, service_date):
     return service_date.weekday() in schedule.days_of_week
 
 
+def _schedule_exceptions(schedule, service_date):
+    return list(
+        schedule.exceptions.filter(active=True, date=service_date).order_by("id")
+    )
+
+
+def _slot_removed_by_exception(slot, service_date) -> bool:
+    for exception in _schedule_exceptions(slot.schedule, service_date):
+        if exception.exception_type in {
+            ActivityScheduleException.ExceptionType.BLOCKED,
+            ActivityScheduleException.ExceptionType.CLOSED,
+        } and _exception_matches_slot(exception, slot):
+            return True
+        if (
+            exception.exception_type
+            == ActivityScheduleException.ExceptionType.REMOVED_SLOT
+            and _exception_matches_slot(exception, slot)
+        ):
+            return True
+    return False
+
+
+def _capacity_for_slot(slot, service_date) -> int:
+    capacity = slot.capacity
+    for exception in _schedule_exceptions(slot.schedule, service_date):
+        if (
+            exception.exception_type
+            == ActivityScheduleException.ExceptionType.OVERRIDE_CAPACITY
+            and exception.capacity is not None
+            and _exception_matches_slot(exception, slot)
+        ):
+            capacity = exception.capacity
+    return capacity
+
+
+def _exception_matches_slot(exception, slot) -> bool:
+    if exception.start_time is None:
+        return True
+    return exception.start_time == slot.start_time
+
+
+def _extra_slot_rows(schedule, service_date) -> list[dict[str, Any]]:
+    rows = []
+    for exception in _schedule_exceptions(schedule, service_date):
+        if (
+            exception.exception_type
+            != ActivityScheduleException.ExceptionType.EXTRA_SLOT
+        ):
+            continue
+        capacity = exception.capacity or 0
+        rows.append(
+            {
+                "date": service_date,
+                "activity": schedule.activity,
+                "schedule": schedule,
+                "slot": None,
+                "exception": exception,
+                "slot_label": exception_slot_label(exception),
+                "confirmed_pax": 0,
+                "pending_pax": 0,
+                "manual_review_pax": 0,
+                "capacity": capacity,
+                "remaining": capacity,
+            }
+        )
+    return rows
+
+
 def _sum_pax(queryset, statuses: set[str]) -> int:
     return (
         queryset.filter(status__in=statuses).aggregate(
@@ -408,10 +492,14 @@ def _sum_pax(queryset, statuses: set[str]) -> int:
 
 
 def _capacity_row_sort_key(row: dict[str, Any]):
+    slot = row["slot"]
+    exception = row.get("exception")
+    start_time = slot.start_time if slot else exception.start_time or time.max
+    row_id = slot.id if slot else exception.id
     return (
         row["activity"].name,
-        row["slot"].start_time,
-        row["slot"].id,
+        start_time,
+        row_id,
     )
 
 
