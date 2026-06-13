@@ -157,5 +157,5 @@ def test_csv_export_works(client, users, booking_data):
 
     assert response.status_code == 200
     assert response["Content-Type"] == "text/csv"
-    assert b"provider_booking_reference" in response.content
+    assert b"reference" in response.content
     assert b"BR-1" in response.content

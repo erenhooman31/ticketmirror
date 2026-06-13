@@ -25,6 +25,7 @@
           <th>Slot</th>
           <th class="text-end">Confirmed pax</th>
           <th class="text-end">Pending pax</th>
+          <th class="text-end">Manual review pax</th>
           <th class="text-end">Capacity</th>
           <th class="text-end">Remaining</th>
           <th>Status</th>
@@ -35,15 +36,16 @@
           <tr {% if row.slot_url %}data-href="{{ row.slot_url }}"{% endif %}>
             <td>{{ row.product.canonical_name|default:"Unmapped product" }}</td>
             <td>{{ row.variant.variant_name|default:"Unmapped variant" }}</td>
-            <td>{{ row.slot|time:"H:i"|default:"Open" }}</td>
+            <td>{{ row.slot_label }}</td>
             <td class="text-end">{{ row.confirmed }}</td>
             <td class="text-end">{{ row.pending }}</td>
-            <td class="text-end">{{ row.capacity }}</td>
-            <td class="text-end fw-semibold {% if row.remaining < 0 %}text-danger{% endif %}">{{ row.remaining }}</td>
-            <td><span class="badge text-bg-{% if row.status == 'ok' %}success{% elif row.status == 'tight' %}warning{% else %}danger{% endif %}">{{ row.status }}</span></td>
+            <td class="text-end">{{ row.manual_review }}</td>
+            <td class="text-end">{{ row.capacity|default_if_none:"" }}</td>
+            <td class="text-end fw-semibold {% if row.remaining < 0 %}text-danger{% endif %}">{{ row.remaining|default_if_none:"" }}</td>
+            <td><span class="badge text-bg-{% if row.status == 'ok' %}success{% elif row.status == 'tight' %}warning{% elif row.status == 'unknown' %}secondary{% else %}danger{% endif %}">{{ row.status }}</span></td>
           </tr>
         {% empty %}
-          <tr><td colspan="8" class="text-center tm-muted py-4">No bookings for this date.</td></tr>
+          <tr><td colspan="9" class="text-center tm-muted py-4">No bookings for this date.</td></tr>
         {% endfor %}
       </tbody>
     </table>

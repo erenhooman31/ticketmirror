@@ -18,9 +18,11 @@
       <div class="tm-card p-3 h-100">
         <h2 class="h6">Capacity summary</h2>
         <form class="d-flex gap-2" action="{% url 'reports:capacity_summary_csv' %}">
-          <input class="form-control" type="date" name="date" value="{{ today|date:'Y-m-d' }}">
+          <input class="form-control" type="date" name="date_from" value="{{ date_from }}">
+          <input class="form-control" type="date" name="date_to" value="{{ date_to }}">
           <button class="btn btn-primary">CSV</button>
         </form>
+        <a class="btn btn-outline-secondary btn-sm mt-3" href="{% url 'bookings:daily' %}?date={{ today|date:'Y-m-d' }}">Open capacity dashboard</a>
       </div>
     </div>
     <div class="col-md-6">

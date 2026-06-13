@@ -9,7 +9,12 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.bookings.services import apply_manual_override, capacity_snapshot
+from apps.bookings.services import (
+    apply_manual_override,
+    capacity_snapshot,
+    get_daily_capacity_summary,
+    get_slot_bookings,
+)
 from apps.ingestion.models import RawEmail
 
 from .forms import BookingEditForm, ProductAliasForm
@@ -53,50 +58,7 @@ def daily_operations(request):
     if query:
         bookings = _search_bookings(bookings, query)
 
-    groups = {}
-    for booking in bookings:
-        key = (booking.canonical_variant_id, booking.active_start_time)
-        if key not in groups:
-            groups[key] = {
-                "product": booking.canonical_product,
-                "variant": booking.canonical_variant,
-                "slot": booking.active_start_time,
-                "confirmed": 0,
-                "pending": 0,
-                "bookings": [],
-            }
-        groups[key]["bookings"].append(booking)
-        pax = booking.active_traveler_count or 0
-        if booking.status == Booking.Status.CONFIRMED:
-            groups[key]["confirmed"] += pax
-        elif booking.status in {
-            Booking.Status.PENDING_PROVIDER_ACCEPTANCE,
-            Booking.Status.MANUAL_REVIEW,
-        }:
-            groups[key]["pending"] += pax
-
-    rows = []
-    for group in groups.values():
-        variant = group["variant"]
-        if variant:
-            snapshot = capacity_snapshot(
-                product_variant=variant,
-                service_date=selected_date,
-                start_time=group["slot"],
-            )
-            capacity = snapshot["capacity"]
-        else:
-            capacity = 0
-        remaining = capacity - group["confirmed"]
-        rows.append(
-            {
-                **group,
-                "capacity": capacity,
-                "remaining": remaining,
-                "status": _capacity_status(remaining, group["pending"]),
-                "slot_url": _slot_url(selected_date, variant, group["slot"]),
-            }
-        )
+    rows = _capacity_rows(selected_date, bookings, restrict_to_bookings=bool(query))
 
     context = {
         "selected_date": selected_date,
@@ -113,20 +75,12 @@ def slot_detail(request, date, variant_id, time):
         ProductVariant.objects.select_related("product"),
         id=variant_id,
     )
-    slot_time = None if time == "open" else datetime.strptime(time, "%H:%M").time()
-    bookings = (
-        Booking.objects.filter(
-            canonical_variant=variant,
-            active_travel_date=selected_date,
-            active_start_time=slot_time,
-        )
-        .select_related("provider", "canonical_product", "canonical_variant")
-        .order_by("provider__name", "provider_booking_reference")
-    )
+    slot = _parse_slot(time)
+    bookings = get_slot_bookings(selected_date, variant, slot)
     snapshot = capacity_snapshot(
         product_variant=variant,
         service_date=selected_date,
-        start_time=slot_time,
+        start_time=slot,
     )
     return render(
         request,
@@ -134,7 +88,7 @@ def slot_detail(request, date, variant_id, time):
         {
             "selected_date": selected_date,
             "variant": variant,
-            "slot": slot_time,
+            "slot": slot if hasattr(slot, "hour") else None,
             "bookings": bookings,
             "capacity": snapshot,
         },
@@ -324,6 +278,8 @@ def _search_bookings(queryset, query):
 
 
 def _capacity_status(remaining, pending):
+    if remaining is None:
+        return "unknown"
     if remaining < 0:
         return "over"
     if remaining == 0 and pending:
@@ -336,7 +292,7 @@ def _capacity_status(remaining, pending):
 def _slot_url(selected_date, variant, slot):
     if not variant:
         return ""
-    slot_value = slot.strftime("%H:%M") if slot else "open"
+    slot_value = slot.strftime("%H:%M") if hasattr(slot, "strftime") else slot or "open"
     return reverse(
         "bookings:slot_detail",
         kwargs={
@@ -345,6 +301,68 @@ def _slot_url(selected_date, variant, slot):
             "time": slot_value,
         },
     )
+
+
+def _capacity_rows(selected_date, filtered_bookings, *, restrict_to_bookings=False):
+    allowed_keys = {
+        (booking.canonical_variant_id, _slot_for_capacity_view(booking))
+        for booking in filtered_bookings
+        if booking.canonical_variant_id
+    }
+    if restrict_to_bookings and not allowed_keys:
+        return []
+    rows = []
+    for summary in get_daily_capacity_summary(selected_date):
+        key = (summary["variant"].id, summary["slot"])
+        if restrict_to_bookings and key not in allowed_keys:
+            continue
+        rows.append(
+            {
+                "product": summary["product"],
+                "variant": summary["variant"],
+                "slot": summary["slot"],
+                "slot_label": summary["slot_label"],
+                "confirmed": summary["confirmed_pax"],
+                "pending": summary["pending_pax"],
+                "manual_review": summary["manual_review_pax"],
+                "capacity": summary["capacity"],
+                "remaining": summary["remaining"],
+                "status": _capacity_status(
+                    summary["remaining"],
+                    summary["pending_pax"],
+                ),
+                "slot_url": _slot_url(
+                    selected_date,
+                    summary["variant"],
+                    summary["slot"],
+                ),
+            }
+        )
+    return rows
+
+
+def _slot_for_capacity_view(booking):
+    slot_type = booking.active_slot_type or (
+        booking.canonical_variant.slot_type if booking.canonical_variant else ""
+    )
+    if slot_type in {
+        ProductVariant.SlotType.FULL_DAY,
+        ProductVariant.SlotType.HALF_DAY,
+    }:
+        return slot_type
+    if slot_type == ProductVariant.SlotType.FIXED_TIME:
+        return booking.active_start_time
+    if slot_type == ProductVariant.SlotType.PRIVATE_GROUP:
+        return booking.active_start_time or ProductVariant.SlotType.PRIVATE_GROUP
+    return booking.active_start_time or slot_type or None
+
+
+def _parse_slot(value):
+    if value in {"open", "", None}:
+        return None
+    if value in ProductVariant.SlotType.values:
+        return value
+    return datetime.strptime(value, "%H:%M").time()
 
 
 def _record_alias_change(*, alias, user, review_item):
