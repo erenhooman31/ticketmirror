@@ -1,0 +1,78 @@
+{% extends "base/base.html" %}
+
+{% block title %}Customers - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="tm-bookeo-customers">
+    <section class="tm-bookeo-fieldset">
+      <form class="tm-customer-search" method="get">
+        <span class="tm-customer-search-icon">Search</span>
+        <input id="customer-q" type="search" name="q" value="{{ query }}" placeholder="Customer name or email address">
+        {% if letter %}<input type="hidden" name="letter" value="{{ letter }}">{% endif %}
+        <button type="submit">Search</button>
+      </form>
+      <div class="tm-customer-alpha" aria-label="Alphabet filter">
+        {% for option in letters %}
+          <a class="{% if letter == option or not letter and option == 'ALL' %}active{% endif %}" href="{% url 'core:customers' %}?letter={{ option }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ option|lower }}</a>
+        {% endfor %}
+        <span class="tm-customer-count">1 - {{ customer_rows|length }} of {{ customer_rows|length }}</span>
+      </div>
+    </section>
+
+    <section class="tm-customer-directory" aria-label="Customer directory">
+      {% for customer in customer_rows %}
+        <a class="tm-customer-card {% if selected_customer.id == customer.id %}active{% endif %}" href="{% url 'core:customers' %}?customer={{ customer.id }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}{% if letter %}&amp;letter={{ letter }}{% endif %}">
+          <span class="tm-customer-initials">{{ customer.initials }}</span>
+          <span class="tm-customer-main">
+            <span class="tm-customer-name">{{ customer.name }}</span>
+            <span class="tm-customer-email">{{ customer.email }}</span>
+            <span class="tm-customer-phone">{{ customer.phone }}</span>
+          </span>
+        </a>
+      {% empty %}
+        <div class="tm-bookeo-empty">No customers found.</div>
+      {% endfor %}
+    </section>
+
+    {% if selected_customer %}
+      <section class="tm-bookeo-fieldset mt-3">
+        <h2>{{ selected_customer.name }}</h2>
+        <table class="tm-bookeo-dialog-table mb-3">
+          <tbody>
+            <tr><th>Email:</th><td>{{ selected_customer.email }}</td></tr>
+            <tr><th>Phone:</th><td>{{ selected_customer.phone }}</td></tr>
+            <tr><th>Language:</th><td>{{ selected_customer.language }}</td></tr>
+            <tr><th>Bookings:</th><td>{{ selected_customer.bookings|length }}</td></tr>
+            <tr><th>Total people:</th><td>{{ selected_customer.total_pax }}</td></tr>
+          </tbody>
+        </table>
+
+        <h2>Bookings</h2>
+        <div class="table-responsive">
+          <table class="tm-bookeo-other-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Reference</th>
+                <th>Product</th>
+                <th>People</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for booking in selected_customer.bookings %}
+                <tr data-href="{% url 'bookings:detail' booking.id %}">
+                  <td>{% if booking.active_travel_date %}{{ booking.active_travel_date|date:"j/n/Y" }}{% endif %}</td>
+                  <td>{{ booking.provider_booking_reference }}</td>
+                  <td>{{ booking.raw_product_name|default:booking.activity.name }}</td>
+                  <td>{{ booking.active_traveler_count|default:"" }}</td>
+                  <td>{{ booking.get_status_display }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+{% endblock %}

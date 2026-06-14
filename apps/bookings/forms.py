@@ -221,6 +221,11 @@ class OperatorScheduleSectionForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
+        if self.schedule_kind == ActivitySchedule.ScheduleKind.OTHER:
+            if not cleaned.get("schedule_name"):
+                self.add_error("schedule_name", "Name is required.")
+            if not cleaned.get("applies_from"):
+                self.add_error("applies_from", "Start date is required.")
         applies_from = cleaned.get("applies_from")
         applies_until = cleaned.get("applies_until")
         if applies_from and applies_until and applies_until < applies_from:
@@ -333,6 +338,41 @@ class OperatorScheduleSlotForm(forms.Form):
         slot.active = self.cleaned_data["slot_status"] == "active"
         slot.save()
         return slot
+
+
+class DurationForm(forms.Form):
+    DAYS = [(str(day), str(day)) for day in range(8)]
+    HOURS = [(str(hour), str(hour)) for hour in range(25)]
+    MINUTES = [(f"{minute:02d}", f"{minute:02d}") for minute in range(0, 60, 5)]
+
+    days = forms.ChoiceField(choices=DAYS)
+    hours = forms.ChoiceField(choices=HOURS)
+    minutes = forms.ChoiceField(choices=MINUTES)
+
+    def __init__(self, *args, duration_minutes=None, **kwargs):
+        if not args and "initial" not in kwargs:
+            duration_minutes = duration_minutes or 120
+            days, remainder = divmod(duration_minutes, 1440)
+            hours, minutes = divmod(remainder, 60)
+            kwargs["initial"] = {
+                "days": str(min(days, 7)),
+                "hours": str(hours),
+                "minutes": f"{minutes - (minutes % 5):02d}",
+            }
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", "form-select form-select-sm")
+
+    def clean(self):
+        cleaned = super().clean()
+        days = int(cleaned.get("days") or 0)
+        hours = int(cleaned.get("hours") or 0)
+        minutes = int(cleaned.get("minutes") or 0)
+        total = days * 1440 + hours * 60 + minutes
+        if total <= 0:
+            raise forms.ValidationError("Duration must be greater than zero.")
+        cleaned["duration_minutes"] = total
+        return cleaned
 
 
 class OperatorScheduleExceptionForm(forms.Form):

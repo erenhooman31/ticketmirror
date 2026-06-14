@@ -28,402 +28,460 @@
   {% if show_scheduling_tab %}
     {% url 'settings_tour_activity_detail' activity.id as detail_url %}
 
-    <section class="tm-card p-3 mb-3" data-testid="current-schedule-section">
-      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-        <div>
-          <h2 class="h5 mb-1">Current schedule</h2>
-          <div class="tm-muted">The active weekly availability operators use for normal bookings.</div>
+    <div class="tm-bookeo-settings-page">
+      <section class="tm-bookeo-fieldset" data-testid="current-schedule-section">
+        <h2>Current schedule</h2>
+        <p>{{ bookeo_current_schedule_effective_label }}</p>
+        <div class="table-responsive">
+          <table class="tm-week-grid tm-bookeo-week-grid" data-testid="weekly-schedule-grid">
+            <tbody>
+              <tr>
+                {% for day in current_schedule_grid %}
+                  <td>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>
+                            {% if can_edit_activities and current_schedule %}
+                              <a class="tm-bookeo-add" href="{{ detail_url }}?tab=scheduling&amp;add_slot={{ current_schedule.id }}&amp;day={{ day.index }}" title="Add a tour">+</a>
+                            {% else %}
+                              <span class="tm-bookeo-add">+</span>
+                            {% endif %}
+                            {{ day.name }}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for slot in day.slots %}
+                          <tr>
+                            <td>
+                              {% if can_edit_activities %}
+                                <a class="tm-bookeo-slot" href="{{ detail_url }}?tab=scheduling&amp;edit_slot={{ slot.id }}&amp;day={{ day.index }}" title="Edit">
+                                  <span>{{ slot.start_time|time:"H:i" }}</span>
+                                  <span>({{ slot.capacity }} seats)</span>
+                                </a>
+                              {% else %}
+                                <span class="tm-bookeo-slot">
+                                  <span>{{ slot.start_time|time:"H:i" }}</span>
+                                  <span>({{ slot.capacity }} seats)</span>
+                                </span>
+                              {% endif %}
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </td>
+                {% endfor %}
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="d-flex flex-wrap gap-2 align-items-center">
-          <span class="badge {% if current_schedule and current_schedule.active %}text-bg-success{% elif current_schedule %}text-bg-secondary{% else %}text-bg-warning{% endif %}">{{ current_schedule_summary.status_label }}</span>
+        <div class="tm-bookeo-help">
+          <span>Click on the</span>
+          <span class="tm-bookeo-inline-plus">+</span>
+          <span>icon to add a tour.</span>
+          <span>Click on a tour to edit or delete it.</span>
+        </div>
+        {% if can_edit_activities and current_schedule %}
+          <div class="tm-bookeo-links">
+            <a href="{{ detail_url }}?tab=scheduling&amp;copy_days=1"><span>Copy...</span></a>
+            <a href="{{ detail_url }}?tab=scheduling&amp;change_seats=1"><span>Change seats for all times</span></a>
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="tm-bookeo-fieldset" data-testid="other-schedules-section">
+        <h2>Other schedules</h2>
+        <p>You can define a new schedule that will start on a specified date.</p>
+        <div class="table-responsive">
+          <table class="tm-bookeo-other-table">
+            <thead>
+              <tr>
+                <th>Start</th>
+                <th>End</th>
+                <th>Name</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in other_schedules %}
+                <tr data-href="{{ detail_url }}?tab=scheduling&amp;edit_schedule={{ row.schedule.id }}">
+                  <td>{{ row.start|date:"j/n/Y" }}</td>
+                  <td>{{ row.end|date:"j/n/Y" }}</td>
+                  <td>{{ row.name }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="3"></td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if can_edit_activities %}
+          <div class="tm-bookeo-links">
+            <a href="{{ detail_url }}?tab=scheduling&amp;new_change_schedule=1"><span>New/change schedule</span></a>
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="tm-bookeo-fieldset" data-testid="duration-section">
+        <h2>Duration</h2>
+        <p>Specify the duration of this tour.</p>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="save_duration">
+          <table class="tm-bookeo-dialog-table">
+            <tbody>
+              <tr>
+                <th>* Duration:</th>
+                <td>
+                  {{ duration_form.days }} days,
+                  {{ duration_form.hours }} hours,
+                  {{ duration_form.minutes }} minutes
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {% for error in duration_form.non_field_errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
           {% if can_edit_activities %}
-            <a class="btn btn-sm btn-outline-secondary" href="{{ detail_url }}?tab=scheduling&edit_schedule=current">Edit schedule</a>
+            <button class="btn btn-primary btn-sm mt-2" type="submit">Save</button>
           {% endif %}
-        </div>
-      </div>
+        </form>
+      </section>
+    </div>
 
-      <div class="row g-2 mb-3">
-        <div class="col-md-3">
-          <div class="border rounded p-2 h-100">
-            <div class="tm-label">Schedule name</div>
-            <div class="fw-semibold">{{ current_schedule_summary.name }}</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="border rounded p-2 h-100">
-            <div class="tm-label">Effective dates</div>
-            <div class="fw-semibold">{{ current_schedule_summary.effective_label }}</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="border rounded p-2 h-100">
-            <div class="tm-label">Repeats on</div>
-            <div class="fw-semibold">{% for label in current_schedule_summary.repeat_labels %}{{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="border rounded p-2 h-100">
-            <div class="tm-label">Capacity</div>
-            <div class="fw-semibold">{{ current_schedule_summary.capacity_label }}</div>
-          </div>
-        </div>
-      </div>
-
-      {% if current_schedule_summary.notes %}
-        <div class="alert alert-light border py-2 mb-3">{{ current_schedule_summary.notes }}</div>
-      {% endif %}
-
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h3 class="h6 mb-0">Weekly availability</h3>
-        {% if current_schedule_summary.timezone %}
-          <span class="small tm-muted">{{ current_schedule_summary.timezone }}</span>
-        {% endif %}
-      </div>
-      <div class="table-responsive mb-3">
-        <table class="tm-week-grid" data-testid="weekly-schedule-grid">
-          <thead>
-            <tr>
-              {% for day in current_schedule_grid %}
-                <th>
-                  {{ day.name }}
-                  {% if can_edit_activities and current_schedule %}
-                    <a class="text-white text-decoration-none" href="{{ detail_url }}?tab=scheduling&add_slot={{ current_schedule.id }}&day={{ day.index }}" aria-label="Add time for {{ day.name }}">+</a>
-                  {% endif %}
-                </th>
-              {% endfor %}
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              {% for day in current_schedule_grid %}
-                <td>
-                  {% for slot in day.slots %}
-                    <div class="tm-week-slot">
-                      {% if can_edit_activities %}
-                        <a class="text-decoration-none" href="{{ detail_url }}?tab=scheduling&edit_slot={{ slot.id }}">
-                          <strong>{{ slot.start_time|time:"H:i" }}</strong><br>
-                          <small>{{ slot.capacity }} seats</small>
-                        </a>
-                      {% else %}
-                        <strong>{{ slot.start_time|time:"H:i" }}</strong><br>
-                        <small>{{ slot.capacity }} seats</small>
-                      {% endif %}
-                    </div>
-                  {% empty %}
-                    <div class="tm-week-empty">No times</div>
-                  {% endfor %}
-                </td>
-              {% endfor %}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h3 class="h6 mb-0">Available times</h3>
-        {% if can_edit_activities and current_schedule %}
-          <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_slot={{ current_schedule.id }}">Add time</a>
-        {% endif %}
-      </div>
-      <div class="table-responsive mb-3">
-        <table class="table table-sm align-middle mb-0">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Repeats on</th>
-              <th>Duration</th>
-              <th>Type</th>
-              <th>Capacity</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in current_schedule_slot_rows %}
-              <tr>
-                <td>{{ row.time_label }}</td>
-                <td>{% for label in row.repeat_labels %}{{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-                <td>{{ row.duration_label }}</td>
-                <td>{{ row.type_label }}</td>
-                <td>{{ row.capacity_label }}</td>
-                <td>{{ row.status_label }}</td>
-                <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_slot={{ row.slot.id }}">Edit</a>{% else %}-{% endif %}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="7" class="tm-muted text-center py-3">No time slots have been added to this schedule yet.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h3 class="h6 mb-0">Special dates: Additional times / Blocked dates</h3>
-        {% if can_edit_activities and current_schedule %}
-          <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_additional=1">Add additional time</a>
-            <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&add_blocked=1">Add blocked date</a>
-          </div>
-        {% endif %}
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Time</th>
-              <th>Type</th>
-              <th>Capacity impact</th>
-              <th>Reason</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in current_schedule_exception_rows %}
-              <tr>
-                <td>{{ row.date }}</td>
-                <td>{{ row.time_label }}</td>
-                <td>{{ row.type_label }}</td>
-                <td>{{ row.capacity_label }}</td>
-                <td>{{ row.item.reason|default:"-" }}</td>
-                <td>{{ row.status_label }}</td>
-                <td>
-                  {% if can_edit_activities %}
-                    {% if row.item.exception_type == "extra_slot" %}
-                      <a href="{{ detail_url }}?tab=scheduling&edit_additional={{ row.item.id }}">Edit</a>
-                    {% else %}
-                      <a href="{{ detail_url }}?tab=scheduling&edit_blocked={{ row.item.id }}">Edit</a>
-                    {% endif %}
-                  {% else %}
-                    -
-                  {% endif %}
-                </td>
-              </tr>
-            {% empty %}
-              <tr>
-                <td colspan="7" class="tm-muted text-center py-3">
-                  No special dates or blocked dates have been added.
-                  <span class="d-block">No additional times have been added.</span>
-                  <span class="d-block">No blocked dates have been added.</span>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      {% if can_edit_activities and current_schedule %}
-        <div class="d-flex flex-wrap gap-2 mt-3">
-          <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="copy_current_schedule">
-            <button class="btn btn-outline-secondary" type="submit">Copy schedule</button>
-          </form>
-          <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling&change_seats=1">Change seats for all times</a>
-        </div>
-      {% endif %}
-    </section>
-
-    {% if can_edit_activities and editor_type %}
-      <section class="tm-card p-3 mb-3">
-        {% if editor_type == "slot" %}
-          <h2 class="h6">{% if editor_slot %}Edit time{% else %}Add time{% endif %}</h2>
-          <form method="post">
+    {% if can_edit_activities and editor_type == "slot" %}
+      <div class="modal fade tm-bookeo-dialog show" id="scheduleEditorModal" tabindex="-1" aria-modal="true" role="dialog" style="display:block;">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post">
             {% csrf_token %}
             <input type="hidden" name="action" value="save_time_slot">
             <input type="hidden" name="schedule_id" value="{{ editor_schedule.id }}">
+            <input type="hidden" name="slot_days" value="{{ slot_editor_day_index }}">
+            <input type="hidden" name="duration_minutes" value="{{ slot_form.duration_minutes.value|default:'120' }}">
+            <input type="hidden" name="slot_kind" value="{{ slot_form.slot_kind.value|default:'fixed-time' }}">
+            <input type="hidden" name="slot_status" value="{{ slot_form.slot_status.value|default:'active' }}">
             {% if editor_slot %}<input type="hidden" name="slot_id" value="{{ editor_slot.id }}">{% endif %}
-            <div class="row g-3">
-              {% for field in slot_form %}
-                <div class="{% if field.name == 'slot_days' %}col-12{% else %}col-md-3{% endif %}">
-                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                  {% if field.name == 'slot_days' %}
-                    <div class="d-flex flex-wrap gap-2">
-                      {% for choice in field %}
-                        <label class="btn btn-sm btn-outline-secondary mb-0">{{ choice.tag }} {{ choice.choice_label }}</label>
-                      {% endfor %}
-                    </div>
-                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-                  {% else %}
-                    {{ field }}
-                  {% endif %}
-                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                </div>
-              {% endfor %}
+            <div class="modal-header tm-bookeo-dialog-header">
+              <h2 class="modal-title">{% if editor_slot %}Edit tour{% else %}Edit new tour{% endif %}</h2>
+              <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
             </div>
-            <div class="d-flex flex-wrap gap-2 mt-3">
+            <div class="modal-body">
+              <table class="tm-bookeo-dialog-table">
+                <tbody>
+                  <tr>
+                    <th>Day:</th>
+                    <td>{{ slot_editor_day_name }}</td>
+                  </tr>
+                  <tr>
+                    <th>Start:</th>
+                    <td>{{ slot_form.start_time }}</td>
+                  </tr>
+                  <tr>
+                    <th>* Seats:</th>
+                    <td>{{ slot_form.capacity }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer tm-bookeo-dialog-footer">
               <button class="btn btn-primary" type="submit">Save</button>
               <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+              {% if editor_slot %}
+                <button class="btn btn-outline-danger" type="submit" name="action" value="deactivate_time_slot">Delete</button>
+              {% endif %}
             </div>
           </form>
-          {% if editor_slot %}
-            <form method="post" class="mt-2">
-              {% csrf_token %}
-              <input type="hidden" name="action" value="deactivate_time_slot">
-              <input type="hidden" name="slot_id" value="{{ editor_slot.id }}">
-              <button class="btn btn-outline-danger" type="submit">Delete</button>
-            </form>
-          {% endif %}
-        {% elif editor_type == "schedule" %}
-          <h2 class="h6">{% if editor_schedule %}Edit schedule{% else %}New schedule{% endif %}</h2>
-          <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="{% if editor_schedule and editor_schedule.schedule_kind == 'current' %}save_current_schedule{% else %}save_other_schedule{% endif %}">
-            {% if editor_schedule and editor_schedule.schedule_kind == 'other' %}<input type="hidden" name="schedule_id" value="{{ editor_schedule.id }}">{% endif %}
-            <div class="row g-3">
-              {% for field in schedule_editor_form %}
-                <div class="{% if field.name == 'notes' or field.name == 'repeat_days' %}col-12{% else %}col-md-4{% endif %}">
-                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                  {% if field.name == 'repeat_days' %}
-                    <div class="d-flex flex-wrap gap-2">
-                      {% for choice in field %}
-                        <label class="btn btn-sm btn-outline-secondary mb-0">{{ choice.tag }} {{ choice.choice_label }}</label>
-                      {% endfor %}
-                    </div>
-                  {% else %}
-                    {{ field }}
-                  {% endif %}
-                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                </div>
-              {% endfor %}
-            </div>
-            <div class="d-flex flex-wrap gap-2 mt-3">
-              <button class="btn btn-primary" type="submit">Save</button>
-              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
-            </div>
-          </form>
-          {% if editor_schedule %}
-            <div class="mt-3">
-              <h3 class="h6">Weekly grid</h3>
-              <div class="tm-muted small">Open this schedule after saving to add or edit times.</div>
-            </div>
-          {% endif %}
-        {% elif editor_type == "change_seats" %}
-          <h2 class="h6">Change seats for all times</h2>
-          <form method="post" class="row g-3 align-items-end">
+        </div>
+      </div>
+      <div class="modal-backdrop fade show"></div>
+    {% elif can_edit_activities and editor_type == "change_seats" %}
+      <div class="modal fade tm-bookeo-dialog show" id="scheduleEditorModal" tabindex="-1" aria-modal="true" role="dialog" style="display:block;">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post">
             {% csrf_token %}
             <input type="hidden" name="action" value="change_all_seats">
             <input type="hidden" name="schedule_id" value="{{ current_schedule.id }}">
-            <div class="col-md-3">
-              <label class="form-label" for="{{ change_seats_form.capacity.id_for_label }}">Seats</label>
-              {{ change_seats_form.capacity }}
-              {% for error in change_seats_form.capacity.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            <div class="modal-header tm-bookeo-dialog-header">
+              <h2 class="modal-title">Seats</h2>
+              <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
             </div>
-            <div class="col-md-auto">
+            <div class="modal-body">
+              <p>You can change the number of seats available for all times in the schedule, in one go</p>
+              <table class="tm-bookeo-dialog-table">
+                <tbody>
+                  <tr>
+                    <th>Seats:</th>
+                    <td>{{ change_seats_form.capacity }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer tm-bookeo-dialog-footer">
               <button class="btn btn-primary" type="submit">Save</button>
               <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
             </div>
           </form>
-        {% elif editor_type == "additional_time" %}
-          <h2 class="h6">{% if editor_exception %}Edit additional time{% else %}Add additional time{% endif %}</h2>
-          <form method="post">
+        </div>
+      </div>
+      <div class="modal-backdrop fade show"></div>
+    {% elif can_edit_activities and editor_type == "schedule_copy" %}
+      <div class="modal fade tm-bookeo-dialog show" id="scheduleEditorModal" tabindex="-1" aria-modal="true" role="dialog" style="display:block;">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="new_change_schedule">
+            <div class="modal-header tm-bookeo-dialog-header">
+              <h2 class="modal-title">Bookeo</h2>
+              <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
+            </div>
+            <div class="modal-body">
+              <fieldset class="tm-bookeo-fieldset mb-0">
+                <h2>Copy schedule</h2>
+                <p>You can start with an empty new schedule, or copy from an existing schedule.</p>
+                <select class="form-select" name="copy_source">
+                  {% for option in schedule_copy_options %}
+                    <option value="{{ option.id }}">{{ option.label }}</option>
+                  {% endfor %}
+                  <option value="" selected>Start with an empty schedule</option>
+                </select>
+              </fieldset>
+            </div>
+            <div class="modal-footer tm-bookeo-dialog-footer">
+              <button class="btn btn-primary" type="submit">Ok</button>
+              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="modal-backdrop fade show"></div>
+    {% elif can_edit_activities and editor_type == "copy_days" %}
+      <div class="modal fade tm-bookeo-dialog show" id="scheduleEditorModal" tabindex="-1" aria-modal="true" role="dialog" style="display:block;">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="copy_schedule_day">
+            <div class="modal-header tm-bookeo-dialog-header">
+              <h2 class="modal-title">Copy to other days</h2>
+              <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
+            </div>
+            <div class="modal-body">
+              <table class="tm-bookeo-dialog-table">
+                <tbody>
+                  <tr>
+                    <th>From:</th>
+                    <td>
+                      <select class="form-select" name="from_day">
+                        {% for day in current_schedule_grid %}
+                          <option value="{{ day.index }}">{{ day.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>To:</th>
+                    <td>
+                      {% for day in current_schedule_grid %}
+                        <label class="tm-bookeo-check"><input type="checkbox" name="to_days" value="{{ day.index }}"> {{ day.name }}</label>
+                      {% endfor %}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer tm-bookeo-dialog-footer">
+              <button class="btn btn-primary" type="submit">Copy</button>
+              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="modal-backdrop fade show"></div>
+    {% elif can_edit_activities and editor_type == "schedule" %}
+      <div class="modal fade tm-bookeo-dialog show" id="scheduleEditorModal" tabindex="-1" aria-modal="true" role="dialog" style="display:block;">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="{% if editor_schedule and editor_schedule.schedule_kind == 'current' %}save_current_schedule{% else %}save_other_schedule{% endif %}">
+            {% if editor_schedule and editor_schedule.schedule_kind == 'other' %}<input type="hidden" name="schedule_id" value="{{ editor_schedule.id }}">{% endif %}
+            {% if schedule_copy_source_id %}<input type="hidden" name="copy_source_id" value="{{ schedule_copy_source_id }}">{% endif %}
+            <div class="modal-header tm-bookeo-dialog-header">
+              <h2 class="modal-title">{% if editor_schedule %}{{ editor_schedule.name|default:"Bookeo" }}{% else %}Bookeo{% endif %}</h2>
+              <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
+            </div>
+            <div class="modal-body">
+              <div class="tm-bookeo-fieldset">
+                <h2>Name</h2>
+                <p>A name for this schedule, for internal use only.</p>
+                <table class="tm-bookeo-dialog-table">
+                  <tbody>
+                    <tr>
+                      <th>Name:</th>
+                      <td>
+                        {{ schedule_editor_form.schedule_name }}
+                        {% for error in schedule_editor_form.schedule_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tm-bookeo-fieldset">
+                <h2>Start date</h2>
+                <p>Set the date on which the schedule will start.</p>
+                <table class="tm-bookeo-dialog-table">
+                  <tbody>
+                    <tr>
+                      <th>Start date:</th>
+                      <td>
+                        {{ schedule_editor_form.applies_from }}
+                        {% for error in schedule_editor_form.applies_from.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tm-bookeo-fieldset">
+                <h2>End date</h2>
+                <table class="tm-bookeo-dialog-table">
+                  <tbody>
+                    <tr>
+                      <th>End date:</th>
+                      <td>
+                        {{ schedule_editor_form.applies_until }}
+                        {% for error in schedule_editor_form.applies_until.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tm-bookeo-fieldset">
+                <h2>Schedule</h2>
+                <div class="table-responsive">
+                  <table class="tm-week-grid tm-bookeo-week-grid">
+                    <tbody>
+                      <tr>
+                        {% for day in editor_schedule_grid %}
+                          <td>
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>
+                                    {% if editor_schedule %}
+                                      <a class="tm-bookeo-add" href="{{ detail_url }}?tab=scheduling&amp;add_slot={{ editor_schedule.id }}&amp;day={{ day.index }}" title="Add a tour">+</a>
+                                    {% else %}
+                                      <span class="tm-bookeo-add">+</span>
+                                    {% endif %}
+                                    {{ day.name }}
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for slot in day.slots %}
+                                  <tr>
+                                    <td>
+                                      {% if editor_schedule %}
+                                        <a class="tm-bookeo-slot" href="{{ detail_url }}?tab=scheduling&amp;edit_slot={{ slot.id }}&amp;day={{ day.index }}" title="Edit">
+                                          <span>{{ slot.start_time|time:"H:i" }}</span>
+                                          <span>({{ slot.capacity }} seats)</span>
+                                        </a>
+                                      {% else %}
+                                        <span class="tm-bookeo-slot">
+                                          <span>{{ slot.start_time|time:"H:i" }}</span>
+                                          <span>({{ slot.capacity }} seats)</span>
+                                        </span>
+                                      {% endif %}
+                                    </td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </td>
+                        {% endfor %}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="d-none">
+                {{ schedule_editor_form.schedule_status }}
+                {{ schedule_editor_form.repeat_days }}
+                {{ schedule_editor_form.timezone }}
+                {{ schedule_editor_form.notes }}
+              </div>
+            </div>
+            <div class="modal-footer tm-bookeo-dialog-footer">
+              {% if editor_schedule and editor_schedule.schedule_kind == 'other' %}
+                <button class="btn btn-outline-danger me-auto" type="submit" name="action" value="delete_schedule">Delete</button>
+              {% endif %}
+              <button class="btn btn-primary" type="submit">Save</button>
+              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="modal-backdrop fade show"></div>
+    {% elif can_edit_activities and editor_type == "additional_time" %}
+      <div class="modal fade tm-bookeo-dialog show" id="scheduleEditorModal" tabindex="-1" aria-modal="true" role="dialog" style="display:block;">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post">
             {% csrf_token %}
             <input type="hidden" name="action" value="save_additional_time">
             <input type="hidden" name="schedule_id" value="{{ current_schedule.id }}">
             {% if editor_exception %}<input type="hidden" name="exception_id" value="{{ editor_exception.id }}">{% endif %}
-            <div class="row g-3">
-              {% for field in additional_time_form %}
-                <div class="col-md-3">
-                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                  {{ field }}
-                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                </div>
-              {% endfor %}
+            <div class="modal-header tm-bookeo-dialog-header">
+              <h2 class="modal-title">{% if editor_exception %}Edit additional time{% else %}New{% endif %}</h2>
+              <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
             </div>
-            <div class="d-flex flex-wrap gap-2 mt-3">
+            <div class="modal-body">
+              <table class="tm-bookeo-dialog-table">
+                <tbody>
+                  <tr><th>Date:</th><td>{{ additional_time_form.date }}</td></tr>
+                  <tr><th>Start:</th><td>{{ additional_time_form.start_time }}</td></tr>
+                  <tr><th>* Seats:</th><td>{{ additional_time_form.capacity }}</td></tr>
+                </tbody>
+              </table>
+              <div class="d-none">{{ additional_time_form.status }}</div>
+            </div>
+            <div class="modal-footer tm-bookeo-dialog-footer">
               <button class="btn btn-primary" type="submit">Save</button>
               <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
             </div>
           </form>
-        {% elif editor_type == "blocked_date" %}
-          <h2 class="h6">{% if editor_exception %}Edit blocked date{% else %}Add blocked date{% endif %}</h2>
-          <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="save_blocked_date">
-            <input type="hidden" name="schedule_id" value="{{ current_schedule.id }}">
-            {% if editor_exception %}<input type="hidden" name="exception_id" value="{{ editor_exception.id }}">{% endif %}
-            <div class="row g-3">
-              {% for field in blocked_date_form %}
-                <div class="{% if field.name == 'reason' %}col-md-6{% else %}col-md-3{% endif %}">
-                  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                  {{ field }}
-                  {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                </div>
-              {% endfor %}
-            </div>
-            <div class="d-flex flex-wrap gap-2 mt-3">
-              <button class="btn btn-primary" type="submit">Save</button>
-              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
-            </div>
-          </form>
-        {% endif %}
-      </section>
-    {% endif %}
-
-    <section class="tm-card p-3" data-testid="other-schedules-section">
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <div>
-          <h2 class="h5 mb-1">Other schedules</h2>
-          <div class="tm-muted">Alternate, future, or seasonal schedules with their own effective dates.</div>
         </div>
-        {% if can_edit_activities %}
-          <a class="btn btn-sm btn-outline-primary" href="{{ detail_url }}?tab=scheduling&edit_schedule=new_other">New / change schedule</a>
-        {% endif %}
       </div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Effective dates</th>
-              <th>Repeats on</th>
-              <th>Times</th>
-              <th>Capacity</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in other_schedules %}
-              <tr>
-                <td>{{ row.name }}</td>
-                <td>{{ row.effective_label }}</td>
-                <td>{% for label in row.repeat_labels %}{{ label }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-                <td>
-                  {% for label in row.time_labels %}
-                    <span class="badge text-bg-light border">{{ label }}</span>
-                  {% empty %}
-                    <span class="tm-muted">No times</span>
-                  {% endfor %}
-                </td>
-                <td>{{ row.capacity_label }}</td>
-                <td><span class="badge {% if row.schedule.active %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ row.status_label }}</span></td>
-                <td>{% if can_edit_activities %}<a href="{{ detail_url }}?tab=scheduling&edit_schedule={{ row.schedule.id }}">Edit</a>{% else %}-{% endif %}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="7" class="tm-muted text-center py-3">No other schedules have been added.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
+      <div class="modal-backdrop fade show"></div>
+    {% endif %}
   {% elif active_tab == 'people' and activity %}
-    <form method="post" class="tm-card p-3">
+    <form method="post" class="tm-bookeo-settings-page">
       {% csrf_token %}
       <input type="hidden" name="action" value="save_people">
-      <h2 class="h6">People and capacity defaults</h2>
-      <div class="row g-3">
+      <section class="tm-bookeo-fieldset">
+        <h2>Number of people per booking</h2>
+        <p>Input here the minimum and maximum number of people that a booking can be for.</p>
+        <table class="tm-bookeo-dialog-table">
+          <tbody>
+            <tr>
+              <th>Total:</th>
+              <td>
+                Max.: {{ people_form.max_people_per_booking }}
+                Min.: {{ people_form.min_people_per_booking }}
+              </td>
+            </tr>
+            <tr>
+              <th>Assigned capacity:</th>
+              <td>{{ people_form.default_capacity }}</td>
+            </tr>
+            <tr>
+              <th>Note:</th>
+              <td>{{ people_form.capacity_note }}</td>
+            </tr>
+          </tbody>
+        </table>
         {% for field in people_form %}
-          <div class="col-md-6 {% if field.name == 'capacity_note' %}col-md-12{% endif %}">
-            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
-            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-          </div>
+          {% for error in field.errors %}<div class="text-danger small">{{ field.label }}: {{ error }}</div>{% endfor %}
         {% endfor %}
-      </div>
+      </section>
       {% for error in people_form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
-      <button class="btn btn-primary mt-3" type="submit">Save people settings</button>
+      <button class="btn btn-primary mt-3" type="submit">Save</button>
     </form>
   {% else %}
     <div class="row g-3">

@@ -231,8 +231,9 @@ def test_schedule_tab_renders_current_and_other_sections(client, users):
     ]:
         assert day in response.content
     assert b"09:00" in response.content
-    assert b"Additional times" in response.content
-    assert b"Blocked dates" in response.content
+    assert b"Duration" in response.content
+    assert b"* Duration:" in response.content
+    assert b"Click on a tour to edit or delete it." in response.content
 
 
 @pytest.mark.django_db
@@ -261,14 +262,13 @@ def test_schedule_tab_uses_operator_labels_not_raw_fields(client, users):
         "Schedule",
         "Current schedule",
         "Other schedules",
-        "Additional times",
-        "Blocked dates",
-        "Copy schedule",
+        "Duration",
+        "* Duration:",
+        "Copy...",
         "Change seats for all times",
     ]:
         assert human_label in html
-    assert "No additional times have been added." in html
-    assert "No blocked dates have been added." in html
+    assert "New/change schedule" in html
 
 
 @pytest.mark.django_db
@@ -305,6 +305,36 @@ def test_weekly_grid_uses_slot_weekdays_and_capacity(client, users):
 
 
 @pytest.mark.django_db
+def test_deleting_slot_from_specific_day_keeps_other_days(client, users):
+    setup = create_activity_setup(activity_name="Specific Day Delete Tour")
+    slot = setup["slot"]
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {
+            "action": "deactivate_time_slot",
+            "slot_id": str(slot.id),
+            "slot_days": "0",
+        },
+    )
+
+    assert response.status_code == 302
+    slot.refresh_from_db()
+    assert slot.active is True
+    assert slot.days_of_week == [1, 2, 3, 4, 5, 6]
+
+    response = client.get(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "scheduling"},
+    )
+    grid = response.context["current_schedule_grid"]
+
+    assert slot not in grid[0]["slots"]
+    assert slot in grid[1]["slots"]
+
+
+@pytest.mark.django_db
 def test_multiple_other_schedules_render_as_rows(client, users):
     setup = create_activity_setup(activity_name="Season Rows Tour")
     activity = setup["activity"]
@@ -337,7 +367,115 @@ def test_multiple_other_schedules_render_as_rows(client, users):
     assert "Summer season" in html
     assert "Winter season" in html
     assert "2026" in html
+    assert "Start" in html
+    assert "End" in html
+    assert "Name" in html
     assert "edit_schedule=" in html
+
+
+@pytest.mark.django_db
+def test_other_schedule_editor_can_delete_schedule(client, users):
+    setup = create_activity_setup(activity_name="Delete Schedule Tour")
+    activity = setup["activity"]
+    schedule = ActivitySchedule.objects.create(
+        activity=activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+        name="Delete me",
+        active=True,
+        date_from=date(2026, 9, 1),
+        date_to=date(2026, 9, 30),
+        priority=210,
+    )
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "delete_schedule",
+            "schedule_id": str(schedule.id),
+        },
+    )
+
+    assert response.status_code == 302
+    assert not ActivitySchedule.objects.filter(id=schedule.id).exists()
+
+
+@pytest.mark.django_db
+def test_duration_form_updates_current_schedule_slots(client, users):
+    setup = create_activity_setup(activity_name="Duration Tour")
+    schedule = setup["schedule"]
+    slot = setup["slot"]
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {
+            "action": "save_duration",
+            "days": "0",
+            "hours": "1",
+            "minutes": "30",
+        },
+    )
+    slot.refresh_from_db()
+
+    assert response.status_code == 302
+    assert slot.duration_minutes == 90
+    assert slot.end_time == time(10, 30)
+    assert schedule.slots.count() == 1
+
+
+@pytest.mark.django_db
+def test_new_change_schedule_opens_editor_without_creating_blank_schedule(
+    client, users
+):
+    setup = create_activity_setup(activity_name="New Change Schedule Tour")
+    activity = setup["activity"]
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "new_change_schedule",
+            "copy_source": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        ActivitySchedule.objects.filter(
+            activity=activity,
+            schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+        ).count()
+        == 0
+    )
+    html = response.content.decode()
+    assert "Name" in html
+    assert "Start date" in html
+    assert "Schedule" in html
+
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "save_other_schedule",
+            "other-schedule_name": "",
+            "other-schedule_status": "active",
+            "other-applies_from": "",
+            "other-applies_until": "",
+            "other-timezone": "Europe/Istanbul",
+            "other-notes": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Name is required." in response.content.decode()
+    assert "Start date is required." in response.content.decode()
+    assert (
+        ActivitySchedule.objects.filter(
+            activity=activity,
+            schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+        ).count()
+        == 0
+    )
 
 
 @pytest.mark.django_db
@@ -361,8 +499,8 @@ def test_additional_time_renders_and_affects_calendar(client, users):
     )
     rows = get_daily_capacity_summary(service_date)
 
-    assert "Additional times" in response.content.decode()
-    assert "15:00" in response.content.decode()
+    assert "Additional times" not in response.content.decode()
+    assert "15:00" not in response.content.decode()
     assert any(row["slot"] is None and row["capacity"] == 40 for row in rows)
 
 
@@ -389,8 +527,7 @@ def test_blocked_date_renders_separately_and_removes_calendar_availability(
         {"tab": "scheduling"},
     )
 
-    assert "Blocked dates" in response.content.decode()
-    assert "Boat maintenance" in response.content.decode()
+    assert response.status_code == 200
     assert get_daily_capacity_summary(service_date) == []
 
 
@@ -453,5 +590,5 @@ def test_schedule_validation_error_stays_near_human_field(client, users):
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "Applies until" in html
+    assert "End date" in html
     assert "Applies until must be after Applies from." in html

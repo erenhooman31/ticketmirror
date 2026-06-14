@@ -31,6 +31,7 @@ from .forms import (
     ActivityPeopleRuleForm,
     BookingEditForm,
     ChangeSeatsForm,
+    DurationForm,
     OperatorAdditionalTimeForm,
     OperatorBlockedDateForm,
     OperatorScheduleExceptionForm,
@@ -61,7 +62,11 @@ def daily_operations(request):
     selected_date = _parse_date(request.GET.get("date")) or timezone.localdate()
     range_days = _parse_range_days(request.GET.get("range"))
     query = request.GET.get("q", "").strip()
+    view_mode = request.GET.get("view", "rows")
+    if view_mode not in {"rows", "boxes"}:
+        view_mode = "rows"
     filters = _calendar_filters(request)
+    filters["view"] = view_mode
     date_range = _date_range(selected_date, range_days)
     base_bookings = (
         Booking.objects.filter(active_travel_date__in=date_range)
@@ -102,6 +107,7 @@ def daily_operations(request):
             for days in sorted(ALLOWED_RANGE_DAYS)
         ],
         "query": query,
+        "view_mode": view_mode,
         "filters": filters,
         "day_sections": day_sections,
         "rows": day_sections[0]["rows"] if day_sections else [],
@@ -112,12 +118,20 @@ def daily_operations(request):
         "previous_url": _calendar_url(
             base_params,
             date=selected_date - timedelta(days=range_days),
+            view=view_mode,
         ),
-        "today_url": _calendar_url(base_params, date=timezone.localdate()),
+        "today_url": _calendar_url(
+            base_params,
+            date=timezone.localdate(),
+            view=view_mode,
+        ),
         "next_url": _calendar_url(
             base_params,
             date=selected_date + timedelta(days=range_days),
+            view=view_mode,
         ),
+        "rows_view_url": _calendar_url(base_params, view="rows"),
+        "boxes_view_url": _calendar_url(base_params, view="boxes"),
     }
     return render(request, "bookings/daily.html", context)
 
@@ -308,6 +322,13 @@ def tour_activity_detail(request, activity_id):
             )
             if form.is_valid():
                 schedule = form.save(activity=activity)
+                if instance is None and request.POST.get("copy_source_id"):
+                    source_schedule = get_object_or_404(
+                        ActivitySchedule,
+                        id=request.POST["copy_source_id"],
+                        activity=activity,
+                    )
+                    _copy_schedule_slots(source_schedule, schedule)
                 if (
                     schedule.schedule_kind == ActivitySchedule.ScheduleKind.OTHER
                     and schedule.priority == 100
@@ -327,6 +348,7 @@ def tour_activity_detail(request, activity_id):
                     schedule_forms={schedule_kind: form},
                     editor_type="schedule",
                     editor_schedule=instance,
+                    schedule_copy_source_id=request.POST.get("copy_source_id", ""),
                 ),
             )
         if action == "copy_current_schedule":
@@ -336,6 +358,104 @@ def tour_activity_detail(request, activity_id):
             if current_schedule:
                 _copy_schedule_to_other(current_schedule)
                 messages.success(request, "Current schedule copied.")
+            return _redirect_activity_tab(activity, "scheduling")
+        if action == "copy_schedule_day":
+            current_schedule = _schedule_for_kind(
+                activity, ActivitySchedule.ScheduleKind.CURRENT
+            )
+            if current_schedule:
+                copied = _copy_schedule_day(
+                    current_schedule,
+                    request.POST.get("from_day"),
+                    request.POST.getlist("to_days"),
+                )
+                messages.success(request, f"Copied schedule to {copied} day(s).")
+            return _redirect_activity_tab(activity, "scheduling")
+        if action == "new_change_schedule":
+            current_schedule = _schedule_for_kind(
+                activity, ActivitySchedule.ScheduleKind.CURRENT
+            )
+            source_id = request.POST.get("copy_source", "")
+            initial = {
+                "schedule_status": "active",
+                "timezone": current_schedule.timezone if current_schedule else "",
+            }
+            if source_id:
+                source_schedule = get_object_or_404(
+                    ActivitySchedule,
+                    id=source_id,
+                    activity=activity,
+                )
+                initial.update(
+                    {
+                        "schedule_name": source_schedule.name,
+                        "repeat_days": [
+                            str(day) for day in source_schedule.days_of_week or []
+                        ],
+                        "timezone": source_schedule.timezone,
+                        "notes": source_schedule.notes,
+                    }
+                )
+            form = OperatorScheduleSectionForm(
+                schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+                activity=activity,
+                prefix=ActivitySchedule.ScheduleKind.OTHER,
+                initial=initial,
+            )
+            return render(
+                request,
+                "bookings/tour_activity_detail.html",
+                _activity_context(
+                    request,
+                    activity=activity,
+                    active_tab="scheduling",
+                    schedule_forms={ActivitySchedule.ScheduleKind.OTHER: form},
+                    editor_type="schedule",
+                    editor_schedule=None,
+                    schedule_copy_source_id=source_id,
+                ),
+            )
+        if action == "save_duration":
+            current_schedule = _schedule_for_kind(
+                activity, ActivitySchedule.ScheduleKind.CURRENT
+            )
+            form = DurationForm(request.POST)
+            if form.is_valid() and current_schedule:
+                duration_minutes = form.cleaned_data["duration_minutes"]
+                for slot in current_schedule.slots.filter(active=True):
+                    slot.duration_minutes = duration_minutes
+                    slot.end_time = _slot_end_time(
+                        slot.start_time,
+                        duration_minutes,
+                    )
+                    slot.save(
+                        update_fields=[
+                            "duration_minutes",
+                            "end_time",
+                            "updated_at",
+                        ]
+                    )
+                messages.success(request, "Duration saved.")
+                return _redirect_activity_tab(activity, "scheduling")
+            return render(
+                request,
+                "bookings/tour_activity_detail.html",
+                _activity_context(
+                    request,
+                    activity=activity,
+                    active_tab="scheduling",
+                    duration_form=form,
+                ),
+            )
+        if action == "delete_schedule":
+            schedule = get_object_or_404(
+                ActivitySchedule,
+                id=request.POST.get("schedule_id"),
+                activity=activity,
+                schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+            )
+            schedule.delete()
+            messages.success(request, "Schedule deleted.")
             return _redirect_activity_tab(activity, "scheduling")
         if action == "change_all_seats":
             schedule = get_object_or_404(
@@ -396,8 +516,7 @@ def tour_activity_detail(request, activity_id):
                 id=request.POST.get("slot_id"),
                 schedule__activity=activity,
             )
-            slot.active = False
-            slot.save(update_fields=["active", "updated_at"])
+            _deactivate_slot_for_day(slot, request.POST.get("slot_days"))
             messages.success(request, "Available time deactivated.")
             return _redirect_activity_tab(activity, "scheduling")
         if action == "save_additional_time":
@@ -678,10 +797,12 @@ def _activity_context(
     additional_time_form=None,
     blocked_date_form=None,
     change_seats_form=None,
+    duration_form=None,
     editor_type=None,
     editor_schedule=None,
     editor_slot=None,
     editor_exception=None,
+    schedule_copy_source_id="",
 ):
     current_schedule = (
         _schedule_for_kind(
@@ -705,7 +826,7 @@ def _activity_context(
         list(
             activity.schedules.filter(schedule_kind=ActivitySchedule.ScheduleKind.OTHER)
             .prefetch_related("slots", "exceptions")
-            .order_by("date_from", "priority", "id")
+            .order_by("-date_from", "-priority", "-id")
         )
         if activity
         else []
@@ -768,6 +889,16 @@ def _activity_context(
             ActivityScheduleException.ExceptionType.CLOSED,
         },
     )
+    editor_grid_schedule = editor_schedule
+    if not editor_grid_schedule and schedule_copy_source_id:
+        editor_grid_schedule = (
+            ActivitySchedule.objects.filter(
+                id=schedule_copy_source_id,
+                activity=activity,
+            )
+            .prefetch_related("slots")
+            .first()
+        )
     return {
         "activity": activity,
         "active_tab": active_tab,
@@ -799,6 +930,16 @@ def _activity_context(
         "other_schedules": [
             _other_schedule_row(schedule) for schedule in other_schedules
         ],
+        "bookeo_current_schedule_effective_label": (
+            _bookeo_current_schedule_effective_label(current_schedule)
+        ),
+        "duration_form": duration_form
+        or DurationForm(duration_minutes=_schedule_duration_minutes(current_schedule)),
+        "schedule_copy_options": [
+            _schedule_copy_option(schedule, current_schedule)
+            for schedule in list(other_schedules)
+            + ([current_schedule] if current_schedule else [])
+        ],
         "current_schedule_grid": _weekly_grid(current_schedule),
         "additional_times": [
             _exception_row(exception) for exception in additional_times
@@ -808,6 +949,10 @@ def _activity_context(
         "editor_schedule": editor_schedule,
         "editor_slot": editor_slot,
         "editor_exception": editor_exception,
+        "editor_schedule_grid": _weekly_grid(editor_grid_schedule),
+        "schedule_copy_source_id": schedule_copy_source_id,
+        "slot_editor_day_index": _slot_editor_day_index(request, editor_slot),
+        "slot_editor_day_name": _slot_editor_day_name(request, editor_slot),
         "slot_form": slot_forms.get(
             editor_slot.id
             if editor_slot
@@ -945,6 +1090,18 @@ def _schedule_editor_context(
             blocked_date_form,
             change_seats_form,
         )
+    if request.GET.get("new_change_schedule"):
+        return (
+            "schedule_copy",
+            None,
+            None,
+            None,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
+        )
     if request.GET.get("change_seats"):
         return (
             "change_seats",
@@ -956,6 +1113,18 @@ def _schedule_editor_context(
             additional_time_form,
             blocked_date_form,
             ChangeSeatsForm(),
+        )
+    if request.GET.get("copy_days"):
+        return (
+            "copy_days",
+            current_schedule,
+            None,
+            None,
+            current_schedule_form,
+            other_schedule_form,
+            additional_time_form,
+            blocked_date_form,
+            change_seats_form,
         )
     if request.GET.get("edit_additional"):
         editor_exception = get_object_or_404(
@@ -1056,6 +1225,32 @@ def _slot_form_for_editor(editor_type, editor_schedule, editor_slot, request):
         initial["slot_kind"] = "fixed-time"
         initial["capacity"] = first_slot.capacity
     return OperatorScheduleSlotForm(initial=initial)
+
+
+def _slot_editor_day_index(request, slot):
+    day = request.GET.get("day")
+    if day not in {None, ""}:
+        try:
+            value = int(day)
+        except ValueError:
+            return 0
+        return value if value in range(7) else 0
+    if slot and slot.days_of_week:
+        return slot.days_of_week[0]
+    return 0
+
+
+def _slot_editor_day_name(request, slot):
+    day_names = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+    return day_names[_slot_editor_day_index(request, slot)]
 
 
 def _weekly_grid(schedule):
@@ -1189,6 +1384,22 @@ def _other_schedule_row(schedule):
     }
 
 
+def _schedule_copy_option(schedule, current_schedule):
+    start = _bookeo_short_date(schedule.date_from)
+    end = _bookeo_short_date(schedule.date_to)
+    current = (
+        " (current schedule)"
+        if current_schedule and schedule.id == current_schedule.id
+        else ""
+    )
+    source_name = schedule.name or schedule.get_schedule_kind_display()
+    label = f"Copy from {source_name} ({start} - {end} ){current}"
+    return {
+        "id": schedule.id,
+        "label": label,
+    }
+
+
 def _next_schedule_priority(activity):
     existing = (
         activity.schedules.filter(schedule_kind=ActivitySchedule.ScheduleKind.OTHER)
@@ -1214,9 +1425,14 @@ def _copy_schedule_to_other(schedule):
         recurrence_mode=schedule.recurrence_mode,
         notes=schedule.notes,
     )
-    for slot in schedule.slots.all():
+    _copy_schedule_slots(schedule, copy)
+    return copy
+
+
+def _copy_schedule_slots(source_schedule, target_schedule):
+    for slot in source_schedule.slots.all():
         ActivityScheduleSlot.objects.create(
-            schedule=copy,
+            schedule=target_schedule,
             start_time=slot.start_time,
             end_time=slot.end_time,
             duration_minutes=slot.duration_minutes,
@@ -1225,7 +1441,80 @@ def _copy_schedule_to_other(schedule):
             days_of_week=slot.days_of_week,
             active=slot.active,
         )
-    return copy
+
+
+def _copy_schedule_day(schedule, from_day, to_days):
+    try:
+        source_day = int(from_day)
+    except (TypeError, ValueError):
+        source_day = 0
+    target_days = []
+    for value in to_days:
+        try:
+            day = int(value)
+        except (TypeError, ValueError):
+            continue
+        if day in range(7) and day != source_day and day not in target_days:
+            target_days.append(day)
+    source_slots = [
+        slot
+        for slot in schedule.slots.filter(active=True).order_by("start_time", "id")
+        if not slot.days_of_week or source_day in slot.days_of_week
+    ]
+    for target_day in target_days:
+        for slot in source_slots:
+            target = (
+                schedule.slots.filter(
+                    start_time=slot.start_time,
+                    days_of_week=[target_day],
+                )
+                .order_by("id")
+                .first()
+            )
+            if target:
+                target.end_time = slot.end_time
+                target.duration_minutes = slot.duration_minutes
+                target.slot_type = slot.slot_type
+                target.capacity = slot.capacity
+                target.active = slot.active
+                target.save()
+            else:
+                ActivityScheduleSlot.objects.create(
+                    schedule=schedule,
+                    start_time=slot.start_time,
+                    end_time=slot.end_time,
+                    duration_minutes=slot.duration_minutes,
+                    slot_type=slot.slot_type,
+                    capacity=slot.capacity,
+                    days_of_week=[target_day],
+                    active=slot.active,
+                )
+    return len(target_days)
+
+
+def _deactivate_slot_for_day(slot, day_value):
+    try:
+        day = int(day_value)
+    except (TypeError, ValueError):
+        day = None
+    if day not in range(7):
+        slot.active = False
+        slot.save(update_fields=["active", "updated_at"])
+        return
+
+    if not slot.days_of_week:
+        slot.days_of_week = [index for index in range(7) if index != day]
+        slot.save(update_fields=["days_of_week", "updated_at"])
+        return
+
+    remaining_days = [index for index in slot.days_of_week if index != day]
+    if remaining_days:
+        slot.days_of_week = remaining_days
+        slot.save(update_fields=["days_of_week", "updated_at"])
+        return
+
+    slot.active = False
+    slot.save(update_fields=["active", "updated_at"])
 
 
 def _schedule_effective_label(schedule):
@@ -1236,6 +1525,54 @@ def _schedule_effective_label(schedule):
     if schedule.date_to:
         return f"Until {schedule.date_to:%b %d, %Y}"
     return "No date limits"
+
+
+def _bookeo_current_schedule_effective_label(schedule):
+    if not schedule or (not schedule.date_from and not schedule.date_to):
+        return "This schedule has no date limits"
+    if schedule.date_from and schedule.date_to:
+        starts = _bookeo_long_date(schedule.date_from)
+        ends = _bookeo_long_date(schedule.date_to)
+        return f"This schedule is effective from {starts} to {ends}"
+    if schedule.date_from:
+        return (
+            f"This schedule is effective from {_bookeo_long_date(schedule.date_from)}"
+        )
+    return f"This schedule is effective until {_bookeo_long_date(schedule.date_to)}"
+
+
+def _schedule_duration_minutes(schedule):
+    if not schedule:
+        return 120
+    slot = next(
+        (
+            slot
+            for slot in schedule.slots.all()
+            if slot.active and slot.duration_minutes
+        ),
+        None,
+    )
+    return slot.duration_minutes if slot else 120
+
+
+def _slot_end_time(start_time, duration_minutes):
+    base_date = datetime.today().date()
+    end_datetime = datetime.combine(base_date, start_time) + timedelta(
+        minutes=duration_minutes,
+    )
+    if end_datetime.date() != base_date:
+        return None
+    return end_datetime.time()
+
+
+def _bookeo_long_date(value):
+    return f"{value:%A}, {value.day} {value:%B %Y}"
+
+
+def _bookeo_short_date(value):
+    if not value:
+        return ""
+    return f"{value.day}/{value.month}/{value.year}"
 
 
 def _schedule_repeat_labels(schedule):
@@ -1515,6 +1852,8 @@ def _base_calendar_params(selected_date, range_days, filters):
         params["activity"] = str(filters["activity"])
     if filters["provider"]:
         params["provider"] = str(filters["provider"])
+    if filters.get("view"):
+        params["view"] = filters["view"]
     return params
 
 

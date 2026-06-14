@@ -332,3 +332,43 @@ def test_csv_export_works(client, users, booking_data):
     assert response["Content-Type"] == "text/csv"
     assert b"reference" in response.content
     assert b"BR-1" in response.content
+
+
+@pytest.mark.django_db
+def test_customers_directory_search_alpha_and_detail(client, users, booking_data):
+    second_alex = create_booking(
+        booking_data,
+        "BR-2",
+        status=Booking.Status.CONFIRMED,
+        pax=1,
+        lead_name="Alex Sample",
+    )
+    second_alex.lead_traveler_email = booking_data["booking"].lead_traveler_email
+    second_alex.lead_traveler_phone = booking_data["booking"].lead_traveler_phone
+    second_alex.save(update_fields=["lead_traveler_email", "lead_traveler_phone"])
+    create_booking(
+        booking_data,
+        "BR-3",
+        status=Booking.Status.CONFIRMED,
+        pax=3,
+        lead_name="Bella Guest",
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:customers"), {"q": "alex"})
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Customers" in html
+    assert "Alphabet filter" in html
+    assert "Alex Sample" in html
+    assert "Bella Guest" not in html
+    assert "Total people:" in html
+    assert "BR-1" in html
+    assert "BR-2" in html
+
+    alpha_response = client.get(reverse("core:customers"), {"letter": "B"})
+    alpha_html = alpha_response.content.decode()
+
+    assert "Bella Guest" in alpha_html
+    assert "Alex Sample" not in alpha_html

@@ -13,7 +13,7 @@
       <a class="btn btn-outline-secondary" href="{{ previous_url }}">Previous</a>
       <a class="btn btn-outline-secondary" href="{{ today_url }}">Today</a>
       <a class="btn btn-outline-secondary" href="{{ next_url }}">Next</a>
-      <a class="btn btn-primary" href="{% url 'reports:daily_manifest_csv' %}?date={{ selected_date|date:'Y-m-d' }}">Manifest CSV</a>
+      <a class="btn btn-primary" href="{% url 'reports:daily_manifest_csv' %}?date={{ selected_date|date:'Y-m-d' }}">Print</a>
     </div>
   </div>
 
@@ -106,6 +106,11 @@
               <a class="btn btn-sm {% if option.active %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ option.url }}">{{ option.days }} day{% if option.days != 1 %}s{% endif %}</a>
             {% endfor %}
           </div>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-sm {% if view_mode == 'rows' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ rows_view_url }}">Rows</a>
+            <a class="btn btn-sm {% if view_mode == 'boxes' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ boxes_view_url }}">Boxes</a>
+            <span class="btn btn-sm {% if filters.show_cancelled %}btn-outline-secondary{% else %}btn-outline-secondary disabled{% endif %}">Canceled</span>
+          </div>
           <div class="small tm-muted">
             Capacity stays slot-wide when provider or search filters are active.
           </div>
@@ -121,7 +126,21 @@
             </div>
           </div>
           <div class="table-responsive">
-            <table class="table table-hover tm-table tm-schedule-table mb-0">
+            {% if view_mode == 'boxes' %}
+              <div class="tm-calendar-box-grid">
+                {% for row in section.rows %}
+                  <a class="tm-calendar-box tm-calendar-box-{{ row.status }}" href="{{ row.slot_url }}">
+                    <span class="tm-calendar-box-time">{{ row.slot_label }}</span>
+                    <span class="tm-calendar-box-title">{{ row.activity.name|default:"Unmapped activity" }}</span>
+                    <span class="tm-calendar-box-meta">{{ row.confirmed }} booked{% if row.cancelled_count %}, {{ row.cancelled_count }} canceled{% endif %}</span>
+                    <span class="tm-calendar-box-meta">{{ row.remaining|default_if_none:"" }} available</span>
+                  </a>
+                {% empty %}
+                  <div class="tm-bookeo-empty">No matching slots for this date.</div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <table class="table table-hover tm-table tm-schedule-table mb-0">
               <thead>
                 <tr>
                   <th>Time</th>
@@ -154,7 +173,8 @@
                   <tr><td colspan="10" class="text-center tm-muted py-4">No matching slots for this date.</td></tr>
                 {% endfor %}
               </tbody>
-            </table>
+              </table>
+            {% endif %}
           </div>
         </div>
       {% empty %}

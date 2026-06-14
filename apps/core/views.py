@@ -120,7 +120,33 @@ def search(request):
 
 @login_required
 def customers(request):
-    return search(request)
+    query = request.GET.get("q", "").strip()
+    letter = request.GET.get("letter", "").strip().upper()
+    selected_id = request.GET.get("customer")
+    bookings = (
+        Booking.objects.exclude(lead_traveler_name__isnull=True)
+        .exclude(lead_traveler_name="")
+        .select_related("provider", "activity", "schedule_slot")
+        .order_by("lead_traveler_name", "-active_travel_date")
+    )
+    if query:
+        bookings = _search_customer_bookings(bookings, query)
+    if letter and letter != "ALL":
+        bookings = bookings.filter(lead_traveler_name__istartswith=letter)
+
+    customer_rows = _customer_rows(bookings)
+    selected_customer = _selected_customer(customer_rows, selected_id)
+    return render(
+        request,
+        "core/customers.html",
+        {
+            "query": query,
+            "letter": letter,
+            "letters": ["ALL", *[chr(code) for code in range(ord("A"), ord("Z") + 1)]],
+            "customer_rows": customer_rows,
+            "selected_customer": selected_customer,
+        },
+    )
 
 
 @login_required
@@ -235,6 +261,81 @@ def _settings_sections(user):
         }
     )
     return sections
+
+
+def _customer_rows(bookings):
+    rows_by_key = {}
+    for booking in bookings:
+        key = _customer_key(booking)
+        row = rows_by_key.setdefault(
+            key,
+            {
+                "key": key,
+                "id": booking.id,
+                "name": booking.lead_traveler_name or "",
+                "initials": _customer_initials(booking.lead_traveler_name or ""),
+                "phone": booking.lead_traveler_phone or "",
+                "email": booking.lead_traveler_email or "",
+                "language": booking.language or "",
+                "bookings": [],
+                "last_booking": None,
+                "total_pax": 0,
+            },
+        )
+        row["bookings"].append(booking)
+        row["total_pax"] += booking.active_traveler_count or 0
+        if not row["last_booking"] or _booking_sort_date(booking) > _booking_sort_date(
+            row["last_booking"]
+        ):
+            row["last_booking"] = booking
+    return list(rows_by_key.values())
+
+
+def _customer_key(booking):
+    email = (booking.lead_traveler_email or "").strip().lower()
+    if email:
+        return f"email:{email}"
+    phone = (booking.lead_traveler_phone or "").strip().lower()
+    if phone:
+        return f"phone:{phone}"
+    return f"name:{(booking.lead_traveler_name or '').strip().lower()}"
+
+
+def _customer_initials(name):
+    parts = [part for part in name.replace(",", " ").split() if part]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return f"{parts[0][0]}{parts[-1][0]}".upper()
+
+
+def _selected_customer(customer_rows, selected_id):
+    if not customer_rows:
+        return None
+    if selected_id:
+        for row in customer_rows:
+            if str(row["id"]) == selected_id:
+                return row
+    return customer_rows[0]
+
+
+def _booking_sort_date(booking):
+    return booking.active_travel_date or timezone.datetime.min.date()
+
+
+def _search_customer_bookings(queryset, query):
+    return queryset.filter(
+        Q(provider_booking_reference__icontains=query)
+        | Q(provider_order_reference__icontains=query)
+        | Q(lead_traveler_name__icontains=query)
+        | Q(lead_traveler_phone__icontains=query)
+        | Q(lead_traveler_email__icontains=query)
+        | Q(provider__name__icontains=query)
+        | Q(provider__code__icontains=query)
+        | Q(raw_product_name__icontains=query)
+        | Q(raw_option_name__icontains=query)
+    )
 
 
 def _capacity_warning_count(selected_date):
