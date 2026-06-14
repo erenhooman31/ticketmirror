@@ -55,18 +55,26 @@
           <div class="tm-agenda-day">
             <h2>{{ section.label }}</h2>
             {% for row in section.rows %}
-              <a class="tm-agenda-row tm-agenda-{{ row.status }}" href="{{ row.slot_url }}">
+              <button
+                class="tm-agenda-row tm-agenda-{{ row.status }}"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#{{ row.modal_id }}"
+              >
                 <span class="tm-agenda-dot"></span>
                 <span class="tm-agenda-main">
                   <span class="tm-agenda-title">
                     <strong>{{ row.time }}</strong> - {{ row.title }}
                   </span>
                   <span class="tm-agenda-meta">
-                    {{ row.booked }} booked{% if row.pending %}, {{ row.pending }} pending{% endif %}{% if row.manual_review %}, {{ row.manual_review }} review{% endif %}{% if row.available is not None %}, {{ row.available }} available{% else %}, capacity not set{% endif %}
+                    {{ row.booked }} booked{% if row.blocked %}, {{ row.blocked }} blocked{% endif %}{% if row.available is not None %}, {{ row.available }} available{% else %}, capacity not set{% endif %}
                   </span>
                 </span>
+                {% if row.has_warning %}
+                  <span class="tm-agenda-alert" aria-label="Needs review">!</span>
+                {% endif %}
                 <span class="tm-agenda-plus">+</span>
-              </a>
+              </button>
             {% empty %}
               <div class="tm-bookeo-empty">No agenda slots for this date.</div>
             {% endfor %}
@@ -74,16 +82,98 @@
         {% endfor %}
       </div>
       <div class="tm-bookeo-footer tm-agenda-controls">
-        <a class="tm-footer-pill" href="{{ today_url }}">Today</a>
+        <a class="tm-footer-pill {% if range_days == 1 %}active{% endif %}" href="{{ today_url }}">Today</a>
         {% for option in range_options %}
           {% if option.days != 1 %}
             <a class="tm-footer-pill {% if option.active %}active{% endif %}" href="{{ option.url }}">{{ option.days }} days</a>
           {% endif %}
         {% endfor %}
-        <a class="tm-footer-pill" href="{% url 'reports:daily_manifest_csv' %}?date={{ selected_date|date:'Y-m-d' }}">Print</a>
+        <a class="tm-footer-pill" href="#" onclick="window.print(); return false;">Print</a>
       </div>
     </section>
   </div>
+
+  {% for section in agenda_sections %}
+    {% for row in section.rows %}
+      <div class="modal fade tm-booking-modal tm-agenda-slot-modal" id="{{ row.modal_id }}" tabindex="-1" aria-labelledby="{{ row.modal_id }}-title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header tm-booking-modal-header">
+              <h2 class="modal-title" id="{{ row.modal_id }}-title">
+                {{ row.title }} - {{ section.label }} {{ row.time }}
+              </h2>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body tm-booking-modal-body">
+              <div class="tm-booking-modal-main">
+                <fieldset class="tm-modal-fieldset">
+                  <legend>Slot</legend>
+                  <table class="tm-modal-form-table">
+                    <tbody>
+                      <tr>
+                        <th>Time:</th>
+                        <td>{{ row.time }}</td>
+                      </tr>
+                      <tr>
+                        <th>Seats:</th>
+                        <td>{% if row.capacity is not None %}{{ row.capacity }}{% else %}Capacity not set{% endif %}</td>
+                      </tr>
+                      <tr>
+                        <th>Private:</th>
+                        <td>no</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </fieldset>
+
+                <ul class="nav nav-tabs tm-booking-tabs" role="tablist">
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="{{ row.modal_id }}-bookings-tab" data-bs-toggle="tab" data-bs-target="#{{ row.modal_id }}-bookings" type="button" role="tab">Bookings</button>
+                  </li>
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="{{ row.modal_id }}-access-tab" data-bs-toggle="tab" data-bs-target="#{{ row.modal_id }}-access" type="button" role="tab">Access</button>
+                  </li>
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="{{ row.modal_id }}-notes-tab" data-bs-toggle="tab" data-bs-target="#{{ row.modal_id }}-notes" type="button" role="tab">Notes</button>
+                  </li>
+                </ul>
+                <div class="tab-content tm-booking-tab-content">
+                  <div class="tab-pane fade show active" id="{{ row.modal_id }}-bookings" role="tabpanel" aria-labelledby="{{ row.modal_id }}-bookings-tab" tabindex="0">
+                    {% for card in row.bookings %}
+                      <a class="tm-agenda-booking {% if card.warning %}tm-agenda-booking-warning{% endif %}" href="{{ card.detail_url }}">
+                        <span class="tm-agenda-booking-title">{{ card.traveler }}</span>
+                        <span>People: {{ card.pax }} {{ card.pax_label }}</span>
+                        <span>Booking number: {{ card.reference }}</span>
+                        <span>Status: {{ card.status }}{% if card.attendance %} - {{ card.attendance }}{% endif %}</span>
+                        {% if not card.counts_for_capacity %}
+                          <span>Does not count toward active capacity</span>
+                        {% endif %}
+                      </a>
+                    {% empty %}
+                      <div class="tm-bookeo-empty">There are no bookings</div>
+                    {% endfor %}
+                  </div>
+                  <div class="tab-pane fade" id="{{ row.modal_id }}-access" role="tabpanel" aria-labelledby="{{ row.modal_id }}-access-tab" tabindex="0">
+                    <div class="tm-bookeo-empty">No access restrictions</div>
+                  </div>
+                  <div class="tab-pane fade" id="{{ row.modal_id }}-notes" role="tabpanel" aria-labelledby="{{ row.modal_id }}-notes-tab" tabindex="0">
+                    <div class="tm-bookeo-empty">No slot notes</div>
+                  </div>
+                </div>
+              </div>
+              <aside class="tm-booking-action-rail">
+                <button class="tm-action-button primary" type="button" disabled>Save</button>
+                <button class="tm-action-button" type="button" data-bs-dismiss="modal">Cancel</button>
+                <button class="tm-action-button" type="button" disabled>New</button>
+                <button class="tm-action-button" type="button" disabled>Block</button>
+                <button class="tm-action-button" type="button" onclick="window.print()">Print</button>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  {% endfor %}
 
   {% for message in dashboard_messages %}
     {% if message.booking and message.modal_id %}

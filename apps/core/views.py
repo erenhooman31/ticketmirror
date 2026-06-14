@@ -357,6 +357,7 @@ def _agenda_sections(selected_date, range_days):
             _agenda_row(service_date, row)
             for row in get_daily_capacity_summary(service_date)
         ]
+        rows = sorted(rows, key=_agenda_row_sort_key)
         sections.append(
             {
                 "date": service_date,
@@ -368,23 +369,33 @@ def _agenda_sections(selected_date, range_days):
 
 
 def _agenda_row(service_date, row):
-    confirmed = row["confirmed_pax"]
-    pending = row["pending_pax"]
-    manual_review = row["manual_review_pax"]
-    booked = row.get("active_pax", confirmed + pending + manual_review)
+    slot = row["slot"]
+    bookings = _agenda_bookings(service_date, slot)
+    booking_cards = [_agenda_booking_card(booking) for booking in bookings]
+    active_booked = sum(
+        card["pax"] for card in booking_cards if card["counts_for_capacity"]
+    )
     capacity = row["capacity"]
-    available = None if capacity is None else max(capacity - booked, 0)
-    status = _agenda_status(row)
+    available = None if capacity is None else max(capacity - active_booked, 0)
+    has_warning = any(card["warning"] for card in booking_cards)
     return {
-        "time": row["slot_label"],
+        "time": _agenda_time_label(row),
         "title": _agenda_title(row),
-        "confirmed": confirmed,
-        "pending": pending,
-        "manual_review": manual_review,
-        "booked": booked,
+        "booked": active_booked,
+        "blocked": 0,
         "capacity": capacity,
         "available": available,
-        "status": status,
+        "status": _agenda_status(
+            capacity=capacity,
+            available=available,
+            booked=active_booked,
+            has_bookings=bool(booking_cards),
+            has_warning=has_warning,
+        ),
+        "has_warning": has_warning,
+        "bookings": booking_cards,
+        "modal_id": _agenda_modal_id(service_date, row),
+        "sort_id": _agenda_sort_id(row),
         "slot_url": _slot_url(service_date, row),
     }
 
@@ -393,14 +404,100 @@ def _agenda_title(row):
     return row["activity"].name
 
 
-def _agenda_status(row):
-    if row["capacity"] is None:
+def _agenda_time_label(row):
+    slot = row["slot"]
+    exception = row.get("exception")
+    start_time = (
+        slot.start_time if slot else exception.start_time if exception else None
+    )
+    if not start_time:
+        return "Open"
+    return f"{start_time.hour}:{start_time:%M}"
+
+
+def _agenda_status(*, capacity, available, booked, has_bookings, has_warning):
+    if capacity is None:
         return "unknown"
-    if row["remaining"] is not None and row["remaining"] <= 0:
+    if available is not None and available <= 0:
         return "full"
-    if row["confirmed_pax"] or row["pending_pax"] or row["manual_review_pax"]:
+    if has_warning:
+        return "warning"
+    if booked or has_bookings:
         return "booked"
     return "open"
+
+
+def _agenda_bookings(service_date, slot):
+    if not slot:
+        return []
+    return (
+        Booking.objects.filter(
+            active_travel_date=service_date,
+            schedule_slot=slot,
+        )
+        .exclude(
+            status__in={
+                Booking.Status.CANCELLED,
+                Booking.Status.REJECTED,
+                Booking.Status.PARSE_FAILED,
+                Booking.Status.DUPLICATE_IGNORED,
+            }
+        )
+        .exclude(
+            review_items__status=ReviewQueueItem.Status.OPEN,
+            review_items__issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        )
+        .select_related("provider", "activity", "schedule_slot")
+        .order_by("provider__name", "provider_booking_reference")
+        .distinct()
+    )
+
+
+def _agenda_booking_card(booking):
+    pax = booking.active_traveler_count or booking.provider_traveler_count or 0
+    attendance = booking.get_attendance_status_display()
+    return {
+        "booking": booking,
+        "pax": pax,
+        "pax_label": "adult" if pax == 1 else "adults",
+        "reference": booking.provider_booking_reference,
+        "traveler": booking.lead_traveler_name or "Traveler pending",
+        "status": booking.get_status_display(),
+        "attendance": attendance if booking.attendance_status else "",
+        "warning": booking.status
+        in {
+            Booking.Status.PENDING_PROVIDER_ACCEPTANCE,
+            Booking.Status.MANUAL_REVIEW,
+        },
+        "counts_for_capacity": booking.is_active_for_capacity,
+        "detail_url": reverse("bookings:detail", args=[booking.id]),
+    }
+
+
+def _agenda_modal_id(service_date, row):
+    slot = row["slot"]
+    if slot:
+        return f"agenda-slot-{service_date:%Y%m%d}-{slot.id}"
+    exception = row.get("exception")
+    return f"agenda-extra-{service_date:%Y%m%d}-{exception.id}"
+
+
+def _agenda_sort_id(row):
+    slot = row["slot"]
+    if slot:
+        return slot.id
+    exception = row.get("exception")
+    return exception.id if exception else 0
+
+
+def _agenda_row_sort_key(row):
+    time_label = row["time"]
+    try:
+        hour, minute = time_label.split(":", 1)
+        time_key = (int(hour), int(minute[:2]))
+    except ValueError:
+        time_key = (99, 99)
+    return (time_key, row["sort_id"], row["title"])
 
 
 def _slot_url(service_date, row):
@@ -582,7 +679,7 @@ def _agenda_day_label(service_date):
         return "Today"
     if service_date == today + timedelta(days=1):
         return "Tomorrow"
-    return service_date.strftime("%A, %d %B %Y")
+    return f"{service_date:%A}, {service_date.day} {service_date:%B}"
 
 
 def _parse_range_days(value):
