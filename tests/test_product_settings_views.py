@@ -237,6 +237,45 @@ def test_schedule_tab_renders_current_and_other_sections(client, users):
 
 
 @pytest.mark.django_db
+def test_schedule_edit_time_modal_uses_scoped_action_rail(client, users):
+    setup = create_activity_setup(activity_name="Scoped Modal Tour")
+
+    client.force_login(users["admin"])
+    response = client.get(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "scheduling", "edit_slot": str(setup["slot"].id), "day": "0"},
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Edit tour" in html
+    assert "Day:" in html
+    assert "Start:" in html
+    assert "* Seats:" in html
+    assert "tm-bookeo-dialog-rail" in html
+    assert "Delete" in html
+
+
+@pytest.mark.django_db
+def test_people_tab_only_shows_scoped_capacity_controls(client, users):
+    setup = create_activity_setup(activity_name="Scoped People Tour")
+
+    client.force_login(users["admin"])
+    response = client.get(
+        reverse("settings_tour_activity_detail", args=[setup["activity"].id]),
+        {"tab": "people"},
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Number of people per booking" in html
+    assert "Assigned capacity:" in html
+    assert "Max.:" in html
+    assert "Min.:" in html
+    assert "Note:" not in html
+
+
+@pytest.mark.django_db
 def test_schedule_tab_uses_operator_labels_not_raw_fields(client, users):
     setup = create_activity_setup(activity_name="Human Schedule Tour")
 

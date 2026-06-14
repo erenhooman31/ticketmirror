@@ -20,7 +20,7 @@
   <ul class="nav nav-tabs tm-booking-tabs mb-3">
     <li class="nav-item"><a class="nav-link {% if active_tab == 'general' %}active{% endif %}" href="{% if activity %}{% url 'settings_tour_activity_detail' activity.id %}?tab=general{% else %}{% url 'settings_tour_activity_new' %}{% endif %}">General</a></li>
     {% if activity %}
-      <li class="nav-item"><a class="nav-link {% if active_tab == 'scheduling' %}active{% endif %}" href="{% url 'settings_tour_activity_detail' activity.id %}?tab=scheduling">Scheduling</a></li>
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'scheduling' %}active{% endif %}" href="{% url 'settings_tour_activity_detail' activity.id %}?tab=scheduling">Schedule</a></li>
       <li class="nav-item"><a class="nav-link {% if active_tab == 'people' %}active{% endif %}" href="{% url 'settings_tour_activity_detail' activity.id %}?tab=people">People</a></li>
     {% endif %}
   </ul>
@@ -28,8 +28,9 @@
   {% if show_scheduling_tab %}
     {% url 'settings_tour_activity_detail' activity.id as detail_url %}
 
-    <div class="tm-bookeo-settings-page">
-      <section class="tm-bookeo-fieldset" data-testid="current-schedule-section">
+    <div class="tm-settings-shell">
+      <div class="tm-bookeo-settings-page">
+        <section class="tm-bookeo-fieldset" data-testid="current-schedule-section">
         <h2>Current schedule</h2>
         <p>{{ bookeo_current_schedule_effective_label }}</p>
         <div class="table-responsive">
@@ -89,9 +90,9 @@
             <a href="{{ detail_url }}?tab=scheduling&amp;change_seats=1"><span>Change seats for all times</span></a>
           </div>
         {% endif %}
-      </section>
+        </section>
 
-      <section class="tm-bookeo-fieldset" data-testid="other-schedules-section">
+        <section class="tm-bookeo-fieldset" data-testid="other-schedules-section">
         <h2>Other schedules</h2>
         <p>You can define a new schedule that will start on a specified date.</p>
         <div class="table-responsive">
@@ -121,12 +122,12 @@
             <a href="{{ detail_url }}?tab=scheduling&amp;new_change_schedule=1"><span>New/change schedule</span></a>
           </div>
         {% endif %}
-      </section>
+        </section>
 
-      <section class="tm-bookeo-fieldset" data-testid="duration-section">
+        <section class="tm-bookeo-fieldset" data-testid="duration-section">
         <h2>Duration</h2>
         <p>Specify the duration of this tour.</p>
-        <form method="post">
+        <form id="duration-form" method="post">
           {% csrf_token %}
           <input type="hidden" name="action" value="save_duration">
           <table class="tm-bookeo-dialog-table">
@@ -134,19 +135,25 @@
               <tr>
                 <th>* Duration:</th>
                 <td>
-                  {{ duration_form.days }} days,
-                  {{ duration_form.hours }} hours,
-                  {{ duration_form.minutes }} minutes
+                  <span class="tm-duration-line">
+                    {{ duration_form.days }} <span>days,</span>
+                    {{ duration_form.hours }} <span>hours,</span>
+                    {{ duration_form.minutes }} <span>minutes</span>
+                  </span>
                 </td>
               </tr>
             </tbody>
           </table>
           {% for error in duration_form.non_field_errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-          {% if can_edit_activities %}
-            <button class="btn btn-primary btn-sm mt-2" type="submit">Save</button>
-          {% endif %}
         </form>
-      </section>
+        </section>
+      </div>
+      {% if can_edit_activities %}
+        <aside class="tm-settings-actions">
+          <button class="tm-action-button primary" form="duration-form" type="submit">Save</button>
+          <a class="tm-action-button" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+        </aside>
+      {% endif %}
     </div>
 
     {% if can_edit_activities and editor_type == "slot" %}
@@ -165,30 +172,32 @@
               <h2 class="modal-title">{% if editor_slot %}Edit tour{% else %}Edit new tour{% endif %}</h2>
               <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
             </div>
-            <div class="modal-body">
-              <table class="tm-bookeo-dialog-table">
-                <tbody>
-                  <tr>
-                    <th>Day:</th>
-                    <td>{{ slot_editor_day_name }}</td>
-                  </tr>
-                  <tr>
-                    <th>Start:</th>
-                    <td>{{ slot_form.start_time }}</td>
-                  </tr>
-                  <tr>
-                    <th>* Seats:</th>
-                    <td>{{ slot_form.capacity }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="modal-footer tm-bookeo-dialog-footer">
-              <button class="btn btn-primary" type="submit">Save</button>
-              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
-              {% if editor_slot %}
-                <button class="btn btn-outline-danger" type="submit" name="action" value="deactivate_time_slot">Delete</button>
-              {% endif %}
+            <div class="tm-bookeo-dialog-shell">
+              <div class="modal-body">
+                <table class="tm-bookeo-dialog-table">
+                  <tbody>
+                    <tr>
+                      <th>Day:</th>
+                      <td>{{ slot_editor_day_name }}</td>
+                    </tr>
+                    <tr>
+                      <th>Start:</th>
+                      <td>{{ slot_form.start_time }}</td>
+                    </tr>
+                    <tr>
+                      <th>* Seats:</th>
+                      <td>{{ slot_form.capacity }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tm-bookeo-dialog-rail">
+                <button class="btn btn-primary" type="submit">Save</button>
+                <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+                {% if editor_slot %}
+                  <button class="btn btn-outline-danger" type="submit" name="action" value="deactivate_time_slot">Delete</button>
+                {% endif %}
+              </div>
             </div>
           </form>
         </div>
@@ -234,21 +243,23 @@
               <h2 class="modal-title">Bookeo</h2>
               <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
             </div>
-            <div class="modal-body">
-              <fieldset class="tm-bookeo-fieldset mb-0">
-                <h2>Copy schedule</h2>
-                <p>You can start with an empty new schedule, or copy from an existing schedule.</p>
-                <select class="form-select" name="copy_source">
-                  {% for option in schedule_copy_options %}
-                    <option value="{{ option.id }}">{{ option.label }}</option>
-                  {% endfor %}
-                  <option value="" selected>Start with an empty schedule</option>
-                </select>
-              </fieldset>
-            </div>
-            <div class="modal-footer tm-bookeo-dialog-footer">
-              <button class="btn btn-primary" type="submit">Ok</button>
-              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+            <div class="tm-bookeo-dialog-shell">
+              <div class="modal-body">
+                <fieldset class="tm-bookeo-fieldset mb-0">
+                  <h2>Copy schedule</h2>
+                  <p>You can start with an empty new schedule, or copy from an existing schedule.</p>
+                  <select class="form-select" name="copy_source">
+                    {% for option in schedule_copy_options %}
+                      <option value="{{ option.id }}">{{ option.label }}</option>
+                    {% endfor %}
+                    <option value="" {% if not schedule_copy_options %}selected{% endif %}>Start with an empty schedule</option>
+                  </select>
+                </fieldset>
+              </div>
+              <div class="tm-bookeo-dialog-rail">
+                <button class="btn btn-primary" type="submit">Ok</button>
+                <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+              </div>
             </div>
           </form>
         </div>
@@ -308,11 +319,12 @@
               <h2 class="modal-title">{% if editor_schedule %}{{ editor_schedule.name|default:"Bookeo" }}{% else %}Bookeo{% endif %}</h2>
               <a class="btn-close" href="{{ detail_url }}?tab=scheduling" aria-label="Close"></a>
             </div>
-            <div class="modal-body">
-              <div class="tm-bookeo-fieldset">
-                <h2>Name</h2>
-                <p>A name for this schedule, for internal use only.</p>
-                <table class="tm-bookeo-dialog-table">
+            <div class="tm-bookeo-dialog-shell">
+              <div class="modal-body">
+                <div class="tm-bookeo-fieldset">
+                  <h2>Name</h2>
+                  <p>A name for this schedule, for internal use only.</p>
+                  <table class="tm-bookeo-dialog-table">
                   <tbody>
                     <tr>
                       <th>Name:</th>
@@ -322,12 +334,12 @@
                       </td>
                     </tr>
                   </tbody>
-                </table>
-              </div>
-              <div class="tm-bookeo-fieldset">
-                <h2>Start date</h2>
-                <p>Set the date on which the schedule will start.</p>
-                <table class="tm-bookeo-dialog-table">
+                  </table>
+                </div>
+                <div class="tm-bookeo-fieldset">
+                  <h2>Start date</h2>
+                  <p>Set the date on which the schedule will start.</p>
+                  <table class="tm-bookeo-dialog-table">
                   <tbody>
                     <tr>
                       <th>Start date:</th>
@@ -337,11 +349,11 @@
                       </td>
                     </tr>
                   </tbody>
-                </table>
-              </div>
-              <div class="tm-bookeo-fieldset">
-                <h2>End date</h2>
-                <table class="tm-bookeo-dialog-table">
+                  </table>
+                </div>
+                <div class="tm-bookeo-fieldset">
+                  <h2>End date</h2>
+                  <table class="tm-bookeo-dialog-table">
                   <tbody>
                     <tr>
                       <th>End date:</th>
@@ -351,12 +363,12 @@
                       </td>
                     </tr>
                   </tbody>
-                </table>
-              </div>
-              <div class="tm-bookeo-fieldset">
-                <h2>Schedule</h2>
-                <div class="table-responsive">
-                  <table class="tm-week-grid tm-bookeo-week-grid">
+                  </table>
+                </div>
+                <div class="tm-bookeo-fieldset">
+                  <h2>Schedule</h2>
+                  <div class="table-responsive">
+                    <table class="tm-week-grid tm-bookeo-week-grid">
                     <tbody>
                       <tr>
                         {% for day in editor_schedule_grid %}
@@ -398,22 +410,23 @@
                         {% endfor %}
                       </tr>
                     </tbody>
-                  </table>
+                    </table>
+                  </div>
+                </div>
+                <div class="d-none">
+                  {{ schedule_editor_form.schedule_status }}
+                  {{ schedule_editor_form.repeat_days }}
+                  {{ schedule_editor_form.timezone }}
+                  {{ schedule_editor_form.notes }}
                 </div>
               </div>
-              <div class="d-none">
-                {{ schedule_editor_form.schedule_status }}
-                {{ schedule_editor_form.repeat_days }}
-                {{ schedule_editor_form.timezone }}
-                {{ schedule_editor_form.notes }}
+              <div class="tm-bookeo-dialog-rail">
+                <button class="btn btn-primary" type="submit">Save</button>
+                <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
+                {% if editor_schedule and editor_schedule.schedule_kind == 'other' %}
+                  <button class="btn btn-outline-danger" type="submit" name="action" value="delete_schedule">Delete</button>
+                {% endif %}
               </div>
-            </div>
-            <div class="modal-footer tm-bookeo-dialog-footer">
-              {% if editor_schedule and editor_schedule.schedule_kind == 'other' %}
-                <button class="btn btn-outline-danger me-auto" type="submit" name="action" value="delete_schedule">Delete</button>
-              {% endif %}
-              <button class="btn btn-primary" type="submit">Save</button>
-              <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
             </div>
           </form>
         </div>
@@ -451,38 +464,39 @@
       <div class="modal-backdrop fade show"></div>
     {% endif %}
   {% elif active_tab == 'people' and activity %}
-    <form method="post" class="tm-bookeo-settings-page">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="save_people">
-      <section class="tm-bookeo-fieldset">
-        <h2>Number of people per booking</h2>
-        <p>Input here the minimum and maximum number of people that a booking can be for.</p>
-        <table class="tm-bookeo-dialog-table">
-          <tbody>
-            <tr>
-              <th>Total:</th>
-              <td>
-                Max.: {{ people_form.max_people_per_booking }}
-                Min.: {{ people_form.min_people_per_booking }}
-              </td>
-            </tr>
-            <tr>
-              <th>Assigned capacity:</th>
-              <td>{{ people_form.default_capacity }}</td>
-            </tr>
-            <tr>
-              <th>Note:</th>
-              <td>{{ people_form.capacity_note }}</td>
-            </tr>
-          </tbody>
-        </table>
-        {% for field in people_form %}
-          {% for error in field.errors %}<div class="text-danger small">{{ field.label }}: {{ error }}</div>{% endfor %}
-        {% endfor %}
-      </section>
-      {% for error in people_form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
-      <button class="btn btn-primary mt-3" type="submit">Save</button>
-    </form>
+    <div class="tm-settings-shell">
+      <form id="people-form" method="post" class="tm-bookeo-settings-page">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_people">
+        <section class="tm-bookeo-fieldset">
+          <h2>Number of people per booking</h2>
+          <p>Input here the minimum and maximum number of people that a booking can be for.</p>
+          <table class="tm-bookeo-dialog-table">
+            <tbody>
+              <tr>
+                <th>Total:</th>
+                <td>
+                  Max.: {{ people_form.max_people_per_booking }}
+                  Min.: {{ people_form.min_people_per_booking }}
+                </td>
+              </tr>
+              <tr>
+                <th>Assigned capacity:</th>
+                <td>{{ people_form.default_capacity }}</td>
+              </tr>
+            </tbody>
+          </table>
+          {% for field in people_form %}
+            {% for error in field.errors %}<div class="text-danger small">{{ field.label }}: {{ error }}</div>{% endfor %}
+          {% endfor %}
+        </section>
+        {% for error in people_form.non_field_errors %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endfor %}
+      </form>
+      <aside class="tm-settings-actions">
+        <button class="tm-action-button primary" form="people-form" type="submit">Save</button>
+        <a class="tm-action-button" href="{{ detail_url }}?tab=people">Cancel</a>
+      </aside>
+    </div>
   {% else %}
     <div class="row g-3">
       <div class="{% if activity %}col-lg-7{% else %}col-lg-8{% endif %}">

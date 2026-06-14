@@ -132,7 +132,7 @@
       .tm-bookeo-week-grid { border-collapse: collapse; table-layout: fixed; width: 100%; }
       .tm-bookeo-week-grid > tbody > tr > td { border: 1px solid #d6dde7; padding: 0; vertical-align: top; }
       .tm-bookeo-week-grid table { border-collapse: collapse; table-layout: fixed; width: 100%; }
-      .tm-bookeo-week-grid th { background: #f2f5f8; border: 0; border-bottom: 1px solid #d6dde7; color: #123e76; font-size: .86rem; font-weight: 750; padding: .28rem .35rem; text-align: left; }
+      .tm-bookeo-week-grid th { background: linear-gradient(#3474b7, #225a9d); border: 0; border-bottom: 1px solid #1b4e88; color: #fff; font-size: .86rem; font-weight: 750; padding: .28rem .35rem; text-align: left; }
       .tm-bookeo-week-grid td { background: #fff; border: 0; color: #1f2933; font-size: .84rem; padding: .22rem .35rem; text-align: center; }
       .tm-bookeo-add, .tm-bookeo-inline-plus { align-items: center; background: #39b54a; border-radius: 2px; color: #fff; display: inline-flex; font-size: .95rem; font-weight: 800; height: 1rem; justify-content: center; line-height: 1; margin-right: .22rem; text-decoration: none; width: 1rem; }
       .tm-bookeo-slot { color: #1f5590; display: grid; line-height: 1.16; text-decoration: none; }
@@ -143,8 +143,8 @@
       .tm-bookeo-links a::before { color: #39b54a; content: "+"; font-weight: 900; margin-right: .32rem; }
       .tm-bookeo-links a:hover span { text-decoration: underline; }
       .tm-bookeo-other-table { border-collapse: collapse; font-size: .86rem; width: 100%; }
-      .tm-bookeo-other-table th { background: #f2f5f8; border: 1px solid #d6dde7; color: #123e76; font-weight: 750; padding: .32rem .45rem; }
-      .tm-bookeo-other-table td { border: 1px solid #d6dde7; color: #1f2933; height: 1.9rem; padding: .28rem .45rem; }
+      .tm-bookeo-other-table th { background: linear-gradient(#3474b7, #225a9d); border: 1px solid #1b4e88; color: #fff; font-weight: 750; padding: .25rem .42rem; }
+      .tm-bookeo-other-table td { border: 1px solid #d6dde7; color: #1f2933; height: 1.55rem; padding: .18rem .42rem; }
       .tm-bookeo-other-table tr[data-href] { cursor: pointer; }
       .tm-bookeo-other-table tr[data-href]:hover td { background: #eef4ff; }
       .tm-bookeo-other-table .tm-row-selected td { background: #e5eefb; }
@@ -163,11 +163,15 @@
       .tm-customer-main { display: grid; line-height: 1.18; min-width: 0; }
       .tm-customer-name { font-size: .88rem; font-weight: 650; }
       .tm-customer-email, .tm-customer-phone { color: #1f5590; font-size: .82rem; overflow-wrap: anywhere; }
-      .tm-bookeo-dialog .modal-dialog { max-width: 520px; }
+      .tm-bookeo-dialog .modal-dialog { max-width: 760px; }
       .tm-bookeo-dialog .modal-content { border: 1px solid #6b7f98; border-radius: 3px; box-shadow: 0 14px 36px rgba(0,0,0,.38); }
       .tm-bookeo-dialog-header { background: linear-gradient(#284f8a, #173e75); border-bottom: 1px solid #0b315f; color: #fff; min-height: 2rem; padding: .3rem .55rem; }
       .tm-bookeo-dialog-header .modal-title { font-size: .98rem; font-weight: 750; line-height: 1.2; }
       .tm-bookeo-dialog .modal-body { background: #fff; color: #1f2933; padding: .8rem .9rem; }
+      .tm-bookeo-dialog-shell { display: grid; grid-template-columns: minmax(0, 1fr) 108px; min-height: 17rem; }
+      .tm-bookeo-dialog-shell .modal-body { min-width: 0; }
+      .tm-bookeo-dialog-rail { background: #e5e9ef; border-left: 1px solid #c0c9d4; display: flex; flex-direction: column; gap: .35rem; padding: .45rem; }
+      .tm-bookeo-dialog-rail .btn { border-radius: 3px; font-size: .84rem; font-weight: 750; padding: .44rem .35rem; text-align: left; width: 100%; }
       .tm-bookeo-dialog-table { width: 100%; }
       .tm-bookeo-dialog-table th { color: #164c86; font-size: .86rem; font-weight: 650; padding: .32rem .65rem .32rem 0; text-align: right; vertical-align: top; white-space: nowrap; width: 7.5rem; }
       .tm-bookeo-dialog-table td { font-size: .86rem; padding: .25rem 0; vertical-align: top; }
@@ -182,9 +186,11 @@
       .tm-week-slot { border-bottom: 1px solid #edf0f4; padding: .25rem 0; }
       .tm-week-slot small { color: #394657; }
       .tm-week-empty { color: #9aa4b2; font-style: italic; padding: .5rem 0; }
-      .tm-week-grid.tm-bookeo-week-grid th { background: #f2f5f8; border: 0; border-bottom: 1px solid #d6dde7; color: #123e76; font-size: .86rem; padding: .28rem .35rem; text-align: left; }
+      .tm-week-grid.tm-bookeo-week-grid th { background: linear-gradient(#3474b7, #225a9d); border: 0; border-bottom: 1px solid #1b4e88; color: #fff; font-size: .86rem; padding: .28rem .35rem; text-align: left; }
       .tm-week-grid.tm-bookeo-week-grid td { min-height: 0; padding: 0; text-align: center; }
       .tm-week-grid.tm-bookeo-week-grid table td { padding: .22rem .35rem; }
+      .tm-duration-line { align-items: center; display: flex; flex-wrap: wrap; gap: .28rem; }
+      .tm-duration-line select { width: auto; }
       .tm-seat-all-input { width: 6rem; }
       .tm-settings-actions { background: #d9dee6; border: 1px solid #c0c9d4; display: flex; flex-direction: column; gap: .35rem; padding: .45rem; }
       @media (max-width: 991.98px) {

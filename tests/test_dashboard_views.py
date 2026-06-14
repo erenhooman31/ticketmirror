@@ -99,6 +99,41 @@ def test_dashboard_renders_messages_and_agenda(client, users, booking_data):
 
 
 @pytest.mark.django_db
+def test_dashboard_booking_modal_hides_raw_internal_sections(
+    client,
+    users,
+    booking_data,
+):
+    BookingEvent.objects.create(
+        booking=booking_data["booking"],
+        event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
+        source=BookingEvent.Source.EMAIL,
+        created_at=timezone.now(),
+    )
+
+    client.force_login(users["operator"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    html = response.content.decode()
+
+    assert "Booking" in html
+    assert "Traveler" in html
+    assert "Notes *" in html
+    for raw_label in [
+        "Audit note",
+        "Audit</button>",
+        "Slot type:",
+        "Ticket breakdown:",
+        "Provider import",
+        "Raw product",
+        "Payments",
+        "Price:",
+        "Open full booking",
+        "Send email",
+    ]:
+        assert raw_label not in html
+
+
+@pytest.mark.django_db
 def test_dashboard_range_groups_agenda_days(client, users, booking_data):
     client.force_login(users["viewer"])
     response = client.get(
