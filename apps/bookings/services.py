@@ -46,6 +46,9 @@ EXCLUDED_CAPACITY_STATUSES = {
     Booking.Status.PARSE_FAILED,
     Booking.Status.DUPLICATE_IGNORED,
 }
+EXCLUDED_ATTENDANCE_STATUSES = {
+    Booking.AttendanceStatus.GELMEDI,
+}
 
 
 def apply_manual_override(
@@ -187,8 +190,9 @@ def get_capacity_for_slot_date(
     confirmed_pax = _sum_pax(bookings, CONFIRMED_CAPACITY_STATUSES)
     pending_pax = _sum_pax(bookings, PENDING_CAPACITY_STATUSES)
     manual_review_pax = _sum_pax(bookings, MANUAL_REVIEW_CAPACITY_STATUSES)
+    active_pax = confirmed_pax + pending_pax + manual_review_pax
     capacity = _capacity_for_slot(slot, service_date)
-    remaining = capacity - confirmed_pax
+    remaining = capacity - active_pax
     return {
         "date": service_date,
         "activity": slot.schedule.activity,
@@ -198,6 +202,7 @@ def get_capacity_for_slot_date(
         "confirmed_pax": confirmed_pax,
         "pending_pax": pending_pax,
         "manual_review_pax": manual_review_pax,
+        "active_pax": active_pax,
         "capacity": capacity,
         "remaining": remaining,
     }
@@ -253,6 +258,7 @@ def get_slot_bookings(service_date, slot: ActivityScheduleSlot):
             active_travel_date=service_date,
         )
         .exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
+        .exclude(attendance_status__in=EXCLUDED_ATTENDANCE_STATUSES)
         .select_related("provider", "activity", "schedule_slot")
         .order_by("provider__name", "provider_booking_reference")
     )

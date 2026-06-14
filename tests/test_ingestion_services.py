@@ -207,16 +207,54 @@ def test_missing_reference_creates_review_item_without_booking(viator_provider):
 
 @pytest.mark.django_db
 def test_missing_provider_alias_creates_review_item(viator_provider):
+    raw = raw_email(message_id="missing-alias")
     booking = upsert_booking_from_parsed(
-        raw_email(message_id="missing-alias"),
+        raw,
         parsed_booking(event_type=EVENT_NEW_BOOKING),
     )
+    raw.refresh_from_db()
 
     assert booking is not None
+    assert raw.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW
     assert ReviewQueueItem.objects.filter(
         booking=booking,
         issue_type=ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
     ).exists()
+    assert ReviewQueueItem.objects.filter(
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_missing_booking_fields_create_specific_review_items(viator_provider):
+    raw = raw_email(message_id="missing-fields")
+    booking = upsert_booking_from_parsed(
+        raw,
+        parsed_booking(
+            travel_date=None,
+            start_time=None,
+            slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+            traveler_count=None,
+            lead_traveler_name="",
+            confidence=0.6,
+        ),
+    )
+    raw.refresh_from_db()
+
+    assert booking is not None
+    assert raw.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW
+    assert set(
+        ReviewQueueItem.objects.filter(booking=booking).values_list(
+            "issue_type",
+            flat=True,
+        )
+    ) >= {
+        ReviewQueueItem.IssueType.DATE_MISSING,
+        ReviewQueueItem.IssueType.TIME_MISSING,
+        ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
+        ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
+    }
 
 
 @pytest.mark.django_db

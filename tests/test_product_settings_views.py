@@ -177,6 +177,30 @@ def test_people_tab_updates_capacity_defaults(client, users):
 
 
 @pytest.mark.django_db
+def test_people_tab_preserves_capacity_note_when_scoped_form_omits_it(client, users):
+    setup = create_activity_setup(activity_name="People Note Tour", capacity=50)
+    activity = setup["activity"]
+    activity.people_rule.capacity_note = "Keep this operational note."
+    activity.people_rule.save(update_fields=["capacity_note"])
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "save_people",
+            "min_people_per_booking": "1",
+            "max_people_per_booking": "10",
+            "default_capacity": "45",
+        },
+    )
+    activity.people_rule.refresh_from_db()
+
+    assert response.status_code == 302
+    assert activity.people_rule.default_capacity == 45
+    assert activity.people_rule.capacity_note == "Keep this operational note."
+
+
+@pytest.mark.django_db
 def test_activity_detail_creates_provider_alias(client, users):
     setup = create_activity_setup(activity_name="Alias Tour", alias=False)
     activity = setup["activity"]
@@ -437,6 +461,44 @@ def test_other_schedule_editor_can_delete_schedule(client, users):
 
     assert response.status_code == 302
     assert not ActivitySchedule.objects.filter(id=schedule.id).exists()
+
+
+@pytest.mark.django_db
+def test_other_schedule_editor_can_copy_existing_schedule(client, users):
+    setup = create_activity_setup(activity_name="Copy Existing Schedule Tour")
+    activity = setup["activity"]
+    schedule = ActivitySchedule.objects.create(
+        activity=activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+        name="Copy me",
+        active=True,
+        date_from=date(2026, 9, 1),
+        date_to=date(2026, 9, 30),
+        priority=210,
+    )
+    ActivityScheduleSlot.objects.create(
+        schedule=schedule,
+        start_time=time(13, 0),
+        end_time=time(15, 0),
+        duration_minutes=120,
+        slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        capacity=20,
+        active=True,
+    )
+
+    client.force_login(users["admin"])
+    response = client.post(
+        reverse("settings_tour_activity_detail", args=[activity.id]),
+        {
+            "action": "copy_existing_schedule",
+            "schedule_id": str(schedule.id),
+        },
+    )
+
+    copied = ActivitySchedule.objects.get(name="Copy of Copy me")
+    assert response.status_code == 302
+    assert copied.schedule_kind == ActivitySchedule.ScheduleKind.OTHER
+    assert copied.slots.filter(start_time=time(13, 0), capacity=20).exists()
 
 
 @pytest.mark.django_db

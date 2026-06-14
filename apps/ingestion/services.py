@@ -207,7 +207,13 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
             was_created=booking.events.filter(raw_email=raw_email).count() == 1,
         )
 
-    if not alias_match.alias and parsed_booking.raw_product_name:
+    has_missing_data = _create_completeness_review_items(
+        raw_email=raw_email,
+        booking=booking,
+    )
+
+    product_mismatch = not alias_match.alias and bool(parsed_booking.raw_product_name)
+    if product_mismatch:
         _create_review_item(
             raw_email=raw_email,
             booking=booking,
@@ -215,6 +221,16 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
             title="Unmapped provider product",
             details=_provider_alias_review_details(parsed_booking, alias_match),
         )
+        _create_review_item(
+            raw_email=raw_email,
+            booking=booking,
+            issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+            title="Product title is not mapped",
+            details=_provider_alias_review_details(parsed_booking, alias_match),
+        )
+
+    if has_missing_data or product_mismatch:
+        raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
 
     raw_email.save(
         update_fields=[
@@ -226,6 +242,67 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
         ]
     )
     return booking
+
+
+def _create_completeness_review_items(
+    *,
+    raw_email: RawEmail,
+    booking: Booking,
+) -> bool:
+    checks = [
+        (
+            not booking.activity_id,
+            ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
+            "Product match missing",
+            "No approved provider alias maps this raw product to a Tour/Activity.",
+        ),
+        (
+            booking.active_travel_date is None,
+            ReviewQueueItem.IssueType.DATE_MISSING,
+            "Booking date missing",
+            "Parser did not find an operational booking date.",
+        ),
+        (
+            _booking_time_missing(booking),
+            ReviewQueueItem.IssueType.TIME_MISSING,
+            "Booking time missing",
+            "Parser did not find a start time or full-day/half-day slot.",
+        ),
+        (
+            booking.active_traveler_count is None,
+            ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
+            "Traveler count missing",
+            "Parser did not find a traveler count.",
+        ),
+        (
+            not booking.lead_traveler_name,
+            ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
+            "Lead traveler missing",
+            "Parser did not find a lead traveler name.",
+        ),
+    ]
+    created = False
+    for failed, issue_type, title, details in checks:
+        if not failed:
+            continue
+        _create_review_item(
+            raw_email=raw_email,
+            booking=booking,
+            issue_type=issue_type,
+            title=title,
+            details=details,
+        )
+        created = True
+    return created
+
+
+def _booking_time_missing(booking: Booking) -> bool:
+    if booking.active_start_time:
+        return False
+    return booking.active_slot_type not in {
+        "full_day",
+        "half_day",
+    }
 
 
 def match_product_alias(parsed_booking) -> ProviderAliasMatch:

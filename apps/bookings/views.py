@@ -26,6 +26,7 @@ from apps.bookings.services import (
     slot_label,
 )
 from apps.ingestion.models import RawEmail
+from apps.ingestion.services import process_raw_email
 
 from .forms import (
     ActivityPeopleRuleForm,
@@ -359,6 +360,15 @@ def tour_activity_detail(request, activity_id):
                 _copy_schedule_to_other(current_schedule)
                 messages.success(request, "Current schedule copied.")
             return _redirect_activity_tab(activity, "scheduling")
+        if action == "copy_existing_schedule":
+            source_schedule = get_object_or_404(
+                ActivitySchedule,
+                id=request.POST.get("schedule_id"),
+                activity=activity,
+            )
+            _copy_schedule_to_other(source_schedule)
+            messages.success(request, "Schedule copied.")
+            return _redirect_activity_tab(activity, "scheduling")
         if action == "copy_schedule_day":
             current_schedule = _schedule_for_kind(
                 activity, ActivitySchedule.ScheduleKind.CURRENT
@@ -634,7 +644,10 @@ def tour_activity_detail(request, activity_id):
             messages.success(request, "Special date deactivated.")
             return _redirect_activity_tab(activity, "scheduling")
         if action == "save_people":
-            form = ActivityPeopleRuleForm(request.POST, instance=people_rule)
+            people_data = request.POST.copy()
+            if "capacity_note" not in people_data:
+                people_data["capacity_note"] = people_rule.capacity_note
+            form = ActivityPeopleRuleForm(people_data, instance=people_rule)
             if form.is_valid():
                 form.save()
                 messages.success(request, "People settings saved.")
@@ -744,15 +757,33 @@ def approve_alias(request, alias_id):
 
 @viewer_required
 def review_queue(request):
-    issues = (
+    open_issues = (
         ReviewQueueItem.objects.filter(status=ReviewQueueItem.Status.OPEN)
         .select_related("booking", "raw_email")
         .order_by("-created_at")
     )
+    issues_by_raw_email = {}
+    for issue in open_issues:
+        if issue.raw_email_id:
+            issues_by_raw_email.setdefault(issue.raw_email_id, []).append(issue)
+
+    raw_emails = (
+        RawEmail.objects.select_related("provider_detected")
+        .prefetch_related("booking_events__booking__activity")
+        .order_by("-received_at", "-id")[:200]
+    )
+    rows = [
+        _inbox_row(raw_email, issues_by_raw_email.get(raw_email.id, []))
+        for raw_email in raw_emails
+    ]
     return render(
         request,
         "bookings/review_queue.html",
-        {"issues": issues, "can_edit_queue": can_mutate(request.user)},
+        {
+            "rows": rows,
+            "issues": open_issues,
+            "can_edit_queue": can_mutate(request.user),
+        },
     )
 
 
@@ -767,12 +798,40 @@ def review_action(request, item_id):
         item.status = ReviewQueueItem.Status.IGNORED
     else:
         messages.error(request, "Unsupported review action.")
-        return redirect("review_queue")
+        return redirect("inbox")
     item.resolved_by = request.user
     item.resolved_at = timezone.now()
     item.save(update_fields=["status", "resolved_by", "resolved_at"])
     messages.success(request, "Review item updated.")
-    return redirect("review_queue")
+    return redirect("inbox")
+
+
+@require_POST
+@operator_required
+def inbox_email_action(request, raw_email_id):
+    raw_email = get_object_or_404(RawEmail, id=raw_email_id)
+    action = request.POST.get("action")
+    if action == "ignore":
+        raw_email.parse_status = RawEmail.ParseStatus.IGNORED
+        raw_email.save(update_fields=["parse_status", "updated_at"])
+        ReviewQueueItem.objects.filter(
+            raw_email=raw_email,
+            status=ReviewQueueItem.Status.OPEN,
+        ).update(
+            status=ReviewQueueItem.Status.IGNORED,
+            resolved_by=request.user,
+            resolved_at=timezone.now(),
+        )
+        messages.success(request, "Email marked ignored.")
+    elif action == "reprocess":
+        raw_email.parse_status = RawEmail.ParseStatus.PENDING
+        raw_email.parse_error = None
+        raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+        process_raw_email(raw_email.id)
+        messages.success(request, "Email reprocessed.")
+    else:
+        messages.error(request, "Unsupported inbox action.")
+    return redirect("inbox")
 
 
 @viewer_required
@@ -782,6 +841,89 @@ def raw_email_detail(request, raw_email_id):
         id=raw_email_id,
     )
     return render(request, "bookings/raw_email_detail.html", {"raw_email": raw_email})
+
+
+def _inbox_row(raw_email, issues):
+    booking = _raw_email_booking(raw_email, issues)
+    status = _inbox_status(raw_email, booking, issues)
+    return {
+        "raw_email": raw_email,
+        "booking": booking,
+        "issues": issues,
+        "status": status,
+        "provider": (
+            raw_email.provider_detected.name if raw_email.provider_detected else ""
+        ),
+        "provider_reference": (booking.provider_booking_reference if booking else ""),
+        "raw_product_title": booking.raw_product_name if booking else "",
+        "matched_product": (
+            booking.activity.name if booking and booking.activity_id else ""
+        ),
+        "booking_date": booking.active_travel_date if booking else None,
+        "booking_time": booking.active_start_time if booking else None,
+        "traveler_count": booking.active_traveler_count if booking else None,
+        "lead_traveler": booking.lead_traveler_name if booking else "",
+        "action_url": _inbox_action_url(raw_email, booking, issues),
+        "action_label": _inbox_action_label(booking, issues),
+    }
+
+
+def _raw_email_booking(raw_email, issues):
+    for event in raw_email.booking_events.all():
+        if event.booking_id:
+            return event.booking
+    for issue in issues:
+        if issue.booking_id:
+            return issue.booking
+    return None
+
+
+def _inbox_status(raw_email, booking, issues):
+    if raw_email.parse_status == RawEmail.ParseStatus.IGNORED:
+        return "Ignored"
+    if raw_email.parse_status == RawEmail.ParseStatus.FAILED:
+        return "Parse failed"
+    if any(
+        issue.issue_type == ReviewQueueItem.IssueType.PRODUCT_MISMATCH
+        for issue in issues
+    ):
+        return "Product mismatch"
+    missing_issue_types = {
+        ReviewQueueItem.IssueType.REFERENCE_MISSING,
+        ReviewQueueItem.IssueType.DATE_MISSING,
+        ReviewQueueItem.IssueType.TIME_MISSING,
+        ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
+        ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
+    }
+    if any(issue.issue_type in missing_issue_types for issue in issues):
+        return "Missing data"
+    if issues or raw_email.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW:
+        return "Needs review"
+    if booking:
+        return "Complete"
+    return raw_email.get_parse_status_display()
+
+
+def _inbox_action_url(raw_email, booking, issues):
+    if any(
+        issue.issue_type == ReviewQueueItem.IssueType.PRODUCT_MISMATCH
+        for issue in issues
+    ):
+        return f"{reverse('settings_provider_aliases')}?review_id={issues[0].id}"
+    if booking:
+        return reverse("bookings:edit", args=[booking.id])
+    return reverse("bookings:raw_email_detail", args=[raw_email.id])
+
+
+def _inbox_action_label(booking, issues):
+    if any(
+        issue.issue_type == ReviewQueueItem.IssueType.PRODUCT_MISMATCH
+        for issue in issues
+    ):
+        return "Map product"
+    if issues:
+        return "Complete missing data" if booking else "Review"
+    return "Open booking" if booking else "View raw email"
 
 
 def _activity_context(

@@ -35,6 +35,7 @@
         <h2 class="h6">Active operations</h2>
         <dl class="row mb-0">
           <dt class="col-sm-4">Status</dt><dd class="col-sm-8 {% if booking|field_overridden:'status' %}tm-manual{% endif %}">{{ booking.status }}</dd>
+          <dt class="col-sm-4">Attendance</dt><dd class="col-sm-8 {% if booking|field_overridden:'attendance_status' %}tm-manual{% endif %}">{{ booking.get_attendance_status_display }}</dd>
           <dt class="col-sm-4">Activity</dt><dd class="col-sm-8">{{ booking.activity.name|default:"Unmapped" }}</dd>
           <dt class="col-sm-4">Slot</dt><dd class="col-sm-8">{% if booking.schedule_slot %}{{ booking.schedule_slot.start_time|time:"H:i" }}{% else %}Unmapped{% endif %}</dd>
           <dt class="col-sm-4">Date</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_travel_date' %}tm-manual{% endif %}">{{ booking.active_travel_date|default:"" }}</dd>

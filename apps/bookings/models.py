@@ -296,6 +296,12 @@ class Booking(TimeStampedModel):
         PARSE_FAILED = "parse_failed", "Parse failed"
         DUPLICATE_IGNORED = "duplicate_ignored", "Duplicate ignored"
 
+    class AttendanceStatus(models.TextChoices):
+        CLEAR = "", "CLEAR"
+        GELDI = "geldi", "GELDI"
+        GELMEDI = "gelmedi", "GELMEDI"
+        SONRA_GELECEK = "sonra_gelecek", "SONRA GELECEK"
+
     provider = models.ForeignKey(
         Provider,
         on_delete=models.PROTECT,
@@ -307,6 +313,12 @@ class Booking(TimeStampedModel):
         max_length=40,
         choices=Status.choices,
         default=Status.PENDING_PROVIDER_ACCEPTANCE,
+    )
+    attendance_status = models.CharField(
+        max_length=30,
+        choices=AttendanceStatus.choices,
+        blank=True,
+        default=AttendanceStatus.CLEAR,
     )
     activity = models.ForeignKey(
         TourActivity,
@@ -398,7 +410,14 @@ class Booking(TimeStampedModel):
 
     @property
     def is_active_for_capacity(self) -> bool:
-        return self.status == self.Status.CONFIRMED
+        if self.attendance_status == self.AttendanceStatus.GELMEDI:
+            return False
+        return self.status not in {
+            self.Status.CANCELLED,
+            self.Status.REJECTED,
+            self.Status.PARSE_FAILED,
+            self.Status.DUPLICATE_IGNORED,
+        }
 
     @property
     def has_manual_overrides(self) -> bool:
@@ -479,7 +498,9 @@ class ReviewQueueItem(models.Model):
             "traveler_count_missing",
             "Traveler count missing",
         )
+        LEAD_TRAVELER_MISSING = "lead_traveler_missing", "Lead traveler missing"
         PROVIDER_ALIAS_MISSING = "provider_alias_missing", "Provider alias missing"
+        PRODUCT_MISMATCH = "product_mismatch", "Product mismatch"
         LOW_CONFIDENCE_PARSE = "low_confidence_parse", "Low confidence parse"
         POSSIBLE_DUPLICATE = "possible_duplicate", "Possible duplicate"
         MANUAL_OVERRIDE_CONFLICT = (

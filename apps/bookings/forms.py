@@ -22,15 +22,16 @@ DISPLAY_SETTING_FIELDS = [
 
 class BookingEditForm(forms.ModelForm):
     reason = forms.CharField(
-        required=True,
+        required=False,
         widget=forms.Textarea(attrs={"rows": 2}),
-        help_text="Required audit note for this manual edit.",
+        help_text="Optional internal note for this manual edit.",
     )
 
     class Meta:
         model = Booking
         fields = [
             "status",
+            "attendance_status",
             "activity",
             "schedule_slot",
             "active_travel_date",

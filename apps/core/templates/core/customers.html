@@ -39,8 +39,22 @@
         <h2>{{ selected_customer.name }}</h2>
         <table class="tm-bookeo-dialog-table mb-3">
           <tbody>
-            <tr><th>Email:</th><td>{{ selected_customer.email }}</td></tr>
-            <tr><th>Phone:</th><td>{{ selected_customer.phone }}</td></tr>
+            <tr>
+              <th>Email:</th>
+              <td>
+                {% if selected_customer.email %}
+                  <a href="mailto:{{ selected_customer.email }}">{{ selected_customer.email }}</a>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>Phone:</th>
+              <td>
+                {% if selected_customer.phone %}
+                  <a href="tel:{{ selected_customer.phone }}">{{ selected_customer.phone }}</a>
+                {% endif %}
+              </td>
+            </tr>
             <tr><th>Language:</th><td>{{ selected_customer.language }}</td></tr>
             <tr><th>Bookings:</th><td>{{ selected_customer.bookings|length }}</td></tr>
             <tr><th>Total people:</th><td>{{ selected_customer.total_pax }}</td></tr>

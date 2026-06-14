@@ -1,46 +1,91 @@
 {% extends "base/base.html" %}
 
-{% block title %}Review queue - ticketmirror{% endblock %}
+{% block title %}Inbox - ticketmirror{% endblock %}
 
 {% block content %}
-  <h1 class="h3 mb-4">Review queue</h1>
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">Inbox</h1>
+      <div class="tm-muted">Parsed booking emails, review items, missing data, product mismatches, and parser failures.</div>
+    </div>
+  </div>
+
   <div class="tm-card">
-    <table class="table table-hover mb-0">
-      <thead>
-        <tr>
-          <th>Issue</th>
-          <th>Title</th>
-          <th>Booking</th>
-          <th>Raw email</th>
-          <th>Created</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for issue in issues %}
-          <tr class="{% if issue.issue_type == 'manual_override_conflict' %}table-danger{% endif %}">
-            <td>{{ issue.issue_type }}</td>
-            <td>{{ issue.title }}<div class="small tm-muted">{{ issue.details }}</div></td>
-            <td>{% if issue.booking %}<a href="{% url 'bookings:detail' issue.booking.id %}">{{ issue.booking.provider_booking_reference }}</a>{% endif %}</td>
-            <td>{% if issue.raw_email %}<a href="{% url 'bookings:raw_email_detail' issue.raw_email.id %}">{{ issue.raw_email.subject }}</a>{% endif %}</td>
-            <td>{{ issue.created_at }}</td>
-            <td class="text-end">
-              {% if can_edit_queue %}
-                {% if issue.issue_type == 'provider_alias_missing' %}
-                  <a class="btn btn-sm btn-outline-primary" href="{% url 'settings_provider_aliases' %}?review_id={{ issue.id }}">Link alias</a>
-                {% endif %}
-                <form class="d-inline" method="post" action="{% url 'review_action' issue.id %}">
-                  {% csrf_token %}
-                  <button class="btn btn-sm btn-outline-success" name="action" value="resolve">Resolve</button>
-                  <button class="btn btn-sm btn-outline-secondary" name="action" value="ignore">Ignore</button>
-                </form>
-              {% endif %}
-            </td>
+    <div class="table-responsive">
+      <table class="table table-hover tm-table mb-0">
+        <thead>
+          <tr>
+            <th>Received</th>
+            <th>Provider</th>
+            <th>Sender</th>
+            <th>Subject</th>
+            <th>Reference</th>
+            <th>Raw product</th>
+            <th>Matched product</th>
+            <th>Date/time</th>
+            <th class="text-end">Pax</th>
+            <th>Lead traveler</th>
+            <th>Status</th>
+            <th></th>
           </tr>
-        {% empty %}
-          <tr><td colspan="6" class="text-center tm-muted py-4">No open review items.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.raw_email.received_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ row.provider|default:"" }}</td>
+              <td>
+                {{ row.raw_email.gmail_outer_sender }}
+                {% if row.raw_email.original_forwarded_sender %}
+                  <div class="small tm-muted">fwd: {{ row.raw_email.original_forwarded_sender }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'bookings:raw_email_detail' row.raw_email.id %}">{{ row.raw_email.subject }}</a>
+                {% if row.raw_email.parse_error %}
+                  <div class="small text-danger">{{ row.raw_email.parse_error|truncatechars:120 }}</div>
+                {% endif %}
+              </td>
+              <td>{{ row.provider_reference }}</td>
+              <td>{{ row.raw_product_title }}</td>
+              <td>{{ row.matched_product }}</td>
+              <td>
+                {{ row.booking_date|date:"Y-m-d"|default:"" }}
+                {% if row.booking_time %}{{ row.booking_time|time:"H:i" }}{% endif %}
+              </td>
+              <td class="text-end">{{ row.traveler_count|default:"" }}</td>
+              <td>{{ row.lead_traveler }}</td>
+              <td>
+                <span class="badge badge-status text-bg-{% if row.status == 'Complete' %}success{% elif row.status == 'Ignored' %}secondary{% elif row.status == 'Parse failed' or row.status == 'Product mismatch' %}danger{% else %}warning{% endif %}">{{ row.status }}</span>
+                {% if row.issues %}
+                  <div class="small tm-muted">
+                    {% for issue in row.issues %}
+                      {{ issue.get_issue_type_display }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <div class="d-flex flex-wrap gap-1 justify-content-end">
+                  <a class="btn btn-sm btn-outline-primary" href="{{ row.action_url }}">{{ row.action_label }}</a>
+                  {% if can_edit_queue %}
+                    <form method="post" action="{% url 'inbox_email_action' row.raw_email.id %}">
+                      {% csrf_token %}
+                      <button class="btn btn-sm btn-outline-secondary" name="action" value="reprocess">Reprocess</button>
+                    </form>
+                    <form method="post" action="{% url 'inbox_email_action' row.raw_email.id %}">
+                      {% csrf_token %}
+                      <button class="btn btn-sm btn-outline-secondary" name="action" value="ignore">Ignore</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="12" class="text-center tm-muted py-4">No parsed emails yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 {% endblock %}

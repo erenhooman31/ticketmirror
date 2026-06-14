@@ -13,6 +13,7 @@ from apps.bookings.models import (
     ReviewQueueItem,
 )
 from apps.core.privacy import mask_contact_text
+from apps.ingestion.models import RawEmail
 
 
 @pytest.fixture
@@ -242,6 +243,70 @@ def test_review_queue_resolution_stores_user_and_timestamp(
     assert review_item.resolved_by == users["operator"]
     assert review_item.resolved_at is not None
     assert review_item.resolved_at <= timezone.now()
+
+
+@pytest.mark.django_db
+def test_inbox_lists_raw_email_review_state(client, users, booking_setup):
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="inbox-1",
+        gmail_outer_sender="bookings@viator.com",
+        original_forwarded_sender="notifications@viator.com",
+        subject="Viator booking BR-INBOX",
+        received_at=timezone.now(),
+        body_text="Booking reference: BR-INBOX",
+        provider_detected=booking_setup["provider"],
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking_setup["booking"],
+        issue_type=ReviewQueueItem.IssueType.DATE_MISSING,
+        title="Booking date missing",
+    )
+    client.force_login(users["admin"])
+
+    response = client.get(reverse("inbox"))
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Inbox" in html
+    assert "Viator booking BR-INBOX" in html
+    assert "notifications@viator.com" in html
+    assert "Missing data" in html
+    assert "Complete missing data" in html
+
+
+@pytest.mark.django_db
+def test_inbox_ignore_closes_related_review_items(client, users, booking_setup):
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="inbox-ignore-1",
+        gmail_outer_sender="bookings@viator.com",
+        subject="Viator booking BR-IGNORE",
+        received_at=timezone.now(),
+        body_text="Booking reference: BR-IGNORE",
+        provider_detected=booking_setup["provider"],
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    review_item = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking_setup["booking"],
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        title="Product title is not mapped",
+    )
+    client.force_login(users["operator"])
+
+    response = client.post(
+        reverse("inbox_email_action", args=[raw_email.id]),
+        {"action": "ignore"},
+    )
+    raw_email.refresh_from_db()
+    review_item.refresh_from_db()
+
+    assert response.status_code == 302
+    assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
+    assert review_item.status == ReviewQueueItem.Status.IGNORED
+    assert review_item.resolved_by == users["operator"]
+    assert review_item.resolved_at is not None
 
 
 @pytest.mark.django_db

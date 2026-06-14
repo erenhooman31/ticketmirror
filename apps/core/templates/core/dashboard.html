@@ -38,9 +38,9 @@
         {% endfor %}
       </div>
       <div class="tm-bookeo-footer">
-        <a class="tm-footer-pill" href="{% url 'review_queue' %}">Review: {{ open_review_count }}</a>
-        <a class="tm-footer-pill" href="{% url 'core:customers' %}">All</a>
-        <a class="tm-footer-pill" href="{% url 'review_queue' %}">Unread</a>
+        <a class="tm-footer-pill" href="{% url 'inbox' %}">Inbox: {{ open_review_count }}</a>
+        <a class="tm-footer-pill {% if message_filter == 'all' %}active{% endif %}" href="{{ messages_all_url }}">All</a>
+        <a class="tm-footer-pill {% if message_filter == 'unread' %}active{% endif %}" href="{{ messages_unread_url }}">Unread</a>
         <span class="tm-footer-pill tm-footer-disabled">Mark all as read</span>
       </div>
     </section>
@@ -158,6 +158,16 @@
                                 <select class="form-select form-select-sm" name="status" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
                                   {% for value, label in booking_status_options %}
                                     <option value="{{ value }}" {% if booking.status == value %}selected{% endif %}>{{ label }}</option>
+                                  {% endfor %}
+                                </select>
+                              </td>
+                            </tr>
+                            <tr>
+                              <th>Attendance:</th>
+                              <td>
+                                <select class="form-select form-select-sm" name="attendance_status" {% if not user.is_superuser and not user.profile.can_edit_bookings %}disabled{% endif %}>
+                                  {% for value, label in attendance_status_options %}
+                                    <option value="{{ value }}" {% if booking.attendance_status == value %}selected{% endif %}>{{ label }}</option>
                                   {% endfor %}
                                 </select>
                               </td>

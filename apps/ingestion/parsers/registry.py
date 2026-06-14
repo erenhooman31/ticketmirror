@@ -1,11 +1,13 @@
 import re
 
+from .alle import AlleParser
 from .common import effective_message
 from .direct import DirectParser
 from .getyourguide import GetYourGuideParser
 from .klook import KlookParser
 from .sputnik8 import Sputnik8Parser
 from .tiqets import TiqetsParser
+from .travel_experience import TravelExperienceParser
 from .tripster import TripsterParser
 from .viator import ViatorParser
 
@@ -40,6 +42,16 @@ PROVIDER_PATTERNS = {
         "subject": [r"klook"],
         "body": [r"Klook", r"\bKL[A-Z0-9-]*\d[A-Z0-9-]*\b"],
     },
+    "alle": {
+        "sender": [r"\balle\b", r"alletravel"],
+        "subject": [r"\balle\b"],
+        "body": [r"\bAlle\b", r"\bALLE-[A-Z0-9-]+\b"],
+    },
+    "travel-experience": {
+        "sender": [r"travel[-_. ]?experience"],
+        "subject": [r"travel experience"],
+        "body": [r"Travel Experience", r"\bTE-[A-Z0-9-]+\b"],
+    },
     "direct": {
         "sender": [r"@example\.com", r"@internal\.local"],
         "subject": [r"direct booking", r"internal booking"],
@@ -73,9 +85,10 @@ def detect_provider(
     )
     candidates = []
     for provider_code, groups in PROVIDER_PATTERNS.items():
+        if not _matches_any(effective_sender, groups["sender"]):
+            continue
         score = 0
-        if _matches_any(effective_sender, groups["sender"]):
-            score += 0.5
+        score += 0.5
         if _matches_any(effective_subject, groups["subject"]):
             score += 0.3
         if _matches_any(body_text, groups["body"]):
@@ -118,11 +131,13 @@ def _matches_any(value: str, patterns: list[str]) -> bool:
 
 
 for parser in (
+    AlleParser,
     DirectParser,
     GetYourGuideParser,
     KlookParser,
     Sputnik8Parser,
     TiqetsParser,
+    TravelExperienceParser,
     TripsterParser,
     ViatorParser,
 ):

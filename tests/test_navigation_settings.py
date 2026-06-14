@@ -49,6 +49,7 @@ def test_primary_navigation_contains_only_product_pages(client, users):
         "Home",
         "Calendar",
         "Customers",
+        "Inbox",
         "Settings",
     ]
     nav_html = response.content.decode().split('data-testid="primary-nav"', 1)[1]
@@ -72,6 +73,7 @@ def test_main_product_pages_require_login(client):
         reverse("core:dashboard"),
         reverse("bookings:daily"),
         reverse("core:customers"),
+        reverse("inbox"),
         reverse("core:settings"),
     ]:
         response = client.get(url)
@@ -88,13 +90,16 @@ def test_admin_sees_settings_sections_for_configuration(client, users):
     assert response.status_code == 200
     for label in [
         b"Tours &amp; Activities",
-        b"Customer Fields",
         b"Users &amp; Roles",
+    ]:
+        assert label in response.content
+    for forbidden in [
+        b"Customer Fields",
         b"Gmail / Ingestion",
         b"Provider Aliases",
         b"Reports / Exports",
     ]:
-        assert label in response.content
+        assert forbidden not in response.content
 
 
 @pytest.mark.django_db
@@ -104,8 +109,6 @@ def test_operator_settings_hide_restricted_admin_sections(client, users):
     response = client.get(reverse("core:settings"))
 
     assert response.status_code == 200
-    assert b"Provider Aliases" in response.content
-    assert b"Reports / Exports" in response.content
     assert b"Tours &amp; Activities" in response.content
     assert b"Users &amp; Roles" not in response.content
     assert b"Customer Fields" not in response.content
@@ -121,6 +124,27 @@ def test_restricted_settings_urls_deny_operator(client, users):
     ]:
         response = client.get(url)
         assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_admin_can_create_user_from_settings(client, users, django_user_model):
+    client.force_login(users["admin"])
+
+    response = client.post(
+        reverse("core:settings_users_roles"),
+        {
+            "action": "create_user",
+            "username": "created-operator",
+            "email": "created@example.test",
+            "password": "temporary-password",
+            "role": UserProfile.Role.OPERATOR,
+        },
+    )
+
+    created = django_user_model.objects.get(username="created-operator")
+    assert response.status_code == 302
+    assert created.email == "created@example.test"
+    assert created.profile.role == UserProfile.Role.OPERATOR
 
 
 @pytest.mark.django_db

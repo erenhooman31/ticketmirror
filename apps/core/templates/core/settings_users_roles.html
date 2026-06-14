@@ -11,6 +11,37 @@
     <a class="btn btn-outline-secondary" href="{% url 'core:settings' %}">Back to settings</a>
   </div>
 
+  <div class="tm-card p-3 mb-3">
+    <h2 class="h6 mb-3">Create user</h2>
+    <form method="post" class="row g-3 align-items-end">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create_user">
+      <div class="col-md-3">
+        <label class="form-label" for="new-username">Username</label>
+        <input id="new-username" class="form-control" type="text" name="username" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="new-email">Email</label>
+        <input id="new-email" class="form-control" type="email" name="email">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="new-role">Role</label>
+        <select id="new-role" class="form-select" name="role">
+          {% for value, label in role_options %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="new-password">Temporary password</label>
+        <input id="new-password" class="form-control" type="password" name="password" required>
+      </div>
+      <div class="col-md-1">
+        <button class="btn btn-primary w-100" type="submit">Create</button>
+      </div>
+    </form>
+  </div>
+
   <div class="tm-card">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
@@ -32,6 +63,7 @@
               <td>
                 <form class="d-flex gap-2 align-items-center" method="post">
                   {% csrf_token %}
+                  <input type="hidden" name="action" value="update_role">
                   <input type="hidden" name="user_id" value="{{ managed_user.id }}">
                   <select class="form-select form-select-sm" name="role">
                     {% for value, label in role_options %}

@@ -424,6 +424,7 @@
                 <button class="btn btn-primary" type="submit">Save</button>
                 <a class="btn btn-outline-secondary" href="{{ detail_url }}?tab=scheduling">Cancel</a>
                 {% if editor_schedule and editor_schedule.schedule_kind == 'other' %}
+                  <button class="btn btn-outline-secondary" type="submit" name="action" value="copy_existing_schedule">Copy</button>
                   <button class="btn btn-outline-danger" type="submit" name="action" value="delete_schedule">Delete</button>
                 {% endif %}
               </div>
@@ -468,6 +469,7 @@
       <form id="people-form" method="post" class="tm-bookeo-settings-page">
         {% csrf_token %}
         <input type="hidden" name="action" value="save_people">
+        {{ people_form.capacity_note.as_hidden }}
         <section class="tm-bookeo-fieldset">
           <h2>Number of people per booking</h2>
           <p>Input here the minimum and maximum number of people that a booking can be for.</p>

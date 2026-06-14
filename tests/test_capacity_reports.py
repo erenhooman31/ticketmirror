@@ -99,7 +99,44 @@ def test_pending_and_manual_review_pax_are_separate(capacity_data):
     assert snapshot["confirmed_pax"] == 0
     assert snapshot["pending_pax"] == 2
     assert snapshot["manual_review_pax"] == 5
-    assert snapshot["remaining"] == 10
+    assert snapshot["active_pax"] == 7
+    assert snapshot["remaining"] == 3
+
+
+@pytest.mark.django_db
+def test_attendance_status_capacity_rules(capacity_data):
+    attended = create_booking(
+        capacity_data["fixed"],
+        "GELDI-1",
+        status=Booking.Status.CONFIRMED,
+        pax=2,
+    )
+    attended.attendance_status = Booking.AttendanceStatus.GELDI
+    attended.save(update_fields=["attendance_status"])
+    came_later = create_booking(
+        capacity_data["fixed"],
+        "LATER-1",
+        status=Booking.Status.CONFIRMED,
+        pax=3,
+    )
+    came_later.attendance_status = Booking.AttendanceStatus.SONRA_GELECEK
+    came_later.save(update_fields=["attendance_status"])
+    no_show = create_booking(
+        capacity_data["fixed"],
+        "NOSHOW-1",
+        status=Booking.Status.CONFIRMED,
+        pax=4,
+    )
+    no_show.attendance_status = Booking.AttendanceStatus.GELMEDI
+    no_show.save(update_fields=["attendance_status"])
+
+    snapshot = get_capacity_for_slot_date(
+        capacity_data["fixed"]["slot"],
+        capacity_data["date"],
+    )
+
+    assert snapshot["confirmed_pax"] == 5
+    assert snapshot["remaining"] == 5
 
 
 @pytest.mark.django_db

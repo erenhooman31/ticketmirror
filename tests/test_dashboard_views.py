@@ -45,6 +45,7 @@ def edit_payload(booking_data, **overrides):
     slot = booking_data["slot"]
     payload = {
         "status": Booking.Status.CONFIRMED,
+        "attendance_status": "",
         "activity": str(booking_data["activity"].id),
         "schedule_slot": str(slot.id),
         "active_travel_date": "2026-06-21",
@@ -96,6 +97,24 @@ def test_dashboard_renders_messages_and_agenda(client, users, booking_data):
     assert b"New booking - Alex Sample" in response.content
     assert b"City Tour" in response.content
     assert response.context["agenda_sections"][0]["rows"][0]["booked"] == 2
+
+
+@pytest.mark.django_db
+def test_dashboard_message_footer_filters_stay_on_home(client, users, booking_data):
+    BookingEvent.objects.create(
+        booking=booking_data["booking"],
+        event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
+        source=BookingEvent.Source.EMAIL,
+        created_at=timezone.now(),
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    html = response.content.decode()
+
+    assert 'href="/?date=2026-06-21&amp;range=1&amp;messages=all"' in html
+    assert 'href="/?date=2026-06-21&amp;range=1&amp;messages=unread"' in html
+    assert 'href="/customers/">All</a>' not in html
 
 
 @pytest.mark.django_db
@@ -225,6 +244,29 @@ def test_manual_edit_creates_event(client, users, booking_data):
 
 
 @pytest.mark.django_db
+def test_operator_can_mark_attendance_status(client, users, booking_data):
+    booking = booking_data["booking"]
+    client.force_login(users["operator"])
+    response = client.post(
+        reverse("bookings:edit", args=[booking.id]),
+        edit_payload(
+            booking_data,
+            attendance_status=Booking.AttendanceStatus.GELDI,
+            reason="",
+        ),
+    )
+    booking.refresh_from_db()
+
+    assert response.status_code == 302
+    assert booking.attendance_status == Booking.AttendanceStatus.GELDI
+    assert "attendance_status" in booking.manual_override_fields
+    assert BookingEvent.objects.filter(
+        booking=booking,
+        event_type=BookingEvent.EventType.MANUAL_EDIT,
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_daily_capacity_view_calculates_correctly(client, users, booking_data):
     client.force_login(users["viewer"])
     response = client.get(reverse("bookings:daily"), {"date": "2026-06-21"})
@@ -261,7 +303,7 @@ def test_calendar_default_shows_cancelled_and_manual_review_counts(
     assert row["confirmed"] == 2
     assert row["manual_review"] == 3
     assert row["cancelled_count"] == 1
-    assert row["remaining"] == 3
+    assert row["remaining"] == 0
 
 
 @pytest.mark.django_db
@@ -289,7 +331,7 @@ def test_calendar_visibility_toggles_hide_manual_review_counts(
     row = response.context["rows"][0]
     assert row["manual_review"] == 0
     assert row["confirmed"] == 2
-    assert row["remaining"] == 3
+    assert row["remaining"] == 0
 
 
 @pytest.mark.django_db

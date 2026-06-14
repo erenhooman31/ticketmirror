@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import UserProfile
-from apps.accounts.permissions import admin_required, is_admin, is_operator
+from apps.accounts.permissions import admin_required, is_admin
 from apps.bookings.models import (
     ActivityScheduleSlot,
     Booking,
@@ -35,11 +35,21 @@ def healthz(request):
 def dashboard(request):
     selected_date = _parse_date(request.GET.get("date")) or timezone.localdate()
     range_days = _parse_range_days(request.GET.get("range"))
+    message_filter = request.GET.get("messages", "all")
+    if message_filter not in {"all", "unread"}:
+        message_filter = "all"
     bookings_today = Booking.objects.filter(active_travel_date=selected_date)
     context = {
         "today": selected_date,
         "selected_date": selected_date,
         "range_days": range_days,
+        "message_filter": message_filter,
+        "messages_all_url": _dashboard_url(selected_date, range_days, messages="all"),
+        "messages_unread_url": _dashboard_url(
+            selected_date,
+            range_days,
+            messages="unread",
+        ),
         "previous_url": _dashboard_url(
             selected_date - timedelta(days=range_days),
             range_days,
@@ -57,9 +67,10 @@ def dashboard(request):
             }
             for days in AGENDA_RANGE_OPTIONS
         ],
-        "dashboard_messages": _dashboard_messages(),
+        "dashboard_messages": _dashboard_messages(message_filter),
         "agenda_sections": _agenda_sections(selected_date, range_days),
         "booking_status_options": Booking.Status.choices,
+        "attendance_status_options": Booking.AttendanceStatus.choices,
         "activity_options": TourActivity.objects.filter(active=True).order_by("name"),
         "slot_options": ActivityScheduleSlot.objects.filter(active=True)
         .select_related("schedule", "schedule__activity")
@@ -170,6 +181,31 @@ def settings_customer_fields(request):
 def settings_users_roles(request):
     User = get_user_model()
     if request.method == "POST":
+        action = request.POST.get("action", "update_role")
+        if action == "create_user":
+            username = request.POST.get("username", "").strip()
+            email = request.POST.get("email", "").strip()
+            password = request.POST.get("password", "")
+            role = request.POST.get("role")
+            if not username or not password:
+                messages.error(request, "Username and password are required.")
+                return redirect("core:settings_users_roles")
+            if role not in UserProfile.Role.values:
+                messages.error(request, "Unsupported role.")
+                return redirect("core:settings_users_roles")
+            if User.objects.filter(username__iexact=username).exists():
+                messages.error(request, "A user with that username already exists.")
+                return redirect("core:settings_users_roles")
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+            )
+            user.profile.role = role
+            user.profile.save(update_fields=["role", "updated_at"])
+            messages.success(request, f"Created {user.username}.")
+            return redirect("core:settings_users_roles")
+
         target_user = get_object_or_404(User, id=request.POST.get("user_id"))
         role = request.POST.get("role")
         if role not in UserProfile.Role.values:
@@ -196,70 +232,23 @@ def _settings_sections(user):
         {
             "title": "Tours & Activities",
             "description": (
-                "View activities, provider aliases, seasonal schedules, "
-                "slots, and capacity setup."
+                "Manage activity details, seasonal schedules, available times, "
+                "duration, and people capacity."
             ),
             "url": reverse("settings_tour_activities"),
         },
     ]
     if is_admin(user):
-        sections.extend(
-            [
-                {
-                    "title": "Providers",
-                    "description": (
-                        "Provider setup is currently maintained through seed "
-                        "data and emergency developer tools."
-                    ),
-                    "url": "",
-                },
-                {
-                    "title": "Customer Fields",
-                    "description": (
-                        "Define which customer and participant fields are "
-                        "operationally required."
-                    ),
-                    "url": reverse("core:settings_customer_fields"),
-                },
-                {
-                    "title": "Users & Roles",
-                    "description": (
-                        "Manage internal user roles for admin, operator, and "
-                        "viewer access."
-                    ),
-                    "url": reverse("core:settings_users_roles"),
-                },
-                {
-                    "title": "Gmail / Ingestion",
-                    "description": (
-                        "Gmail watch and parser status are currently managed "
-                        "by internal commands and review events."
-                    ),
-                    "url": "",
-                },
-            ]
-        )
-    if is_admin(user) or is_operator(user):
         sections.append(
             {
-                "title": "Provider Aliases",
+                "title": "Users & Roles",
                 "description": (
-                    "Map provider product labels to TicketMirror products "
-                    "and resolve alias review items."
+                    "Create users and manage internal roles for admin, operator, "
+                    "and viewer access."
                 ),
-                "url": reverse("settings_provider_aliases"),
+                "url": reverse("core:settings_users_roles"),
             }
         )
-    sections.append(
-        {
-            "title": "Reports / Exports",
-            "description": (
-                "Download operational CSV reports for manifests, "
-                "capacity, bookings, and provider summaries."
-            ),
-            "url": reverse("reports:index"),
-        }
-    )
     return sections
 
 
@@ -382,9 +371,9 @@ def _agenda_row(service_date, row):
     confirmed = row["confirmed_pax"]
     pending = row["pending_pax"]
     manual_review = row["manual_review_pax"]
-    booked = confirmed + pending
+    booked = row.get("active_pax", confirmed + pending + manual_review)
     capacity = row["capacity"]
-    available = None if capacity is None else max(capacity - confirmed, 0)
+    available = None if capacity is None else max(capacity - booked, 0)
     status = _agenda_status(row)
     return {
         "time": row["slot_label"],
@@ -424,7 +413,7 @@ def _slot_url(service_date, row):
     )
 
 
-def _dashboard_messages():
+def _dashboard_messages(message_filter="all"):
     messages = []
     events = BookingEvent.objects.select_related(
         "booking",
@@ -450,6 +439,11 @@ def _dashboard_messages():
     messages.extend(
         _message_from_failed_email(raw_email) for raw_email in failed_emails
     )
+
+    if message_filter == "unread":
+        messages = [
+            message for message in messages if message["kind"] in {"warning", "error"}
+        ]
 
     return sorted(
         messages,
@@ -601,11 +595,13 @@ def _parse_range_days(value):
     return range_days
 
 
-def _dashboard_url(selected_date, range_days):
-    return f"{reverse('core:dashboard')}?{urlencode({
-        'date': selected_date.isoformat(),
-        'range': range_days,
-    })}"
+def _dashboard_url(selected_date, range_days, **overrides):
+    params = {
+        "date": selected_date.isoformat(),
+        "range": range_days,
+    }
+    params.update({key: value for key, value in overrides.items() if value})
+    return f"{reverse('core:dashboard')}?{urlencode(params)}"
 
 
 def _parse_date(value):

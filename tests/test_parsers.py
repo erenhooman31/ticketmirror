@@ -30,6 +30,17 @@ def test_detect_provider_uses_forwarded_sender_before_outer_sender():
     assert confidence >= 0.7
 
 
+def test_detect_provider_rejects_spoofed_body_from_unknown_sender():
+    provider_code, confidence = detect_provider(
+        subject="Viator booking BR-SPOOF confirmed",
+        sender="attacker@example.net",
+        body_text="Viator\nBooking reference: BR-SPOOF\nTravelers: 2",
+    )
+
+    assert provider_code is None
+    assert confidence == 0
+
+
 def test_extract_forwarded_headers():
     headers = extract_forwarded_headers(fixture("forwarded_viator.txt"))
 
@@ -244,6 +255,56 @@ def test_parse_direct_internal_booking():
     assert parsed.travel_date.isoformat() == "2026-06-26"
     assert parsed.traveler_count == 6
     assert parsed.pickup_location == "Cruise port gate"
+
+
+def test_parse_alle_booking():
+    body = """
+    Booking reference: ALLE-2026-42
+    Product: Bosphorus Sunset Cruise
+    Option: Upper deck
+    Travel date: 2026-06-27
+    Start time: 18:30
+    Travelers: 3
+    Lead traveler: Aylin Example
+    Email: aylin@example.test
+    """
+
+    parsed = parse_by_provider(
+        "alle",
+        "Alle booking ALLE-2026-42",
+        "bookings@alletravel.example",
+        body,
+    )
+
+    assert parsed.provider_booking_reference == "ALLE-2026-42"
+    assert parsed.raw_product_name == "Bosphorus Sunset Cruise"
+    assert parsed.travel_date.isoformat() == "2026-06-27"
+    assert parsed.start_time.isoformat() == "18:30:00"
+    assert parsed.traveler_count == 3
+
+
+def test_parse_travel_experience_booking():
+    body = """
+    Booking reference: TE-2026-99
+    Product: Istanbul Old City Tour
+    Travel date: 2026-06-28
+    Start time: 09:15
+    Travelers: 2
+    Lead traveler: Morgan Example
+    """
+
+    parsed = parse_by_provider(
+        "travel-experience",
+        "Travel Experience booking TE-2026-99",
+        "ops@travel-experience.example",
+        body,
+    )
+
+    assert parsed.provider_booking_reference == "TE-2026-99"
+    assert parsed.raw_product_name == "Istanbul Old City Tour"
+    assert parsed.travel_date.isoformat() == "2026-06-28"
+    assert parsed.start_time.isoformat() == "09:15:00"
+    assert parsed.traveler_count == 2
 
 
 def test_klook_graceful_failure_for_missing_required_fields():

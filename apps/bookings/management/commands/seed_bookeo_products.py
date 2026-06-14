@@ -27,6 +27,55 @@ PROVIDERS = [
         "known_sender_patterns": ["viator", "tripadvisor"],
         "known_subject_patterns": ["Viator", "booking"],
     },
+    {
+        "code": "klook",
+        "name": "Klook",
+        "parser_key": "klook",
+        "known_sender_patterns": ["klook"],
+        "known_subject_patterns": ["Klook", "booking"],
+    },
+    {
+        "code": "tiqets",
+        "name": "Tiqets",
+        "parser_key": "tiqets",
+        "known_sender_patterns": ["tiqets"],
+        "known_subject_patterns": ["Tiqets", "booking"],
+    },
+    {
+        "code": "tripster",
+        "name": "Tripster",
+        "parser_key": "tripster",
+        "known_sender_patterns": ["tripster", "experience.tripster"],
+        "known_subject_patterns": ["Tripster", "booking"],
+    },
+    {
+        "code": "sputnik8",
+        "name": "Sputnik8",
+        "parser_key": "sputnik8",
+        "known_sender_patterns": ["sputnik8"],
+        "known_subject_patterns": ["Sputnik8", "booking"],
+    },
+    {
+        "code": "alle",
+        "name": "Alle",
+        "parser_key": "alle",
+        "known_sender_patterns": ["alle", "alletravel"],
+        "known_subject_patterns": ["Alle", "booking"],
+    },
+    {
+        "code": "travel-experience",
+        "name": "Travel Experience",
+        "parser_key": "travel-experience",
+        "known_sender_patterns": ["travel-experience", "travelexperience"],
+        "known_subject_patterns": ["Travel Experience", "booking"],
+    },
+    {
+        "code": "direct",
+        "name": "Direct/internal",
+        "parser_key": "direct",
+        "known_sender_patterns": ["@example.com", "@internal.local"],
+        "known_subject_patterns": ["Direct booking", "internal booking"],
+    },
 ]
 
 

@@ -44,7 +44,13 @@ urlpatterns = [
     path("", include("apps.core.urls")),
     path("bookings/", include("apps.bookings.urls")),
     path("ingestion/", include("apps.ingestion.urls")),
+    path("inbox/", booking_views.review_queue, name="inbox"),
     path("review/", booking_views.review_queue, name="review_queue"),
+    path(
+        "inbox/raw-emails/<int:raw_email_id>/action/",
+        booking_views.inbox_email_action,
+        name="inbox_email_action",
+    ),
     path(
         "review/<int:item_id>/action/",
         booking_views.review_action,
