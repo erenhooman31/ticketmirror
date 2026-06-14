@@ -25,7 +25,7 @@ def test_seed_bookeo_products_command_is_idempotent():
     call_command("seed_bookeo_products")
 
     assert TourActivity.objects.count() == 12
-    assert ActivitySchedule.objects.count() == 24
+    assert ActivitySchedule.objects.count() == 34
     assert ProviderAlias.objects.count() == 12
 
 
@@ -60,6 +60,110 @@ def test_seed_bookeo_products_creates_expected_slots_and_capacity():
 
 
 @pytest.mark.django_db
+def test_seed_bookeo_products_creates_exact_transfer_current_schedule():
+    call_command("seed_bookeo_products")
+
+    activity = TourActivity.objects.get(
+        name="2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR TRANSFER"
+    )
+    schedule = ActivitySchedule.objects.get(
+        activity=activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+    )
+    slots = {
+        slot.start_time.strftime("%H:%M"): slot.capacity
+        for slot in schedule.slots.order_by("start_time")
+    }
+
+    assert schedule.date_from.isoformat() == "2026-04-01"
+    assert schedule.date_to is None
+    assert slots == {"11:00": 250, "14:00": 250, "19:00": 250}
+    assert {slot.duration_minutes for slot in schedule.slots.all()} == {120}
+
+
+@pytest.mark.django_db
+def test_seed_bookeo_products_creates_real_other_schedule_rows_only():
+    call_command("seed_bookeo_products")
+
+    activity = TourActivity.objects.get(
+        name="Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR"
+    )
+    rows = [
+        (
+            date_from.isoformat(),
+            date_to.isoformat() if date_to else None,
+            name,
+        )
+        for date_from, date_to, name in ActivitySchedule.objects.filter(
+            activity=activity,
+            schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+        )
+        .order_by("priority")
+        .values_list("date_from", "date_to", "name")
+    ]
+
+    assert rows == [
+        ("2027-04-01", None, "SUMMER season 2027"),
+        ("2026-10-01", "2027-03-31", "WINTER season"),
+        ("2026-08-01", "2026-09-30", "AUTMUN season"),
+        ("2026-04-01", "2026-04-03", "summer season"),
+        ("2025-10-01", "2026-03-31", "WINTER season"),
+        ("2024-05-19", "2025-09-30", "Default season"),
+    ]
+    assert not ActivitySchedule.objects.filter(
+        name__in=["Other schedule (unconfirmed)", "Copy of Current schedule"]
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_seed_bookeo_products_other_schedules_have_non_empty_bookeo_values():
+    call_command("seed_bookeo_products")
+
+    rows = ActivitySchedule.objects.filter(
+        schedule_kind=ActivitySchedule.ScheduleKind.OTHER
+    )
+
+    assert rows.count() == 22
+    assert all(row.date_from for row in rows)
+    assert all(row.name for row in rows)
+    assert all(row.date_to or "season" in row.name.lower() for row in rows)
+
+
+@pytest.mark.django_db
+def test_seed_bookeo_products_duration_matches_inspected_products():
+    call_command("seed_bookeo_products")
+
+    expectations = {
+        "Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR": 120,
+        "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR": 120,
+        "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR TRANSFER": 120,
+        "2 Hours Bosphorus Tour SL-1": 120,
+        "GYG 2 Hours Bosphorus Tour SL-(2-3)": 120,
+        "1 Hours Bosphorus Tour viator": 60,
+        "1 Hours Bosphorus Tour GYG": 60,
+    }
+    for product_name, expected_minutes in expectations.items():
+        assert set(
+            ActivityScheduleSlot.objects.filter(
+                schedule__activity__name=product_name,
+                schedule__schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+            ).values_list("duration_minutes", flat=True)
+        ) == {expected_minutes}
+
+
+@pytest.mark.django_db
+def test_seed_bookeo_products_people_capacity_does_not_replace_slot_capacity():
+    call_command("seed_bookeo_products")
+
+    activity = TourActivity.objects.get(
+        name="2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR TRANSFER"
+    )
+
+    assert activity.people_rule.max_people_per_booking == 20
+    assert activity.people_rule.default_capacity == 250
+
+
+@pytest.mark.django_db
 def test_seed_bookeo_products_keeps_yacht_unconfirmed_without_fixed_slot():
     call_command("seed_bookeo_products")
 
@@ -67,7 +171,7 @@ def test_seed_bookeo_products_keeps_yacht_unconfirmed_without_fixed_slot():
     alias = ProviderAlias.objects.get(linked_activity=activity)
 
     assert activity.category == TourActivity.Category.YACHT
-    assert activity.schedules.count() == 2
+    assert activity.schedules.count() == 1
     assert ActivityScheduleSlot.objects.filter(schedule__activity=activity).count() == 0
     assert alias.linked_slot is None
     assert alias.needs_manual_confirmation is True

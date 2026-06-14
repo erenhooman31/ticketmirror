@@ -39,6 +39,16 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
         "capacity": 250,
         "times": ["11:00", "14:00", "19:00"],
+        "current_from": "2026-04-04",
+        "current_to": "2026-07-31",
+        "other_schedules": [
+            ("2027-04-01", None, "SUMMER season 2027"),
+            ("2026-10-01", "2027-03-31", "WINTER season"),
+            ("2026-08-01", "2026-09-30", "AUTMUN season"),
+            ("2026-04-01", "2026-04-03", "summer season"),
+            ("2025-10-01", "2026-03-31", "WINTER season"),
+            ("2024-05-19", "2025-09-30", "Default season"),
+        ],
         "manual": True,
         "notes": "2-hour Viator alias. Confirm future-season times.",
     },
@@ -50,6 +60,15 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
         "capacity": 250,
         "times": ["11:00", "14:00", "19:00"],
+        "current_from": "2026-04-01",
+        "current_to": "2026-07-31",
+        "other_schedules": [
+            ("2027-04-01", None, "autumon season"),
+            ("2026-10-01", "2027-03-31", "WINTER season"),
+            ("2026-08-01", "2026-09-30", "autumon season"),
+            ("2025-10-01", "2026-03-31", "winter season"),
+            ("2024-05-19", "2025-09-30", "Default season"),
+        ],
         "manual": True,
         "notes": "2-hour Viator alias V2. Confirm alias relationship.",
     },
@@ -61,6 +80,12 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
         "capacity": 250,
         "times": ["11:00", "14:00", "19:00"],
+        "current_from": "2026-04-01",
+        "current_to": None,
+        "other_schedules": [
+            ("2025-10-01", "2026-03-31", "WINTER season"),
+            ("2024-05-19", "2025-09-30", "Default season"),
+        ],
         "manual": True,
         "notes": "Transfer variant. Confirm pickup timing and shared capacity.",
     },
@@ -72,6 +97,11 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
         "capacity": 250,
         "times": ["11:00"],
+        "current_from": "2025-10-01",
+        "current_to": None,
+        "other_schedules": [
+            ("2024-05-19", "2025-09-30", "Default season"),
+        ],
         "manual": True,
         "notes": "GYG SL-1 split. Confirm meaning of SL-1.",
     },
@@ -83,6 +113,15 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
         "capacity": 250,
         "times": ["14:00", "19:00"],
+        "current_from": "2026-04-01",
+        "current_to": "2026-07-31",
+        "other_schedules": [
+            ("2026-10-01", None, "winter season2"),
+            ("2026-08-01", "2026-09-30", "autumn season"),
+            ("2026-02-04", "2026-03-31", "winter season"),
+            ("2025-10-01", "2026-02-03", "winter season"),
+            ("2024-05-19", "2025-09-30", "Default season"),
+        ],
         "manual": True,
         "notes": "GYG SL-(2-3) split from SL-1.",
     },
@@ -94,6 +133,11 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.HALF_DAY,
         "capacity": 50,
         "times": ["08:30"],
+        "current_from": "2025-08-01",
+        "current_to": None,
+        "other_schedules": [
+            ("2024-05-19", "2025-07-31", "Default season"),
+        ],
         "manual": True,
         "notes": "Half-day Viator alias. Confirm duration and shared inventory.",
     },
@@ -105,6 +149,11 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FULL_DAY,
         "capacity": 50,
         "times": ["08:15"],
+        "current_from": "2026-05-31",
+        "current_to": None,
+        "other_schedules": [
+            ("2024-05-19", "2026-05-30", "Default season"),
+        ],
         "manual": True,
         "notes": "Full-day Viator alias. Confirm duration.",
     },
@@ -116,6 +165,11 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.HALF_DAY,
         "capacity": 50,
         "times": ["08:15"],
+        "current_from": "2025-08-01",
+        "current_to": None,
+        "other_schedules": [
+            ("2024-05-19", "2025-07-31", "Default season"),
+        ],
         "manual": True,
         "notes": "Half-day GYG alias. Confirm why time differs from Viator alias.",
     },
@@ -127,6 +181,9 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FULL_DAY,
         "capacity": 50,
         "times": ["08:15"],
+        "current_from": None,
+        "current_to": None,
+        "other_schedules": [],
         "manual": True,
         "notes": "Full-day GYG alias. Confirm shared inventory with Viator alias.",
     },
@@ -138,6 +195,9 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
         "capacity": 250,
         "times": ["17:00"],
+        "current_from": None,
+        "current_to": None,
+        "other_schedules": [],
         "manual": True,
         "notes": "1-hour Viator alias. Confirm shared capacity.",
     },
@@ -149,6 +209,9 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.FIXED_TIME,
         "capacity": 250,
         "times": ["17:00"],
+        "current_from": "2026-02-17",
+        "current_to": None,
+        "other_schedules": [],
         "manual": True,
         "notes": "1-hour GYG alias. Confirm shared capacity.",
     },
@@ -160,6 +223,9 @@ BOOKEO_PRODUCTS = [
         "slot_type": ActivityScheduleSlot.SlotType.PRIVATE_GROUP,
         "capacity": None,
         "times": [],
+        "current_from": None,
+        "current_to": None,
+        "other_schedules": [],
         "manual": True,
         "notes": (
             "Yacht special case. Confirm capacity, duration, and scheduling model."
@@ -205,16 +271,11 @@ class Command(BaseCommand):
                 "Current schedule",
                 active=True,
                 priority=100,
+                date_from=payload["current_from"],
+                date_to=payload["current_to"],
             )
             stats["schedules"] += int(schedule_created)
-            _other_schedule, other_created = seed_schedule(
-                activity,
-                ActivitySchedule.ScheduleKind.OTHER,
-                "Other schedule (unconfirmed)",
-                active=False,
-                priority=200,
-            )
-            stats["schedules"] += int(other_created)
+            stats["schedules"] += seed_other_schedules(activity, payload)
             stats["slots"] += seed_slots(current_schedule, payload)
             provider = providers[payload["provider"]]
             linked_slot = current_schedule.slots.order_by("start_time").first()
@@ -259,7 +320,7 @@ def seed_people_rule(activity, payload):
         activity=activity,
         defaults={
             "min_people_per_booking": 1,
-            "max_people_per_booking": payload["capacity"],
+            "max_people_per_booking": 20 if payload["capacity"] else None,
             "default_capacity": payload["capacity"],
             "capacity_note": payload["notes"],
         },
@@ -267,21 +328,50 @@ def seed_people_rule(activity, payload):
     return int(created)
 
 
-def seed_schedule(activity, schedule_kind, name, active, priority):
+def seed_schedule(activity, schedule_kind, name, active, priority, date_from, date_to):
     return ActivitySchedule.objects.update_or_create(
         activity=activity,
         schedule_kind=schedule_kind,
-        name=name,
+        priority=priority,
         defaults={
+            "name": name,
             "active": active,
-            "date_from": None,
-            "date_to": None,
+            "date_from": _parse_date(date_from),
+            "date_to": _parse_date(date_to),
             "days_of_week": [],
-            "priority": priority,
             "recurrence_mode": ActivitySchedule.RecurrenceMode.WEEKLY,
-            "notes": "Seeded from Bookeo-inspired scheduling inspection.",
+            "notes": "Seeded from exact Bookeo product schedule inspection.",
         },
     )
+
+
+def seed_other_schedules(activity, payload):
+    kept_ids = []
+    created_count = 0
+    for priority, (date_from, date_to, name) in enumerate(
+        payload["other_schedules"], start=200
+    ):
+        schedule, created = seed_schedule(
+            activity,
+            ActivitySchedule.ScheduleKind.OTHER,
+            name,
+            active=False,
+            priority=priority,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        schedule.slots.all().delete()
+        kept_ids.append(schedule.id)
+        created_count += int(created)
+
+    stale = ActivitySchedule.objects.filter(
+        activity=activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.OTHER,
+    )
+    if kept_ids:
+        stale = stale.exclude(id__in=kept_ids)
+    stale.delete()
+    return created_count
 
 
 def seed_slots(schedule, payload):
@@ -299,6 +389,7 @@ def seed_slots(schedule, payload):
                 "duration_minutes": duration,
                 "slot_type": payload["slot_type"],
                 "capacity": payload["capacity"] or 0,
+                "days_of_week": [],
                 "active": True,
             },
         )
@@ -327,6 +418,12 @@ def seed_alias(provider, activity, slot, payload):
 
 def _parse_time(value):
     return datetime.strptime(value, "%H:%M").time()
+
+
+def _parse_date(value):
+    if value is None:
+        return None
+    return datetime.strptime(value, "%Y-%m-%d").date()
 
 
 def _end_time(start_time, duration_minutes):

@@ -50,6 +50,22 @@ TicketMirror after screenshots:
 - `docs/reference/bookeo/ticketmirror-after/09-calendar-slot-detail-after.png`
 - `docs/reference/bookeo/ticketmirror-after/10-customers-list-detail-after.png`
 
+Exact schedule data proof screenshots:
+
+- `docs/reference/bookeo/bookeo-live/02-schedule-tab-full-page-2026-06-14.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-2-hours-bosphorus-cruise-boat-tour-in-istanbul-viator-transfer.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-bosphorus-cruise-tour-in-istanbul-for-2-hours-viator.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-2-hours-bosphorus-cruise-boat-tour-in-istanbul-viator.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-2-hours-bosphorus-tour-sl-1.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-gyg-2-hours-bosphorus-tour-sl-2-3.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-istanbul-old-city-and-bosphorus-tour.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-istanbul-two-continents-tour-by-bus-and-bosphorus-cruise.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-istanbul-old-city-and-bosphorus-tour-gyg.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-istanbul-two-continents-tour-by-bus-and-bosphorus-cruise-gyg.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-1-hours-bosphorus-tour-viator.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-1-hours-bosphorus-tour-gyg.png`
+- `docs/reference/bookeo/exact-schedule-proof/ticketmirror-gyg-yacht.png`
+
 ## Resolved Mismatches
 
 | Area | Bookeo behavior/structure | TicketMirror before | File/component responsible | Required fix | Status |
@@ -65,6 +81,7 @@ TicketMirror after screenshots:
 | People scoped controls | Scoped request only includes number of people and assigned capacity. | TicketMirror included an extra `Note` textarea. | `apps/bookings/templates/bookings/tour_activity_detail.html`. | Removed the unscoped Note row and moved Save/Cancel to the page action rail. | verified |
 | Calendar rows/boxes/detail | Bookeo has rows, boxes/card state, and slot detail interaction. | TicketMirror already had rows/boxes/detail, but before proof used an empty local booking state. | `apps/bookings/templates/bookings/daily.html`; `apps/bookings/templates/bookings/slot_detail.html`. | Final proof captures rows, boxes, and slot detail with local sample data. No code change required. | verified |
 | Customers list/detail | Bookeo customer screenshots contain PII and were redacted. | TicketMirror before proof had no customer rows because local DB had no bookings. | `apps/core/templates/core/customers.html`; local visual fixture data. | Final proof uses synthetic local customer bookings and captures list/detail behavior. No code change required. | verified |
+| Schedule seed data parity | Bookeo product schedule rows use exact product-specific current schedule dates, times, seats, duration, and real Other schedule date/name rows. | TicketMirror seeded generic current dates and fake blank `Other schedule (unconfirmed)` rows, so the visual grid could not match Bookeo data. | `apps/bookings/management/commands/seed_bookeo_products.py`; `tests/test_seed_products.py`. | Replaced placeholder schedule seeding with per-product Bookeo current schedule dates, daily times, seat counts, durations, and real Other schedule rows; removed fake/duplicate Other schedules on reseed; added tests for exact transfer grid, real Other schedule rows, durations, capacity, and fake-row absence. | verified for captured same-product proof; manual-confirmation flags documented in `docs/reference/bookeo/exact-product-schedule-data.md` |
 
 ## Out Of Scope By Request
 
@@ -76,7 +93,7 @@ Primary navigation remains only Home, Calendar, Customers, Settings.
 
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
-- `pytest` (`105 passed`)
+- `pytest` (`110 passed`)
 - `ruff check .`
 - `black --check .`
 - Final screenshots in `docs/reference/bookeo/ticketmirror-after/` verify the scoped visual states.
