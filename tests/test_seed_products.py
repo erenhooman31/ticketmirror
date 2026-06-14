@@ -44,6 +44,21 @@ def test_seed_bookeo_products_aliases_link_to_activity_and_slot():
 
 
 @pytest.mark.django_db
+def test_seed_bookeo_products_sets_home_agenda_display_labels():
+    call_command("seed_bookeo_products")
+
+    viator = TourActivity.objects.get(
+        name="Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR"
+    )
+    old_city = TourActivity.objects.get(name="Istanbul Old City And Bosphorus Tour")
+
+    assert viator.internal_display_name == "VIATOR 2H"
+    assert viator.display_settings["show_home_agenda"] is True
+    assert old_city.internal_display_name == "OLD CITY VIATOR"
+    assert old_city.display_settings["show_home_agenda"] is False
+
+
+@pytest.mark.django_db
 def test_seed_bookeo_products_creates_expected_slots_and_capacity():
     call_command("seed_bookeo_products")
 

@@ -5,10 +5,11 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q, Sum
-from django.http import JsonResponse
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from apps.accounts.models import UserProfile
 from apps.accounts.permissions import admin_required, is_admin
@@ -16,10 +17,15 @@ from apps.bookings.models import (
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
+    Provider,
     ReviewQueueItem,
     TourActivity,
 )
-from apps.bookings.services import capacity_snapshot, get_daily_capacity_summary
+from apps.bookings.services import (
+    apply_manual_override,
+    capacity_snapshot,
+    get_daily_capacity_summary,
+)
 from apps.ingestion.models import RawEmail
 
 AGENDA_RANGE_OPTIONS = (1, 3, 7)
@@ -50,6 +56,7 @@ def dashboard(request):
             range_days,
             messages="unread",
         ),
+        "agenda_print_url": _agenda_print_url(selected_date, range_days),
         "previous_url": _dashboard_url(
             selected_date - timedelta(days=range_days),
             range_days,
@@ -67,7 +74,10 @@ def dashboard(request):
             }
             for days in AGENDA_RANGE_OPTIONS
         ],
-        "dashboard_messages": _dashboard_messages(message_filter),
+        "dashboard_messages": _dashboard_messages(
+            message_filter,
+            read_keys=set(request.session.get("home_read_message_keys", [])),
+        ),
         "agenda_sections": _agenda_sections(selected_date, range_days),
         "booking_status_options": Booking.Status.choices,
         "attendance_status_options": Booking.AttendanceStatus.choices,
@@ -97,6 +107,149 @@ def dashboard(request):
         .order_by("status"),
     }
     return render(request, "core/dashboard.html", context)
+
+
+@login_required
+@require_POST
+def mark_home_messages_read(request):
+    read_keys = set(request.session.get("home_read_message_keys", []))
+    read_keys.update(
+        message["key"] for message in _dashboard_messages("all", read_keys=set())
+    )
+    request.session["home_read_message_keys"] = sorted(read_keys)
+    request.session.modified = True
+    next_url = request.POST.get("next") or reverse("core:dashboard")
+    return redirect(next_url)
+
+
+@login_required
+@require_POST
+def cancel_home_booking(request, booking_id):
+    if not (
+        request.user.is_superuser
+        or getattr(request.user.profile, "can_edit_bookings", False)
+    ):
+        return HttpResponseForbidden("You do not have permission to cancel bookings.")
+    booking = get_object_or_404(Booking, pk=booking_id)
+    apply_manual_override(
+        booking=booking,
+        changes={"status": Booking.Status.CANCELLED},
+        user=request.user,
+        reason=request.POST.get("bookingDeclineReason", ""),
+    )
+    next_url = request.POST.get("next") or reverse("core:dashboard")
+    return redirect(next_url)
+
+
+@login_required
+@require_POST
+def create_home_booking(request, service_date, slot_id):
+    if not (
+        request.user.is_superuser
+        or getattr(request.user.profile, "can_edit_bookings", False)
+    ):
+        return HttpResponseForbidden("You do not have permission to create bookings.")
+    parsed_date = _parse_date(service_date)
+    if not parsed_date:
+        return HttpResponseForbidden("Invalid service date.")
+    slot = get_object_or_404(
+        ActivityScheduleSlot.objects.select_related("schedule", "schedule__activity"),
+        pk=slot_id,
+        active=True,
+    )
+    provider, _ = Provider.objects.get_or_create(
+        code="direct",
+        defaults={
+            "name": "Direct",
+            "active": True,
+            "known_sender_patterns": [],
+            "known_subject_patterns": [],
+            "parser_key": "direct",
+        },
+    )
+    now = timezone.now()
+    reference = f"TM-{now:%Y%m%d%H%M%S}-{slot.id}"
+    pax = _parse_positive_int(request.POST.get("active_traveler_count"), default=0)
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference=reference,
+        status=Booking.Status.CONFIRMED,
+        activity=slot.schedule.activity,
+        schedule_slot=slot,
+        raw_product_name=slot.schedule.activity.name,
+        provider_travel_date=parsed_date,
+        provider_start_time=slot.start_time,
+        provider_end_time=slot.end_time,
+        provider_slot_type=slot.slot_type,
+        active_travel_date=parsed_date,
+        active_start_time=slot.start_time,
+        active_end_time=slot.end_time,
+        active_slot_type=slot.slot_type,
+        provider_traveler_count=pax,
+        active_traveler_count=pax,
+        lead_traveler_name=request.POST.get("lead_traveler_name", "").strip()
+        or "New customer",
+        lead_traveler_email=request.POST.get("lead_traveler_email", "").strip() or None,
+        lead_traveler_phone=request.POST.get("lead_traveler_phone", "").strip() or None,
+        special_requirements=request.POST.get("special_requirements", "").strip()
+        or None,
+        customer_message=request.POST.get("customer_message", "").strip() or None,
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
+        source=BookingEvent.Source.MANUAL,
+        created_by=request.user,
+    )
+    next_url = request.POST.get("next") or _dashboard_url(parsed_date, 1)
+    return redirect(next_url)
+
+
+@login_required
+def credits(request):
+    credit_packages = [
+        {
+            "code": "CREDITS-40",
+            "credits": 40,
+            "price": "$5",
+            "unit_price": "$0,12",
+        },
+        {
+            "code": "CREDITS-250",
+            "credits": 250,
+            "price": "$25",
+            "unit_price": "$0,10",
+        },
+        {
+            "code": "CREDITS-1100",
+            "credits": 1100,
+            "price": "$100",
+            "unit_price": "$0,09",
+        },
+    ]
+    return render(
+        request,
+        "core/credits.html",
+        {
+            "current_credits": 0,
+            "credit_packages": credit_packages,
+        },
+    )
+
+
+@login_required
+def agenda_print(request):
+    selected_date = _parse_date(request.GET.get("date")) or timezone.localdate()
+    range_days = _parse_range_days(request.GET.get("range"))
+    return render(
+        request,
+        "core/agenda_print.html",
+        {
+            "selected_date": selected_date,
+            "range_days": range_days,
+            "agenda_sections": _agenda_sections(selected_date, range_days),
+        },
+    )
 
 
 @login_required
@@ -357,6 +510,7 @@ def _agenda_sections(selected_date, range_days):
             _agenda_row(service_date, row)
             for row in get_daily_capacity_summary(service_date)
         ]
+        rows = [row for row in rows if _show_in_home_agenda(row)]
         rows = sorted(rows, key=_agenda_row_sort_key)
         sections.append(
             {
@@ -394,6 +548,7 @@ def _agenda_row(service_date, row):
         ),
         "has_warning": has_warning,
         "bookings": booking_cards,
+        "slot": slot,
         "modal_id": _agenda_modal_id(service_date, row),
         "sort_id": _agenda_sort_id(row),
         "slot_url": _slot_url(service_date, row),
@@ -401,7 +556,18 @@ def _agenda_row(service_date, row):
 
 
 def _agenda_title(row):
-    return row["activity"].name
+    activity = row["activity"]
+    return activity.internal_display_name or activity.name
+
+
+def _show_in_home_agenda(row):
+    activity = row["slot"].schedule.activity if row["slot"] else None
+    settings = activity.display_settings if activity else {}
+    if settings.get("show_home_agenda") is False:
+        return False
+    if settings.get("show_home_agenda") is True:
+        return True
+    return bool(row["booked"] or row["bookings"])
 
 
 def _agenda_time_label(row):
@@ -510,7 +676,8 @@ def _slot_url(service_date, row):
     )
 
 
-def _dashboard_messages(message_filter="all"):
+def _dashboard_messages(message_filter="all", *, read_keys=None):
+    read_keys = read_keys or set()
     messages = []
     events = BookingEvent.objects.select_related(
         "booking",
@@ -537,10 +704,11 @@ def _dashboard_messages(message_filter="all"):
         _message_from_failed_email(raw_email) for raw_email in failed_emails
     )
 
+    for message in messages:
+        message["read"] = message["key"] in read_keys
+
     if message_filter == "unread":
-        messages = [
-            message for message in messages if message["kind"] in {"warning", "error"}
-        ]
+        messages = [message for message in messages if not message["read"]]
 
     return sorted(
         messages,
@@ -557,7 +725,9 @@ def _message_from_event(event):
         href = reverse("bookings:raw_email_detail", args=[event.raw_email_id])
     return {
         "kind": _event_kind(event.event_type),
+        "key": f"event:{event.id}",
         "created_at": event.created_at,
+        "created_label": _home_message_created_label(event.created_at),
         "title": title,
         "subtitle": _booking_datetime_label(booking),
         "product": _booking_product_label(booking),
@@ -577,7 +747,9 @@ def _message_from_review(item):
         href = reverse("bookings:raw_email_detail", args=[item.raw_email_id])
     return {
         "kind": "warning",
+        "key": f"review:{item.id}",
         "created_at": item.created_at,
+        "created_label": _home_message_created_label(item.created_at),
         "title": f"Review needed - {item.title}",
         "subtitle": item.get_issue_type_display(),
         "product": _booking_product_label(item.booking),
@@ -595,7 +767,9 @@ def _message_from_failed_email(raw_email):
     )
     return {
         "kind": "error",
+        "key": f"raw-email:{raw_email.id}",
         "created_at": raw_email.received_at,
+        "created_label": _home_message_created_label(raw_email.received_at),
         "title": f"Parser failed - {raw_email.subject}",
         "subtitle": provider_name,
         "product": "",
@@ -624,6 +798,13 @@ def _event_title(event, booking):
     else:
         prefix = "New booking"
     return f"{prefix} - {traveler}" if traveler else prefix
+
+
+def _home_message_created_label(created_at):
+    local_created_at = timezone.localtime(created_at)
+    if local_created_at.date() == timezone.localdate():
+        return f"Today, {local_created_at:%H:%M}"
+    return f"{local_created_at:%a, %H:%M}"
 
 
 def _event_kind(event_type):
@@ -692,6 +873,13 @@ def _parse_range_days(value):
     return range_days
 
 
+def _parse_positive_int(value, *, default=0):
+    try:
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return default
+
+
 def _dashboard_url(selected_date, range_days, **overrides):
     params = {
         "date": selected_date.isoformat(),
@@ -699,6 +887,14 @@ def _dashboard_url(selected_date, range_days, **overrides):
     }
     params.update({key: value for key, value in overrides.items() if value})
     return f"{reverse('core:dashboard')}?{urlencode(params)}"
+
+
+def _agenda_print_url(selected_date, range_days):
+    params = {
+        "date": selected_date.isoformat(),
+        "range": range_days,
+    }
+    return f"{reverse('core:agenda_print')}?{urlencode(params)}"
 
 
 def _parse_date(value):

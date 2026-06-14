@@ -82,6 +82,7 @@ PROVIDERS = [
 BOOKEO_PRODUCTS = [
     {
         "name": "Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR",
+        "display_name": "VIATOR 2H",
         "category": TourActivity.Category.CRUISE,
         "provider": "viator",
         "duration": 120,
@@ -103,6 +104,7 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+        "display_name": "NEW VIATOR 2H V2",
         "category": TourActivity.Category.CRUISE,
         "provider": "viator",
         "duration": 120,
@@ -123,6 +125,7 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR TRANSFER",
+        "display_name": "NEW VIATOR 2H TRANSFER",
         "category": TourActivity.Category.CRUISE,
         "provider": "viator",
         "duration": 120,
@@ -140,6 +143,7 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "2 Hours Bosphorus Tour SL-1",
+        "display_name": "GYG - 2 SAAT (SL-1)",
         "category": TourActivity.Category.CRUISE,
         "provider": "getyourguide",
         "duration": 120,
@@ -156,6 +160,7 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "display_name": "GYG - 2 SAAT SL-(2-3)",
         "category": TourActivity.Category.CRUISE,
         "provider": "getyourguide",
         "duration": 120,
@@ -176,6 +181,8 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "Istanbul Old City And Bosphorus Tour",
+        "display_name": "OLD CITY VIATOR",
+        "show_home_agenda": False,
         "category": TourActivity.Category.LAND_AND_CRUISE,
         "provider": "viator",
         "duration": 240,
@@ -192,6 +199,7 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "Istanbul Two Continents Tour By Bus And Bosphorus Cruise",
+        "display_name": "VIATOR-TWO CONTINENTS",
         "category": TourActivity.Category.LAND_AND_CRUISE,
         "provider": "viator",
         "duration": 480,
@@ -208,6 +216,8 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "Istanbul Old City And Bosphorus Tour - GYG",
+        "display_name": "OLD CITY GYG",
+        "show_home_agenda": False,
         "category": TourActivity.Category.LAND_AND_CRUISE,
         "provider": "getyourguide",
         "duration": 240,
@@ -224,6 +234,7 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "Istanbul Two Continents Tour By Bus And Bosphorus Cruise - GYG",
+        "display_name": "GYG - TWO CONTINENTS",
         "category": TourActivity.Category.LAND_AND_CRUISE,
         "provider": "getyourguide",
         "duration": 480,
@@ -238,6 +249,7 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "1 Hours Bosphorus Tour viator",
+        "display_name": "VIATOR 1 SAAT",
         "category": TourActivity.Category.CRUISE,
         "provider": "viator",
         "duration": 60,
@@ -252,6 +264,7 @@ BOOKEO_PRODUCTS = [
     },
     {
         "name": "1 Hours Bosphorus Tour GYG",
+        "display_name": "GYG - 1 Hours",
         "category": TourActivity.Category.CRUISE,
         "provider": "getyourguide",
         "duration": 60,
@@ -302,13 +315,17 @@ class Command(BaseCommand):
             activity, created = TourActivity.objects.update_or_create(
                 name=payload["name"],
                 defaults={
-                    "internal_display_name": payload["name"],
+                    "internal_display_name": payload.get(
+                        "display_name",
+                        payload["name"],
+                    ),
                     "active": True,
                     "category": payload["category"],
                     "display_settings": {
                         "visible_internally": True,
                         "show_in_calendar": True,
                         "show_in_reports": True,
+                        "show_home_agenda": payload.get("show_home_agenda", True),
                     },
                     "notes": payload["notes"],
                 },

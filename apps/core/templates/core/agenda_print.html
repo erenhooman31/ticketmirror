@@ -1,0 +1,43 @@
+{% extends "base/base.html" %}
+
+{% block title %}Print upcoming bookings - ticketmirror{% endblock %}
+
+{% block content %}
+  <section class="tm-bookeo-page">
+    <h1>Print upcoming bookings</h1>
+    {% for section in agenda_sections %}
+      <h2>{{ section.label }}</h2>
+      <table class="table table-sm tm-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Tour</th>
+            <th>Bookings</th>
+            <th>Available</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in section.rows %}
+            <tr>
+              <td>{{ row.time }}</td>
+              <td>{{ row.title }}</td>
+              <td>{{ row.booked }} booked{% if row.blocked %}, {{ row.blocked }} blocked{% endif %}</td>
+              <td>{% if row.available is not None %}{{ row.available }} available{% else %}capacity not set{% endif %}</td>
+            </tr>
+            {% for booking in row.bookings %}
+              <tr>
+                <td></td>
+                <td colspan="3">{{ booking.traveler }} - {{ booking.pax }} adult{% if booking.pax != 1 %}s{% endif %} - Booking number: {{ booking.reference }}</td>
+              </tr>
+            {% endfor %}
+          {% empty %}
+            <tr>
+              <td colspan="4">No agenda slots for this date.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+    <button class="tm-action-button" type="button" onclick="window.print()">Print</button>
+  </section>
+{% endblock %}

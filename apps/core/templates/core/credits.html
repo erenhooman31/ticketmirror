@@ -1,0 +1,111 @@
+{% extends "base/base.html" %}
+
+{% block title %}Purchase credits - ticketmirror{% endblock %}
+
+{% block content %}
+  <section class="tm-bookeo-page">
+    <h1>Purchase credits</h1>
+    <p>
+      You currently have {{ current_credits }} credits.
+      <a href="#">Check your credits history</a>
+    </p>
+
+    <h3>What can you do with your credits ?</h3>
+    <p>Credits can be used to access additional services.</p>
+    <ul>
+      <li>SMS messages: receive SMS notifications and send SMS reminders to your customers. 1 SMS = 1 credit</li>
+      <li>Faxes: receive fax notifications. The cost of a fax depends on your location. <a href="#">View fax rates</a></li>
+    </ul>
+    <p>Click one of the buttons below to purchase new credits.</p>
+
+    <table class="tm-credits-table">
+      <thead>
+        <tr>
+          <th></th>
+          {% for package in credit_packages %}
+            <th>{{ package.code }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th># of credits</th>
+          {% for package in credit_packages %}
+            <td>{{ package.credits }}</td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <th>Price</th>
+          {% for package in credit_packages %}
+            <td>{{ package.price }} <span>(1 credit = {{ package.unit_price }} )</span></td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <th></th>
+          {% for package in credit_packages %}
+            <td>
+              <button
+                class="tm-purchase-button"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#credits-purchase-{{ package.credits }}"
+              >
+                <span aria-hidden="true">+</span>
+                <span>Purchase</span>
+              </button>
+            </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+
+    <p>All prices shown are in US dollars</p>
+
+    <h2>Terms and conditions - SMS</h2>
+    <p>Due to the nature of mobile networks, it is not possible to guarantee a timely delivery of SMS messages.</p>
+    <p>Messages can get lost or delayed, for various reasons outside our control.</p>
+    <p>TicketMirror cannot be held responsible for the loss or delay of SMS messages.</p>
+    <p>By purchasing credits you accept these terms and conditions</p>
+
+    <h2>Terms and conditions - Fax</h2>
+    <p>Due to the nature of fax transmissions, it is not possible to guarantee a timely delivery of faxes.</p>
+    <p>Faxes can be delayed, or never received, for various reasons outside our control.</p>
+    <p>TicketMirror cannot be held responsible for the loss or delay of faxes.</p>
+    <p>Your credits will be charged only when we receive a receipt confirming that the fax has been received by the destination fax machine.</p>
+    <p>By purchasing credits you accept these terms and conditions</p>
+  </section>
+
+  {% for package in credit_packages %}
+    <div class="modal fade tm-bookeo-dialog" id="credits-purchase-{{ package.credits }}" tabindex="-1" aria-labelledby="credits-purchase-{{ package.credits }}-title" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header tm-bookeo-dialog-header">
+            <h2 class="modal-title" id="credits-purchase-{{ package.credits }}-title">Purchase credits</h2>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <table class="tm-modal-form-table">
+              <tbody>
+                <tr>
+                  <th>Package:</th>
+                  <td>{{ package.code }}</td>
+                </tr>
+                <tr>
+                  <th># of credits:</th>
+                  <td>{{ package.credits }}</td>
+                </tr>
+                <tr>
+                  <th>Price:</th>
+                  <td>{{ package.price }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="modal-footer">
+            <button class="tm-action-button" type="button" data-bs-dismiss="modal">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+{% endblock %}

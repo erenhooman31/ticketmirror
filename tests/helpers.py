@@ -38,6 +38,7 @@ def create_activity_setup(
         internal_display_name=activity_name,
         category=category,
         active=True,
+        display_settings={"show_home_agenda": True},
     )
     ActivityPeopleRule.objects.create(
         activity=activity,

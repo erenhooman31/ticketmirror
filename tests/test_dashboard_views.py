@@ -120,7 +120,80 @@ def test_dashboard_message_footer_filters_stay_on_home(client, users, booking_da
 
     assert 'href="/?date=2026-06-21&amp;range=1&amp;messages=all"' in html
     assert 'href="/?date=2026-06-21&amp;range=1&amp;messages=unread"' in html
+    assert 'href="/credits/">Credits: 0</a>' in html
+    assert "Inbox:" not in html
     assert 'href="/customers/">All</a>' not in html
+
+
+@pytest.mark.django_db
+def test_dashboard_message_all_unread_and_mark_all_read_state(
+    client,
+    users,
+    booking_data,
+):
+    event = BookingEvent.objects.create(
+        booking=booking_data["booking"],
+        event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
+        source=BookingEvent.Source.EMAIL,
+        created_at=timezone.now(),
+    )
+
+    client.force_login(users["viewer"])
+    all_response = client.get(
+        reverse("core:dashboard"),
+        {"date": "2026-06-21", "messages": "all"},
+    )
+    unread_response = client.get(
+        reverse("core:dashboard"),
+        {"date": "2026-06-21", "messages": "unread"},
+    )
+
+    assert "New booking - Alex Sample" in all_response.content.decode()
+    assert "New booking - Alex Sample" in unread_response.content.decode()
+    assert all_response.context["dashboard_messages"][0]["key"] == f"event:{event.id}"
+    assert all_response.context["dashboard_messages"][0]["read"] is False
+    assert "Mark all as read" in all_response.content.decode()
+
+    mark_response = client.post(
+        reverse("core:mark_home_messages_read"),
+        {"next": "/?date=2026-06-21&range=1&messages=unread"},
+    )
+    assert mark_response.status_code == 302
+    assert mark_response["Location"] == "/?date=2026-06-21&range=1&messages=unread"
+
+    after_response = client.get(
+        reverse("core:dashboard"),
+        {"date": "2026-06-21", "messages": "unread"},
+    )
+    after_html = after_response.content.decode()
+    assert "New booking - Alex Sample" not in after_html
+    assert "No messages yet." in after_html
+
+
+@pytest.mark.django_db
+def test_home_credits_click_path_renders_purchase_credits_page(
+    client,
+    users,
+):
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:credits"))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Purchase credits" in html
+    assert "You currently have 0 credits." in html
+    assert "Check your credits history" in html
+    assert "CREDITS-40" in html
+    assert "CREDITS-250" in html
+    assert "CREDITS-1100" in html
+    assert "# of credits" in html
+    assert "$5" in html
+    assert "$25" in html
+    assert "$100" in html
+    assert html.count(">Purchase</span>") == 3
+    assert "All prices shown are in US dollars" in html
+    assert "Terms and conditions - SMS" in html
+    assert "Terms and conditions - Fax" in html
 
 
 @pytest.mark.django_db
@@ -132,9 +205,32 @@ def test_dashboard_agenda_controls_match_bookeo_home(client, users, booking_data
     assert ">Today</a>" in html
     assert ">3 days</a>" in html
     assert ">7 days</a>" in html
-    assert ">Print</a>" in html
+    assert 'href="/agenda/print/?date=2026-06-21&amp;range=1">Print</a>' in html
+    assert 'onclick="window.print(); return false;">Print</a>' not in html
     assert "Previous" not in html
     assert "Next" not in html
+
+
+@pytest.mark.django_db
+def test_home_agenda_print_page_renders_scoped_agenda(
+    client,
+    users,
+    booking_data,
+):
+    client.force_login(users["viewer"])
+    response = client.get(
+        reverse("core:agenda_print"),
+        {"date": "2026-06-21", "range": "1"},
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Print upcoming bookings" in html
+    assert "Sunday, 21 June" in html
+    assert "City Tour" in html
+    assert "2 booked" in html
+    assert "3 available" in html
+    assert "Alex Sample - 2 adults - Booking number: BR-1" in html
 
 
 @pytest.mark.django_db
@@ -155,8 +251,32 @@ def test_dashboard_booking_modal_hides_raw_internal_sections(
     html = response.content.decode()
 
     assert "Booking" in html
-    assert "Traveler" in html
+    assert "Customer" in html
     assert "Notes *" in html
+    assert "Payments" in html
+    assert "Send email:" in html
+    assert 'name="customerNotificationEnabled" checked' in html
+    assert 'name="userNotificationEnabled" checked' in html
+    assert '<input type="checkbox" disabled> customer' not in html
+    assert '<input type="checkbox" disabled> other users' not in html
+    assert "You do not have the permission to perform this operation" in html
+    assert 'data-bs-target="#booking-modal-event-' in html
+    assert '-payment-error"' in html
+    assert "Are you sure that you want to cancel this booking ?" in html
+    assert "Track cancellation in customer's history" in html
+    assert "Allow customer to reschedule" in html
+    assert "Apply the standard cancellation policy" in html
+    assert "Message to customer (optional):" in html
+    assert "Yes, cancel" in html
+    assert "No, do not cancel" in html
+    assert (
+        '<button class="tm-action-button" type="button" disabled>Payment</button>'
+        not in html
+    )
+    assert (
+        '<button class="tm-action-button" type="button" disabled>Delete</button>'
+        not in html
+    )
     for raw_label in [
         "Audit note",
         "Audit</button>",
@@ -164,12 +284,18 @@ def test_dashboard_booking_modal_hides_raw_internal_sections(
         "Ticket breakdown:",
         "Provider import",
         "Raw product",
-        "Payments",
         "Price:",
         "Open full booking",
-        "Send email",
         "manual_review_pax",
         "active_pax",
+        "Traveler</button>",
+        "Status:</th>",
+        "Attendance:</th>",
+        "End</span>",
+        "Pickup:</th>",
+        "Meeting point:</th>",
+        "Unmapped activity",
+        "Unmapped slot",
     ]:
         assert raw_label not in html
 
@@ -214,6 +340,52 @@ def test_dashboard_agenda_sorts_rows_by_clock_time(client, users, booking_data):
 
 
 @pytest.mark.django_db
+def test_dashboard_agenda_shows_zero_booked_when_no_local_bookings(client, users):
+    create_activity_setup(
+        activity_name="Empty Local Tour",
+        start_time=time(8, 15),
+        capacity=12,
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    row = response.context["agenda_sections"][0]["rows"][0]
+
+    assert row["title"] == "Empty Local Tour"
+    assert row["booked"] == 0
+    assert row["available"] == 12
+
+
+@pytest.mark.django_db
+def test_dashboard_agenda_uses_home_display_name_and_visibility(
+    client,
+    users,
+    booking_data,
+):
+    booking_data["activity"].internal_display_name = "BOOKEO HOME LABEL"
+    booking_data["activity"].display_settings = {"show_home_agenda": True}
+    booking_data["activity"].save(
+        update_fields=["internal_display_name", "display_settings", "updated_at"]
+    )
+    hidden_setup = create_activity_setup(
+        provider_code="direct",
+        provider_name="Direct",
+        activity_name="Hidden Home Tour",
+        start_time=time(10, 0),
+        capacity=10,
+    )
+    hidden_setup["activity"].display_settings = {"show_home_agenda": False}
+    hidden_setup["activity"].save(update_fields=["display_settings", "updated_at"])
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    rows = response.context["agenda_sections"][0]["rows"]
+
+    assert rows[0]["title"] == "BOOKEO HOME LABEL"
+    assert all(row["title"] != "Hidden Home Tour" for row in rows)
+
+
+@pytest.mark.django_db
 def test_dashboard_agenda_item_opens_slot_modal(client, users, booking_data):
     client.force_login(users["viewer"])
     response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
@@ -228,6 +400,69 @@ def test_dashboard_agenda_item_opens_slot_modal(client, users, booking_data):
     assert "Alex Sample" in html
     assert "Booking number: BR-1" in html
     assert "09:00 Fixed time" not in html
+
+
+@pytest.mark.django_db
+def test_dashboard_agenda_plus_opens_new_booking_popup(
+    client,
+    users,
+    booking_data,
+):
+    client.force_login(users["operator"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    row = response.context["agenda_sections"][0]["rows"][0]
+    html = response.content.decode()
+
+    assert f'data-bs-target="#{row["modal_id"]}"' in html
+    assert 'aria-label="New booking"' in html
+    assert (
+        reverse(
+            "core:create_home_booking",
+            args=["2026-06-21", booking_data["slot"].id],
+        )
+        in html
+    )
+    assert "New booking" in html
+    assert "Customer" in html
+    assert "Payment" in html
+    assert "City Tour" in html
+    assert ">9:00 " in html
+
+
+@pytest.mark.django_db
+def test_home_agenda_plus_save_creates_prefilled_booking(
+    client,
+    users,
+    booking_data,
+):
+    slot = booking_data["slot"]
+    client.force_login(users["operator"])
+    response = client.post(
+        reverse(
+            "core:create_home_booking",
+            args=["2026-06-21", slot.id],
+        ),
+        {
+            "next": "/?date=2026-06-21&range=1",
+            "active_traveler_count": "3",
+            "lead_traveler_name": "Walk In",
+            "lead_traveler_email": "walkin@example.test",
+        },
+    )
+    created = Booking.objects.get(lead_traveler_name="Walk In")
+
+    assert response.status_code == 302
+    assert response["Location"] == "/?date=2026-06-21&range=1"
+    assert created.activity == booking_data["activity"]
+    assert created.schedule_slot == slot
+    assert created.active_travel_date == date(2026, 6, 21)
+    assert created.active_start_time == time(9, 0)
+    assert created.active_traveler_count == 3
+    assert BookingEvent.objects.filter(
+        booking=created,
+        event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
+        source=BookingEvent.Source.MANUAL,
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -366,6 +601,38 @@ def test_dashboard_modal_post_updates_booking_and_returns_to_dashboard(
     assert "Alex Updated" in refreshed_html
     assert "Modified" in refreshed_html
     assert "Status changed - Alex Updated" in refreshed_html
+
+
+@pytest.mark.django_db
+def test_home_delete_confirmation_soft_cancels_booking(
+    client,
+    users,
+    booking_data,
+):
+    booking = booking_data["booking"]
+    client.force_login(users["operator"])
+    response = client.post(
+        reverse("core:cancel_home_booking", args=[booking.id]),
+        {
+            "next": "/?date=2026-06-21&range=1",
+            "bookingDeclineReason": "Customer requested cancellation.",
+        },
+    )
+    booking.refresh_from_db()
+
+    assert response.status_code == 302
+    assert response["Location"] == "/?date=2026-06-21&range=1"
+    assert booking.status == Booking.Status.CANCELLED
+    assert BookingEvent.objects.filter(
+        booking=booking,
+        event_type=BookingEvent.EventType.MANUAL_STATUS_CHANGE,
+    ).exists()
+
+    refreshed = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    row = refreshed.context["agenda_sections"][0]["rows"][0]
+    html = refreshed.content.decode()
+    assert row["booked"] == 0
+    assert "Status changed - Alex Sample" in html
 
 
 @pytest.mark.django_db
