@@ -219,10 +219,11 @@ BOOKEO_PRODUCTS = [
         "name": "gyg yacht",
         "category": TourActivity.Category.YACHT,
         "provider": "getyourguide",
-        "duration": None,
+        "duration": 60,
         "slot_type": ActivityScheduleSlot.SlotType.PRIVATE_GROUP,
         "capacity": None,
         "times": [],
+        "duration_only": True,
         "current_from": None,
         "current_to": None,
         "other_schedules": [],
@@ -278,7 +279,11 @@ class Command(BaseCommand):
             stats["schedules"] += seed_other_schedules(activity, payload)
             stats["slots"] += seed_slots(current_schedule, payload)
             provider = providers[payload["provider"]]
-            linked_slot = current_schedule.slots.order_by("start_time").first()
+            linked_slot = (
+                current_schedule.slots.filter(active=True)
+                .order_by("start_time")
+                .first()
+            )
             stats["aliases"] += seed_alias(
                 provider=provider,
                 activity=activity,
@@ -377,6 +382,20 @@ def seed_other_schedules(activity, payload):
 def seed_slots(schedule, payload):
     wanted_times = {_parse_time(value) for value in payload["times"]}
     schedule.slots.exclude(start_time__in=wanted_times).delete()
+    if payload.get("duration_only") and payload["duration"]:
+        ActivityScheduleSlot.objects.update_or_create(
+            schedule=schedule,
+            start_time=_parse_time("00:00"),
+            defaults={
+                "end_time": _end_time(_parse_time("00:00"), payload["duration"]),
+                "duration_minutes": payload["duration"],
+                "slot_type": payload["slot_type"],
+                "capacity": 0,
+                "days_of_week": [],
+                "active": False,
+            },
+        )
+        return 0
     created_count = 0
     for value in payload["times"]:
         start_time = _parse_time(value)

@@ -1552,6 +1552,11 @@ def _schedule_duration_minutes(schedule):
         ),
         None,
     )
+    if not slot:
+        slot = next(
+            (slot for slot in schedule.slots.all() if slot.duration_minutes),
+            None,
+        )
     return slot.duration_minutes if slot else 120
 
 

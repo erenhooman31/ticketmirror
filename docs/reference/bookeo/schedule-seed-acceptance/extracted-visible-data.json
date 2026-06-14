@@ -1,0 +1,971 @@
+[
+  {
+    "id": 1,
+    "expectedName": "Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR",
+    "slug": "bosphorus-cruise-tour-in-istanbul-for-2-hours-viator",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-bosphorus-cruise-tour-in-istanbul-for-2-hours-viator.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-bosphorus-cruise-tour-in-istanbul-for-2-hours-viator.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR",
+      "effective": "This schedule is effective from Saturday, 4 April 2026 to Friday, 31 July 2026",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        }
+      ],
+      "otherRows": [
+        {
+          "start": "1/4/2027",
+          "end": "",
+          "name": "SUMMER season 2027"
+        },
+        {
+          "start": "1/10/2026",
+          "end": "31/3/2027",
+          "name": "WINTER season"
+        },
+        {
+          "start": "1/8/2026",
+          "end": "30/9/2026",
+          "name": "AUTMUN season"
+        },
+        {
+          "start": "1/4/2026",
+          "end": "3/4/2026",
+          "name": "summer season"
+        },
+        {
+          "start": "1/10/2025",
+          "end": "31/3/2026",
+          "name": "WINTER season"
+        },
+        {
+          "start": "19/5/2024",
+          "end": "30/9/2025",
+          "name": "Default season"
+        }
+      ],
+      "duration": {
+        "days": "0",
+        "hours": "2",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "250"
+    }
+  },
+  {
+    "id": 2,
+    "expectedName": "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+    "slug": "2-hours-bosphorus-cruise-boat-tour-in-istanbul-viator",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-2-hours-bosphorus-cruise-boat-tour-in-istanbul-viator.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-2-hours-bosphorus-cruise-boat-tour-in-istanbul-viator.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+      "effective": "This schedule is effective from Wednesday, 1 April 2026 to Friday, 31 July 2026",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        }
+      ],
+      "otherRows": [
+        {
+          "start": "1/4/2027",
+          "end": "",
+          "name": "autumon season"
+        },
+        {
+          "start": "1/10/2026",
+          "end": "31/3/2027",
+          "name": "WINTER season"
+        },
+        {
+          "start": "1/8/2026",
+          "end": "30/9/2026",
+          "name": "autumon season"
+        },
+        {
+          "start": "1/10/2025",
+          "end": "31/3/2026",
+          "name": "winter season"
+        },
+        {
+          "start": "19/5/2024",
+          "end": "30/9/2025",
+          "name": "Default season"
+        }
+      ],
+      "duration": {
+        "days": "0",
+        "hours": "2",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "250"
+    }
+  },
+  {
+    "id": 3,
+    "expectedName": "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR TRANSFER",
+    "slug": "2-hours-bosphorus-cruise-boat-tour-in-istanbul-viator-transfer",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-2-hours-bosphorus-cruise-boat-tour-in-istanbul-viator-transfer.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-2-hours-bosphorus-cruise-boat-tour-in-istanbul-viator-transfer.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR TRANSFER",
+      "effective": "This schedule is effective from Wednesday, 1 April 2026",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "11:00 (250 seats)",
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        }
+      ],
+      "otherRows": [
+        {
+          "start": "1/10/2025",
+          "end": "31/3/2026",
+          "name": "WINTER season"
+        },
+        {
+          "start": "19/5/2024",
+          "end": "30/9/2025",
+          "name": "Default season"
+        }
+      ],
+      "duration": {
+        "days": "0",
+        "hours": "2",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "250"
+    }
+  },
+  {
+    "id": 4,
+    "expectedName": "2 Hours Bosphorus Tour SL-1",
+    "slug": "2-hours-bosphorus-tour-sl-1",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-2-hours-bosphorus-tour-sl-1.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-2-hours-bosphorus-tour-sl-1.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "2 Hours Bosphorus Tour SL-1",
+      "effective": "This schedule is effective from Wednesday, 1 October 2025",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "11:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "11:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "11:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "11:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "11:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "11:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "11:00 (250 seats)"
+          ]
+        }
+      ],
+      "otherRows": [
+        {
+          "start": "19/5/2024",
+          "end": "30/9/2025",
+          "name": "Default season"
+        }
+      ],
+      "duration": {
+        "days": "0",
+        "hours": "2",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "250"
+    }
+  },
+  {
+    "id": 5,
+    "expectedName": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+    "slug": "gyg-2-hours-bosphorus-tour-sl-2-3",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-gyg-2-hours-bosphorus-tour-sl-2-3.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-gyg-2-hours-bosphorus-tour-sl-2-3.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+      "effective": "This schedule is effective from Wednesday, 1 April 2026 to Friday, 31 July 2026",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "14:00 (250 seats)",
+            "19:00 (250 seats)"
+          ]
+        }
+      ],
+      "otherRows": [
+        {
+          "start": "1/10/2026",
+          "end": "",
+          "name": "winter season2"
+        },
+        {
+          "start": "1/8/2026",
+          "end": "30/9/2026",
+          "name": "autumn season"
+        },
+        {
+          "start": "4/2/2026",
+          "end": "31/3/2026",
+          "name": "winter season"
+        },
+        {
+          "start": "1/10/2025",
+          "end": "3/2/2026",
+          "name": "winter season"
+        },
+        {
+          "start": "19/5/2024",
+          "end": "30/9/2025",
+          "name": "Default season"
+        }
+      ],
+      "duration": {
+        "days": "0",
+        "hours": "2",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "250"
+    }
+  },
+  {
+    "id": 6,
+    "expectedName": "Istanbul Old City And Bosphorus Tour",
+    "slug": "istanbul-old-city-and-bosphorus-tour",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-istanbul-old-city-and-bosphorus-tour.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-istanbul-old-city-and-bosphorus-tour.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "Istanbul Old City And Bosphorus Tour",
+      "effective": "This schedule is effective from Friday, 1 August 2025",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "08:30 (50 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "08:30 (50 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "08:30 (50 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "08:30 (50 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "08:30 (50 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "08:30 (50 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "08:30 (50 seats)"
+          ]
+        }
+      ],
+      "otherRows": [
+        {
+          "start": "19/5/2024",
+          "end": "31/7/2025",
+          "name": "Default season"
+        }
+      ],
+      "duration": {
+        "days": "0",
+        "hours": "4",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "50"
+    }
+  },
+  {
+    "id": 7,
+    "expectedName": "Istanbul Two Continents Tour By Bus And Bosphorus Cruise",
+    "slug": "istanbul-two-continents-tour-by-bus-and-bosphorus-cruise",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-istanbul-two-continents-tour-by-bus-and-bosphorus-cruise.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-istanbul-two-continents-tour-by-bus-and-bosphorus-cruise.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "Istanbul Two Continents Tour By Bus And Bosphorus Cruise",
+      "effective": "This schedule is effective from Sunday, 31 May 2026",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        }
+      ],
+      "otherRows": [
+        {
+          "start": "19/5/2024",
+          "end": "30/5/2026",
+          "name": "Default season"
+        }
+      ],
+      "duration": {
+        "days": "0",
+        "hours": "8",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "50"
+    }
+  },
+  {
+    "id": 8,
+    "expectedName": "Istanbul Old City And Bosphorus Tour - GYG",
+    "slug": "istanbul-old-city-and-bosphorus-tour-gyg",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-istanbul-old-city-and-bosphorus-tour-gyg.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-istanbul-old-city-and-bosphorus-tour-gyg.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "Istanbul Old City And Bosphorus Tour - GYG",
+      "effective": "This schedule is effective from Friday, 1 August 2025",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        }
+      ],
+      "otherRows": [
+        {
+          "start": "19/5/2024",
+          "end": "31/7/2025",
+          "name": "Default season"
+        }
+      ],
+      "duration": {
+        "days": "0",
+        "hours": "4",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "50"
+    }
+  },
+  {
+    "id": 9,
+    "expectedName": "Istanbul Two Continents Tour By Bus And Bosphorus Cruise - GYG",
+    "slug": "istanbul-two-continents-tour-by-bus-and-bosphorus-cruise-gyg",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-istanbul-two-continents-tour-by-bus-and-bosphorus-cruise-gyg.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-istanbul-two-continents-tour-by-bus-and-bosphorus-cruise-gyg.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "Istanbul Two Continents Tour By Bus And Bosphorus Cruise - GYG",
+      "effective": "This schedule has no date limits",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "08:15 (50 seats)"
+          ]
+        }
+      ],
+      "otherRows": [],
+      "duration": {
+        "days": "0",
+        "hours": "8",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "50"
+    }
+  },
+  {
+    "id": 10,
+    "expectedName": "1 Hours Bosphorus Tour viator",
+    "slug": "1-hours-bosphorus-tour-viator",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-1-hours-bosphorus-tour-viator.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-1-hours-bosphorus-tour-viator.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "1 Hours Bosphorus Tour viator",
+      "effective": "This schedule has no date limits",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        }
+      ],
+      "otherRows": [],
+      "duration": {
+        "days": "0",
+        "hours": "1",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "250"
+    }
+  },
+  {
+    "id": 11,
+    "expectedName": "1 Hours Bosphorus Tour GYG",
+    "slug": "1-hours-bosphorus-tour-gyg",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-1-hours-bosphorus-tour-gyg.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-1-hours-bosphorus-tour-gyg.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "1 Hours Bosphorus Tour GYG",
+      "effective": "This schedule is effective from Tuesday, 17 February 2026",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Tuesday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Wednesday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Thursday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Friday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Saturday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        },
+        {
+          "day": "Sunday",
+          "slots": [
+            "17:00 (250 seats)"
+          ]
+        }
+      ],
+      "otherRows": [],
+      "duration": {
+        "days": "0",
+        "hours": "1",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "20",
+      "defaultCapacity": "250"
+    }
+  },
+  {
+    "id": 12,
+    "expectedName": "gyg yacht",
+    "slug": "gyg-yacht",
+    "scheduleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-schedule-gyg-yacht.png",
+    "peopleShot": "D:\\ticketmirror\\ticketmirror\\docs\\reference\\bookeo\\schedule-seed-acceptance\\ticketmirror-people-gyg-yacht.png",
+    "scheduleData": {
+      "h1": "Schedule",
+      "productName": "gyg yacht",
+      "effective": "This schedule has no date limits",
+      "grid": [
+        {
+          "day": "Monday",
+          "slots": []
+        },
+        {
+          "day": "Tuesday",
+          "slots": []
+        },
+        {
+          "day": "Wednesday",
+          "slots": []
+        },
+        {
+          "day": "Thursday",
+          "slots": []
+        },
+        {
+          "day": "Friday",
+          "slots": []
+        },
+        {
+          "day": "Saturday",
+          "slots": []
+        },
+        {
+          "day": "Sunday",
+          "slots": []
+        }
+      ],
+      "otherRows": [],
+      "duration": {
+        "days": "0",
+        "hours": "1",
+        "minutes": "00"
+      }
+    },
+    "peopleData": {
+      "productName": "",
+      "minPeople": "1",
+      "maxPeople": "",
+      "defaultCapacity": ""
+    }
+  }
+]

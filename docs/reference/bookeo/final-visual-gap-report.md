@@ -66,6 +66,11 @@ Exact schedule data proof screenshots:
 - `docs/reference/bookeo/exact-schedule-proof/ticketmirror-1-hours-bosphorus-tour-gyg.png`
 - `docs/reference/bookeo/exact-schedule-proof/ticketmirror-gyg-yacht.png`
 
+Final schedule seed acceptance audit:
+
+- `docs/reference/bookeo/schedule-seed-acceptance-audit.md`
+- `docs/reference/bookeo/schedule-seed-acceptance/`
+
 ## Resolved Mismatches
 
 | Area | Bookeo behavior/structure | TicketMirror before | File/component responsible | Required fix | Status |
@@ -97,3 +102,11 @@ Primary navigation remains only Home, Calendar, Customers, Settings.
 - `ruff check .`
 - `black --check .`
 - Final screenshots in `docs/reference/bookeo/ticketmirror-after/` verify the scoped visual states.
+
+## Final Schedule Seed Acceptance
+
+Status: PASS after the final 2026-06-14 acceptance audit.
+
+The final audit opened local TicketMirror for all 12 seeded products and compared visible Schedule and People values against `docs/reference/bookeo/exact-product-schedule-data.md`. It found one scoped seed-data defect during the first pass: `gyg yacht` had no active fixed slots and therefore displayed the default 2-hour duration. The seed now stores a duration-only inactive yacht slot, and the duration display uses it as a no-active-slot fallback while keeping the yacht weekly grid free of visible fixed times.
+
+After reseeding and recapturing Schedule/People pages, all 12 products pass for Current schedule, Other schedules, Duration, and scoped People capacity/seats.

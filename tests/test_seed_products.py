@@ -172,7 +172,16 @@ def test_seed_bookeo_products_keeps_yacht_unconfirmed_without_fixed_slot():
 
     assert activity.category == TourActivity.Category.YACHT
     assert activity.schedules.count() == 1
-    assert ActivityScheduleSlot.objects.filter(schedule__activity=activity).count() == 0
+    assert (
+        ActivityScheduleSlot.objects.filter(
+            schedule__activity=activity,
+            active=True,
+        ).count()
+        == 0
+    )
+    duration_slot = ActivityScheduleSlot.objects.get(schedule__activity=activity)
+    assert duration_slot.duration_minutes == 60
+    assert duration_slot.active is False
     assert alias.linked_slot is None
     assert alias.needs_manual_confirmation is True
 
