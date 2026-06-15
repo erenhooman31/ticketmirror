@@ -1,6 +1,7 @@
 from datetime import timedelta
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -12,21 +13,27 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounts.models import UserProfile
-from apps.accounts.permissions import admin_required, is_admin
+from apps.accounts.permissions import admin_required, can_mutate, is_admin
 from apps.bookings.models import (
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
-    Provider,
     ReviewQueueItem,
     TourActivity,
 )
 from apps.bookings.services import (
+    CapacityExceededError,
     apply_manual_override,
     capacity_snapshot,
+    create_internal_booking,
     get_daily_capacity_summary,
 )
-from apps.ingestion.models import RawEmail
+from apps.ingestion.models import GmailSyncState, RawEmail
+from apps.ingestion.tasks import (
+    daily_reconciliation_sync,
+    process_pending_raw_emails,
+    renew_gmail_watch,
+)
 
 AGENDA_RANGE_OPTIONS = (1, 3, 7)
 DEFAULT_AGENDA_RANGE = 1
@@ -157,51 +164,25 @@ def create_home_booking(request, service_date, slot_id):
         pk=slot_id,
         active=True,
     )
-    provider, _ = Provider.objects.get_or_create(
-        code="direct",
-        defaults={
-            "name": "Direct",
-            "active": True,
-            "known_sender_patterns": [],
-            "known_subject_patterns": [],
-            "parser_key": "direct",
-        },
-    )
-    now = timezone.now()
-    reference = f"TM-{now:%Y%m%d%H%M%S}-{slot.id}"
     pax = _parse_positive_int(request.POST.get("active_traveler_count"), default=0)
-    booking = Booking.objects.create(
-        provider=provider,
-        provider_booking_reference=reference,
-        status=Booking.Status.CONFIRMED,
-        activity=slot.schedule.activity,
-        schedule_slot=slot,
-        raw_product_name=slot.schedule.activity.name,
-        provider_travel_date=parsed_date,
-        provider_start_time=slot.start_time,
-        provider_end_time=slot.end_time,
-        provider_slot_type=slot.slot_type,
-        active_travel_date=parsed_date,
-        active_start_time=slot.start_time,
-        active_end_time=slot.end_time,
-        active_slot_type=slot.slot_type,
-        provider_traveler_count=pax,
-        active_traveler_count=pax,
-        lead_traveler_name=request.POST.get("lead_traveler_name", "").strip()
-        or "New customer",
-        lead_traveler_email=request.POST.get("lead_traveler_email", "").strip() or None,
-        lead_traveler_phone=request.POST.get("lead_traveler_phone", "").strip() or None,
-        special_requirements=request.POST.get("special_requirements", "").strip()
-        or None,
-        customer_message=request.POST.get("customer_message", "").strip() or None,
-    )
-    BookingEvent.objects.create(
-        booking=booking,
-        event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
-        source=BookingEvent.Source.MANUAL,
-        created_by=request.user,
-    )
     next_url = request.POST.get("next") or _dashboard_url(parsed_date, 1)
+    try:
+        create_internal_booking(
+            service_date=parsed_date,
+            schedule_slot=slot,
+            traveler_count=pax,
+            lead_traveler_name=request.POST.get("lead_traveler_name", ""),
+            lead_traveler_email=request.POST.get("lead_traveler_email", "").strip(),
+            lead_traveler_phone=request.POST.get("lead_traveler_phone", "").strip(),
+            special_requirements=request.POST.get("special_requirements", "").strip(),
+            customer_message=request.POST.get("customer_message", "").strip(),
+            user=request.user,
+            allow_overcapacity=request.POST.get("allow_overcapacity") == "on",
+            override_reason=request.POST.get("capacity_override_reason", ""),
+        )
+        messages.success(request, "Internal booking created.")
+    except CapacityExceededError as exc:
+        messages.error(request, str(exc))
     return redirect(next_url)
 
 
@@ -380,6 +361,71 @@ def settings_users_roles(request):
     )
 
 
+@login_required
+def settings_ingestion(request):
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "process_pending":
+            if not can_mutate(request.user):
+                return HttpResponseForbidden(
+                    "You do not have permission to process emails."
+                )
+            limit = _parse_positive_int(request.POST.get("limit"), default=50) or 50
+            try:
+                processed = process_pending_raw_emails.apply(
+                    kwargs={"limit": limit}
+                ).get()
+                messages.success(request, f"Processed {processed} pending email(s).")
+            except Exception as exc:
+                messages.error(request, f"Pending processing failed: {exc}")
+        elif action == "sync_recent":
+            if not is_admin(request.user):
+                return HttpResponseForbidden(
+                    "You do not have permission to sync Gmail."
+                )
+            limit = _parse_positive_int(request.POST.get("limit"), default=50) or 50
+            try:
+                result = daily_reconciliation_sync.apply(kwargs={"limit": limit}).get()
+                messages.success(request, f"Queued recent Gmail sync: {result}.")
+            except Exception as exc:
+                messages.error(request, f"Recent Gmail sync failed: {exc}")
+        elif action == "renew_watch":
+            if not is_admin(request.user):
+                return HttpResponseForbidden(
+                    "You do not have permission to renew Gmail watch."
+                )
+            try:
+                result = renew_gmail_watch.apply().get()
+                messages.success(request, f"Renewed Gmail watch: {result}.")
+            except Exception as exc:
+                messages.error(request, f"Gmail watch renewal failed: {exc}")
+        else:
+            messages.error(request, "Unsupported ingestion action.")
+        return redirect("core:settings_ingestion")
+
+    raw_counts = {
+        status: RawEmail.objects.filter(parse_status=status).count()
+        for status in RawEmail.ParseStatus.values
+    }
+    return render(
+        request,
+        "core/settings_ingestion.html",
+        {
+            "gmail_config": _gmail_config_status(),
+            "sync_states": GmailSyncState.objects.order_by("mailbox_email"),
+            "raw_counts": raw_counts,
+            "failed_review_count": RawEmail.objects.filter(
+                parse_status__in=[
+                    RawEmail.ParseStatus.FAILED,
+                    RawEmail.ParseStatus.NEEDS_REVIEW,
+                ]
+            ).count(),
+            "can_process_pending": can_mutate(request.user),
+            "can_admin_ingestion": is_admin(request.user),
+        },
+    )
+
+
 def _settings_sections(user):
     sections = [
         {
@@ -389,6 +435,14 @@ def _settings_sections(user):
                 "duration, and people capacity."
             ),
             "url": reverse("settings_tour_activities"),
+        },
+        {
+            "title": "Ingestion",
+            "description": (
+                "Review Gmail setup status, parser queue health, and safe email "
+                "processing actions."
+            ),
+            "url": reverse("core:settings_ingestion"),
         },
     ]
     if is_admin(user):
@@ -403,6 +457,29 @@ def _settings_sections(user):
             }
         )
     return sections
+
+
+def _gmail_config_status():
+    names = [
+        "GMAIL_MAILBOX",
+        "GMAIL_CLIENT_ID",
+        "GMAIL_CLIENT_SECRET",
+        "GMAIL_REFRESH_TOKEN",
+        "GMAIL_PUBSUB_TOPIC",
+        "GMAIL_WEBHOOK_AUDIENCE",
+        "GOOGLE_CLOUD_PROJECT",
+    ]
+    rows = []
+    for name in names:
+        value = getattr(settings, name, "")
+        rows.append(
+            {
+                "name": name,
+                "configured": bool(value),
+                "display": value if name == "GMAIL_MAILBOX" and value else "",
+            }
+        )
+    return rows
 
 
 def _customer_rows(bookings):

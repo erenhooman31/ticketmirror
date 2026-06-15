@@ -45,7 +45,8 @@ ticketmirror is not the source of truth. It stores raw provider emails first, pa
    - Home: http://localhost:8000/
    - Calendar: http://localhost:8000/bookings/daily/
    - Customers: http://localhost:8000/customers/
-   - Settings: http://localhost:8000/settings/
+- Settings: http://localhost:8000/settings/
+- Ingestion health: http://localhost:8000/settings/ingestion/
 
    Django's built-in `/admin/` can remain enabled for emergency superuser or
    developer access, but normal product configuration should happen through
@@ -171,11 +172,15 @@ Do not commit real Gmail credentials or provider secrets.
 ## CSV Exports
 
 The reports app contains CSV exports for bookings, daily manifests, capacity,
-and provider summaries:
+provider summaries, overcapacity warnings, unmapped provider products, and parser
+failures:
 
 ```bash
 /reports/bookings.csv
 /reports/daily-manifest.csv
 /reports/capacity-summary.csv
 /reports/provider-summary.csv
+/reports/overcapacity.csv
+/reports/unmapped-provider-products.csv
+/reports/parser-failures.csv
 ```

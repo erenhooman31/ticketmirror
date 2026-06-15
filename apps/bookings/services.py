@@ -7,12 +7,16 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 
+from apps.accounts.permissions import is_admin
+
 from .models import (
     ActivitySchedule,
     ActivityScheduleException,
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
+    Provider,
+    ReviewQueueItem,
 )
 
 PROVIDER_TO_ACTIVE_FIELD_MAP = {
@@ -49,6 +53,10 @@ EXCLUDED_CAPACITY_STATUSES = {
 EXCLUDED_ATTENDANCE_STATUSES = {
     Booking.AttendanceStatus.GELMEDI,
 }
+
+
+class CapacityExceededError(ValueError):
+    pass
 
 
 def apply_manual_override(
@@ -104,6 +112,150 @@ def apply_manual_override(
             )
 
     return booking
+
+
+def create_internal_booking(
+    *,
+    service_date,
+    schedule_slot: ActivityScheduleSlot,
+    traveler_count: int,
+    lead_traveler_name: str = "",
+    lead_traveler_email: str | None = None,
+    lead_traveler_phone: str | None = None,
+    special_requirements: str | None = None,
+    customer_message: str | None = None,
+    user=None,
+    allow_overcapacity: bool = False,
+    override_reason: str = "",
+) -> Booking:
+    traveler_count = max(int(traveler_count or 0), 0)
+    override_reason = (override_reason or "").strip()
+    with transaction.atomic():
+        slot = (
+            ActivityScheduleSlot.objects.select_for_update()
+            .select_related("schedule", "schedule__activity")
+            .get(id=schedule_slot.id)
+        )
+        if allow_overcapacity and not is_admin(user):
+            raise CapacityExceededError("Only admins can override slot capacity.")
+        if allow_overcapacity and not override_reason:
+            raise CapacityExceededError("A capacity override reason is required.")
+
+        snapshot = get_capacity_for_slot_date(slot, service_date)
+        projected_remaining = snapshot["remaining"] - traveler_count
+        if projected_remaining < 0 and not allow_overcapacity:
+            raise CapacityExceededError("This booking would exceed the slot capacity.")
+
+        provider, _created = Provider.objects.get_or_create(
+            code="direct",
+            defaults={
+                "name": "Direct",
+                "active": True,
+                "known_sender_patterns": [],
+                "known_subject_patterns": [],
+                "parser_key": "direct",
+            },
+        )
+        reference = _next_internal_reference(slot)
+        booking = Booking.objects.create(
+            provider=provider,
+            provider_booking_reference=reference,
+            status=Booking.Status.CONFIRMED,
+            activity=slot.schedule.activity,
+            schedule_slot=slot,
+            raw_product_name=slot.schedule.activity.name,
+            provider_travel_date=service_date,
+            provider_start_time=slot.start_time,
+            provider_end_time=slot.end_time,
+            provider_slot_type=slot.slot_type,
+            active_travel_date=service_date,
+            active_start_time=slot.start_time,
+            active_end_time=slot.end_time,
+            active_slot_type=slot.slot_type,
+            provider_traveler_count=traveler_count,
+            active_traveler_count=traveler_count,
+            lead_traveler_name=lead_traveler_name.strip() or "New customer",
+            lead_traveler_email=lead_traveler_email or None,
+            lead_traveler_phone=lead_traveler_phone or None,
+            special_requirements=special_requirements or None,
+            customer_message=customer_message or None,
+        )
+        event_values = {
+            "reference": reference,
+            "traveler_count": traveler_count,
+        }
+        if projected_remaining < 0:
+            event_values["capacity_override_reason"] = override_reason
+            create_capacity_overbooked_review_item(
+                booking=booking,
+                details=(
+                    f"Internal booking exceeded capacity by "
+                    f"{abs(projected_remaining)} pax. Reason: {override_reason}"
+                ),
+            )
+        BookingEvent.objects.create(
+            booking=booking,
+            event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
+            source=BookingEvent.Source.MANUAL,
+            new_values=event_values,
+            created_by=user,
+        )
+    return booking
+
+
+def create_capacity_overbooked_review_item(
+    *,
+    booking: Booking,
+    raw_email=None,
+    details: str = "",
+) -> ReviewQueueItem | None:
+    if not booking.schedule_slot_id or not booking.active_travel_date:
+        return None
+    review, _created = ReviewQueueItem.objects.update_or_create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.CAPACITY_OVERBOOKED,
+        status=ReviewQueueItem.Status.OPEN,
+        defaults={
+            "title": "Capacity overbooked",
+            "details": details or _capacity_overbooked_details(booking),
+        },
+    )
+    return review
+
+
+def warn_if_capacity_overbooked(*, booking: Booking, raw_email=None) -> bool:
+    if not booking.schedule_slot_id or not booking.active_travel_date:
+        return False
+    snapshot = get_capacity_for_slot_date(
+        booking.schedule_slot, booking.active_travel_date
+    )
+    if snapshot["remaining"] >= 0:
+        return False
+    had_open_review = ReviewQueueItem.objects.filter(
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.CAPACITY_OVERBOOKED,
+        status=ReviewQueueItem.Status.OPEN,
+    ).exists()
+    create_capacity_overbooked_review_item(
+        booking=booking,
+        raw_email=raw_email,
+        details=_capacity_overbooked_details(booking, snapshot=snapshot),
+    )
+    if not had_open_review:
+        BookingEvent.objects.create(
+            booking=booking,
+            event_type=BookingEvent.EventType.CONFLICT_DETECTED,
+            source=BookingEvent.Source.SYSTEM,
+            raw_email=raw_email,
+            new_values={
+                "issue_type": ReviewQueueItem.IssueType.CAPACITY_OVERBOOKED,
+                "remaining": snapshot["remaining"],
+                "capacity": snapshot["capacity"],
+                "active_pax": snapshot["active_pax"],
+            },
+        )
+    return True
 
 
 def is_manually_overridden(booking: Booking, field_name: str) -> bool:
@@ -251,6 +403,15 @@ def get_daily_capacity_summary(service_date) -> list[dict[str, Any]]:
     return sorted(rows, key=_capacity_row_sort_key)
 
 
+def overbooked_capacity_rows(date_from, date_to) -> list[dict[str, Any]]:
+    return [
+        row
+        for service_date in _date_range(date_from, date_to)
+        for row in get_daily_capacity_summary(service_date)
+        if row["remaining"] is not None and row["remaining"] < 0
+    ]
+
+
 def get_slot_bookings(service_date, slot: ActivityScheduleSlot):
     return (
         Booking.objects.filter(
@@ -378,6 +539,39 @@ def export_provider_summary_csv(date_from, date_to) -> str:
                 row["confirmed_pax"] or 0,
                 row["pending_pax"] or 0,
                 row["cancelled_count"] or 0,
+            ]
+        )
+    return output.getvalue()
+
+
+def export_overcapacity_csv(date_from, date_to) -> str:
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "date",
+            "activity",
+            "slot",
+            "confirmed pax",
+            "pending pax",
+            "manual review pax",
+            "capacity",
+            "remaining",
+            "overbooked pax",
+        ]
+    )
+    for row in overbooked_capacity_rows(date_from, date_to):
+        writer.writerow(
+            [
+                row["date"],
+                row["activity"].name,
+                row["slot_label"],
+                row["confirmed_pax"],
+                row["pending_pax"],
+                row["manual_review_pax"],
+                _csv_number(row["capacity"]),
+                _csv_number(row["remaining"]),
+                abs(row["remaining"]),
             ]
         )
     return output.getvalue()
@@ -549,3 +743,26 @@ def _date_range(date_from, date_to):
 
 def _csv_number(value):
     return "" if value is None else value
+
+
+def _next_internal_reference(slot: ActivityScheduleSlot) -> str:
+    from django.utils import timezone
+
+    timestamp = timezone.now().strftime("%Y%m%d%H%M%S%f")
+    return f"TM-{timestamp}-{slot.id}"
+
+
+def _capacity_overbooked_details(
+    booking: Booking,
+    *,
+    snapshot: dict[str, Any] | None = None,
+) -> str:
+    snapshot = snapshot or get_capacity_for_slot_date(
+        booking.schedule_slot,
+        booking.active_travel_date,
+    )
+    return (
+        f"{booking.provider_booking_reference} has {snapshot['active_pax']} active "
+        f"pax against capacity {snapshot['capacity']} for "
+        f"{booking.active_travel_date} {slot_label(booking.schedule_slot)}."
+    )

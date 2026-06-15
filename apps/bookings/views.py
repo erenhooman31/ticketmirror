@@ -477,6 +477,13 @@ def tour_activity_detail(request, activity_id):
             if form.is_valid():
                 schedule.slots.update(capacity=form.cleaned_data["capacity"])
                 messages.success(request, "Seats updated for all times.")
+                warnings = _overbooked_schedule_warnings(schedule)
+                if warnings:
+                    messages.warning(
+                        request,
+                        "Capacity is below active bookings for: "
+                        + "; ".join(warnings[:5]),
+                    )
                 return _redirect_activity_tab(activity, "scheduling")
             return render(
                 request,
@@ -502,11 +509,19 @@ def tour_activity_detail(request, activity_id):
                     id=request.POST["slot_id"],
                     schedule=schedule,
                 )
-            form = OperatorScheduleSlotForm(request.POST, instance=slot)
+            form = OperatorScheduleSlotForm(
+                request.POST,
+                instance=slot,
+                schedule=schedule,
+            )
             if form.is_valid():
                 form.save(schedule=schedule)
                 messages.success(request, "Available time saved.")
                 return _redirect_activity_tab(activity, "scheduling")
+            messages.error(
+                request,
+                "Available time was not saved. Check the highlighted fields.",
+            )
             return render(
                 request,
                 "bookings/tour_activity_detail.html",
@@ -1126,6 +1141,23 @@ def _schedule_for_kind(activity, schedule_kind):
     )
 
 
+def _overbooked_schedule_warnings(schedule, *, days=14):
+    warnings = []
+    today = timezone.localdate()
+    for offset in range(days):
+        service_date = today + timedelta(days=offset)
+        for row in get_daily_capacity_summary(service_date):
+            slot = row.get("slot")
+            if not slot or slot.schedule_id != schedule.id:
+                continue
+            if row["remaining"] < 0:
+                warnings.append(
+                    f"{service_date.isoformat()} {slot_label(slot)} "
+                    f"({abs(row['remaining'])} over)"
+                )
+    return warnings
+
+
 def _schedule_editor_context(
     request,
     *,
@@ -1352,7 +1384,10 @@ def _slot_form_for_editor(editor_type, editor_schedule, editor_slot, request):
     if editor_type != "slot" or not editor_schedule:
         return OperatorScheduleSlotForm()
     if editor_slot:
-        return OperatorScheduleSlotForm(instance=editor_slot)
+        return OperatorScheduleSlotForm(
+            instance=editor_slot,
+            schedule=editor_slot.schedule,
+        )
     initial = {
         "duration_minutes": 120,
         "slot_kind": "fixed-time",
@@ -1366,7 +1401,7 @@ def _slot_form_for_editor(editor_type, editor_schedule, editor_slot, request):
         initial["duration_minutes"] = first_slot.duration_minutes
         initial["slot_kind"] = "fixed-time"
         initial["capacity"] = first_slot.capacity
-    return OperatorScheduleSlotForm(initial=initial)
+    return OperatorScheduleSlotForm(initial=initial, schedule=editor_schedule)
 
 
 def _slot_editor_day_index(request, slot):
