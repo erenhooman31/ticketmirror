@@ -830,6 +830,129 @@ def test_calendar_activity_and_category_filters_limit_rows(client, users, bookin
 
 
 @pytest.mark.django_db
+def test_calendar_excludes_product_mismatch_review_bookings(
+    client,
+    users,
+    booking_data,
+):
+    mismatch = create_booking(
+        booking_data,
+        "BR-MISMATCH",
+        status=Booking.Status.MANUAL_REVIEW,
+        pax=3,
+        lead_name="Mismatch Guest",
+    )
+    ReviewQueueItem.objects.create(
+        booking=mismatch,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        status=ReviewQueueItem.Status.OPEN,
+        title="Product mismatch",
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("bookings:daily"), {"date": "2026-06-21"})
+    search_response = client.get(
+        reverse("bookings:daily"),
+        {"date": "2026-06-21", "q": "Mismatch Guest"},
+    )
+    slot_response = client.get(
+        reverse("bookings:slot_detail", args=["2026-06-21", booking_data["slot"].id])
+    )
+
+    row = response.context["rows"][0]
+    assert row["confirmed"] == 2
+    assert row["manual_review"] == 0
+    assert row["remaining"] == 3
+    assert search_response.context["rows"] == []
+    assert "Mismatch Guest" not in slot_response.content.decode()
+
+
+@pytest.mark.django_db
+def test_calendar_matched_review_booking_appears_with_warning(
+    client,
+    users,
+    booking_data,
+):
+    create_booking(
+        booking_data,
+        "BR-REVIEW",
+        status=Booking.Status.MANUAL_REVIEW,
+        pax=1,
+        lead_name="Review Guest",
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("bookings:daily"), {"date": "2026-06-21"})
+    boxes_response = client.get(
+        reverse("bookings:daily"),
+        {"date": "2026-06-21", "view": "boxes"},
+    )
+    slot_response = client.get(
+        reverse("bookings:slot_detail", args=["2026-06-21", booking_data["slot"].id])
+    )
+
+    row = response.context["rows"][0]
+    assert row["manual_review"] == 1
+    assert row["remaining"] == 2
+    assert row["has_warning"] is True
+    assert "Needs review" in response.content.decode()
+    assert "Needs review" in boxes_response.content.decode()
+    assert "Review Guest" in slot_response.content.decode()
+    assert "Needs review" in slot_response.content.decode()
+
+
+@pytest.mark.django_db
+def test_calendar_gelmedi_does_not_count_toward_active_capacity(
+    client,
+    users,
+    booking_data,
+):
+    gelmedi = create_booking(
+        booking_data,
+        "BR-GELMEDI",
+        status=Booking.Status.CONFIRMED,
+        pax=3,
+        lead_name="No Show Guest",
+    )
+    gelmedi.attendance_status = Booking.AttendanceStatus.GELMEDI
+    gelmedi.save(update_fields=["attendance_status", "updated_at"])
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("bookings:daily"), {"date": "2026-06-21"})
+    slot_response = client.get(
+        reverse("bookings:slot_detail", args=["2026-06-21", booking_data["slot"].id])
+    )
+
+    row = response.context["rows"][0]
+    assert row["confirmed"] == 2
+    assert row["remaining"] == 3
+    assert "No Show Guest" not in slot_response.content.decode()
+
+
+@pytest.mark.django_db
+def test_calendar_pages_do_not_show_raw_developer_fields(client, users, booking_data):
+    client.force_login(users["viewer"])
+    daily_response = client.get(reverse("bookings:daily"), {"date": "2026-06-21"})
+    slot_response = client.get(
+        reverse("bookings:slot_detail", args=["2026-06-21", booking_data["slot"].id])
+    )
+    combined_html = daily_response.content.decode() + slot_response.content.decode()
+
+    for raw_label in [
+        "raw_product_name",
+        "manual_review_pax",
+        "active_pax",
+        "Provider import",
+        "Raw product",
+        "Raw option",
+        "Provider date",
+        "Provider time",
+        "Provider pax",
+    ]:
+        assert raw_label not in combined_html
+
+
+@pytest.mark.django_db
 def test_csv_export_works(client, users, booking_data):
     client.force_login(users["viewer"])
     response = client.get(

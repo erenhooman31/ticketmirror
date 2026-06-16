@@ -13,6 +13,7 @@ from .models import (
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
+    ReviewQueueItem,
 )
 
 PROVIDER_TO_ACTIVE_FIELD_MAP = {
@@ -237,6 +238,10 @@ def get_daily_capacity_summary(service_date) -> list[dict[str, Any]]:
 
     booking_slots = (
         Booking.objects.exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
+        .exclude(
+            review_items__status=ReviewQueueItem.Status.OPEN,
+            review_items__issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        )
         .filter(active_travel_date=service_date, schedule_slot__isnull=False)
         .select_related("schedule_slot", "schedule_slot__schedule__activity")
         .values_list("schedule_slot_id", flat=True)
@@ -259,8 +264,13 @@ def get_slot_bookings(service_date, slot: ActivityScheduleSlot):
         )
         .exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
         .exclude(attendance_status__in=EXCLUDED_ATTENDANCE_STATUSES)
+        .exclude(
+            review_items__status=ReviewQueueItem.Status.OPEN,
+            review_items__issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        )
         .select_related("provider", "activity", "schedule_slot")
         .order_by("provider__name", "provider_booking_reference")
+        .distinct()
     )
 
 

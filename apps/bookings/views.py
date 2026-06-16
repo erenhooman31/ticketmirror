@@ -1822,6 +1822,10 @@ def _parse_int(value):
 
 
 def _filter_calendar_bookings(queryset, filters):
+    queryset = queryset.exclude(
+        review_items__status=ReviewQueueItem.Status.OPEN,
+        review_items__issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+    )
     if filters["activity"]:
         queryset = queryset.filter(activity_id=filters["activity"])
     if filters["category"]:
@@ -1834,7 +1838,7 @@ def _filter_calendar_bookings(queryset, filters):
         queryset = queryset.exclude(status=Booking.Status.CANCELLED)
     if not filters["show_manual_review"]:
         queryset = queryset.exclude(status=Booking.Status.MANUAL_REVIEW)
-    return queryset
+    return queryset.distinct()
 
 
 def _requires_booking_match(filters):
@@ -1957,6 +1961,14 @@ def _calendar_row(selected_date, summary, filtered_bookings, filters, url_params
         for booking in matching_slot_bookings
         if booking.status == Booking.Status.CANCELLED
     )
+    has_warning = any(
+        booking.status
+        in {
+            Booking.Status.PENDING_PROVIDER_ACCEPTANCE,
+            Booking.Status.MANUAL_REVIEW,
+        }
+        for booking in matching_slot_bookings
+    )
     return {
         "date": selected_date,
         "activity": summary["activity"],
@@ -1972,6 +1984,7 @@ def _calendar_row(selected_date, summary, filtered_bookings, filters, url_params
         "remaining": summary["remaining"],
         "status": _capacity_status(summary["remaining"], summary["pending_pax"]),
         "slot_url": _slot_url(selected_date, slot, url_params),
+        "has_warning": has_warning,
     }
 
 

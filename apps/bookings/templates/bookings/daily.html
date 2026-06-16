@@ -132,6 +132,7 @@
                   <a class="tm-calendar-box tm-calendar-box-{{ row.status }}" href="{{ row.slot_url }}">
                     <span class="tm-calendar-box-time">{{ row.slot_label }}</span>
                     <span class="tm-calendar-box-title">{{ row.activity.name|default:"Unmapped activity" }}</span>
+                    {% if row.has_warning %}<span class="tm-calendar-alert" aria-label="Needs review" title="Needs review">!</span>{% endif %}
                     <span class="tm-calendar-box-meta">{{ row.confirmed }} booked{% if row.cancelled_count %}, {{ row.cancelled_count }} canceled{% endif %}</span>
                     <span class="tm-calendar-box-meta">{{ row.remaining|default_if_none:"" }} available</span>
                   </a>
@@ -163,7 +164,9 @@
                     <td>{{ row.slot.start_time|time:"H:i"|default:"Unmapped slot" }}</td>
                     <td class="text-end">{{ row.confirmed }}</td>
                     <td class="text-end">{{ row.pending }}</td>
-                    <td class="text-end {% if row.manual_review %}text-danger fw-semibold{% endif %}">{{ row.manual_review }}</td>
+                    <td class="text-end {% if row.manual_review %}text-danger fw-semibold{% endif %}">
+                      {{ row.manual_review }}{% if row.has_warning %}<span class="tm-calendar-alert ms-2" aria-label="Needs review" title="Needs review">!</span>{% endif %}
+                    </td>
                     <td class="text-end">{{ row.cancelled_count }}</td>
                     <td class="text-end">{{ row.capacity|default_if_none:"" }}</td>
                     <td class="text-end fw-semibold {% if row.remaining < 0 %}text-danger{% endif %}">{{ row.remaining|default_if_none:"" }}</td>

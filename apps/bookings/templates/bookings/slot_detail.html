@@ -40,7 +40,12 @@
             <td>{{ booking.provider_booking_reference }}</td>
             <td>{{ booking.lead_traveler_name|default:"" }}</td>
             <td class="text-end">{{ booking.active_traveler_count|default:"" }}</td>
-            <td><span class="badge text-bg-{{ booking.status|status_class }}">{{ booking.status }}</span></td>
+            <td>
+              <span class="badge text-bg-{{ booking.status|status_class }}">{{ booking.get_status_display }}</span>
+              {% if booking.status == "manual_review" or booking.status == "pending_provider_acceptance" %}
+                <span class="tm-calendar-alert ms-2" aria-label="Needs review" title="Needs review">!</span>
+              {% endif %}
+            </td>
             <td>{{ booking.pickup_location|default:booking.meeting_point|default:"" }}</td>
             <td>{{ booking.language|default:"" }}</td>
             <td>{{ booking.special_requirements|default:booking.customer_message|default:"" }}</td>
