@@ -93,9 +93,11 @@ def test_schedule_exceptions_remove_override_and_add_slots():
 
     rows = get_daily_capacity_summary(service_date)
 
-    assert [(row["slot_label"], row["capacity"]) for row in rows] == [
-        ("09:00", 80),
-        ("15:00 Extra slot", 40),
+    assert [
+        (row["slot_label"], row["capacity"], row["blocked_pax"]) for row in rows
+    ] == [
+        ("09:00", 100, 20),
+        ("15:00 Extra slot", 40, 0),
     ]
 
     ActivityScheduleException.objects.create(

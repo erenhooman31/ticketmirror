@@ -343,18 +343,22 @@ def get_capacity_for_slot_date(
     pending_pax = _sum_pax(bookings, PENDING_CAPACITY_STATUSES)
     manual_review_pax = _sum_pax(bookings, MANUAL_REVIEW_CAPACITY_STATUSES)
     active_pax = confirmed_pax + pending_pax + manual_review_pax
-    capacity = _capacity_for_slot(slot, service_date)
-    remaining = capacity - active_pax
+    capacity = slot.capacity
+    blocked_pax = _blocked_pax_for_slot(slot, service_date)
+    remaining = capacity - active_pax - blocked_pax
     return {
         "date": service_date,
         "activity": slot.schedule.activity,
         "schedule": slot.schedule,
         "slot": slot,
+        "exception": None,
+        "is_unscheduled": False,
         "slot_label": slot_label(slot),
         "confirmed_pax": confirmed_pax,
         "pending_pax": pending_pax,
         "manual_review_pax": manual_review_pax,
         "active_pax": active_pax,
+        "blocked_pax": blocked_pax,
         "capacity": capacity,
         "remaining": remaining,
     }
@@ -403,6 +407,10 @@ def get_daily_capacity_summary(service_date) -> list[dict[str, Any]]:
         id__in=seen_slot_ids
     ):
         rows.append(get_capacity_for_slot_date(slot, service_date))
+
+    unscheduled = _unscheduled_booking_row(service_date)
+    if unscheduled:
+        rows.append(unscheduled)
 
     return sorted(rows, key=_capacity_row_sort_key)
 
@@ -639,11 +647,6 @@ def _schedule_exceptions(schedule, service_date):
 
 def _slot_removed_by_exception(slot, service_date) -> bool:
     for exception in _schedule_exceptions(slot.schedule, service_date):
-        if exception.exception_type in {
-            ActivityScheduleException.ExceptionType.BLOCKED,
-            ActivityScheduleException.ExceptionType.CLOSED,
-        } and _exception_matches_slot(exception, slot):
-            return True
         if (
             exception.exception_type
             == ActivityScheduleException.ExceptionType.REMOVED_SLOT
@@ -651,6 +654,25 @@ def _slot_removed_by_exception(slot, service_date) -> bool:
         ):
             return True
     return False
+
+
+def _blocked_pax_for_slot(slot, service_date) -> int:
+    blocked = 0
+    for exception in _schedule_exceptions(slot.schedule, service_date):
+        if not _exception_matches_slot(exception, slot):
+            continue
+        if exception.exception_type in {
+            ActivityScheduleException.ExceptionType.BLOCKED,
+            ActivityScheduleException.ExceptionType.CLOSED,
+        }:
+            return slot.capacity
+        if (
+            exception.exception_type
+            == ActivityScheduleException.ExceptionType.OVERRIDE_CAPACITY
+            and exception.capacity is not None
+        ):
+            blocked = max(blocked, slot.capacity - exception.capacity)
+    return blocked
 
 
 def _capacity_for_slot(slot, service_date) -> int:
@@ -692,11 +714,56 @@ def _extra_slot_rows(schedule, service_date) -> list[dict[str, Any]]:
                 "confirmed_pax": 0,
                 "pending_pax": 0,
                 "manual_review_pax": 0,
+                "active_pax": 0,
+                "blocked_pax": 0,
                 "capacity": capacity,
                 "remaining": capacity,
+                "is_unscheduled": False,
+                "bookings": [],
             }
         )
     return rows
+
+
+def _unscheduled_booking_row(service_date) -> dict[str, Any] | None:
+    bookings = (
+        Booking.objects.filter(active_travel_date=service_date)
+        .exclude(status__in=EXCLUDED_CAPACITY_STATUSES)
+        .exclude(attendance_status__in=EXCLUDED_ATTENDANCE_STATUSES)
+        .filter(
+            Q(schedule_slot__isnull=True)
+            | Q(
+                review_items__status=ReviewQueueItem.Status.OPEN,
+                review_items__issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+            )
+        )
+        .select_related("provider", "activity", "schedule_slot")
+        .order_by("provider__name", "provider_booking_reference")
+        .distinct()
+    )
+    if not bookings.exists():
+        return None
+    confirmed_pax = _sum_pax(bookings, CONFIRMED_CAPACITY_STATUSES)
+    pending_pax = _sum_pax(bookings, PENDING_CAPACITY_STATUSES)
+    manual_review_pax = _sum_pax(bookings, MANUAL_REVIEW_CAPACITY_STATUSES)
+    active_pax = confirmed_pax + pending_pax + manual_review_pax
+    return {
+        "date": service_date,
+        "activity": None,
+        "schedule": None,
+        "slot": None,
+        "exception": None,
+        "is_unscheduled": True,
+        "slot_label": "Unscheduled / unmapped",
+        "confirmed_pax": confirmed_pax,
+        "pending_pax": pending_pax,
+        "manual_review_pax": manual_review_pax,
+        "active_pax": active_pax,
+        "blocked_pax": 0,
+        "capacity": None,
+        "remaining": None,
+        "bookings": list(bookings),
+    }
 
 
 def _sum_pax(queryset, statuses: set[str]) -> int:
@@ -709,12 +776,14 @@ def _sum_pax(queryset, statuses: set[str]) -> int:
 
 
 def _capacity_row_sort_key(row: dict[str, Any]):
+    if row.get("is_unscheduled"):
+        return ("zzzzzz", time.max, 0)
     slot = row["slot"]
     exception = row.get("exception")
     start_time = slot.start_time if slot else exception.start_time or time.max
     row_id = slot.id if slot else exception.id
     return (
-        row["activity"].name,
+        row["activity"].name if row["activity"] else "zzzzzz",
         start_time,
         row_id,
     )

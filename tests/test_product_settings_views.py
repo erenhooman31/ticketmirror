@@ -628,8 +628,13 @@ def test_blocked_date_renders_separately_and_removes_calendar_availability(
         {"tab": "scheduling"},
     )
 
+    rows = get_daily_capacity_summary(service_date)
+
     assert response.status_code == 200
-    assert get_daily_capacity_summary(service_date) == []
+    assert len(rows) == 1
+    assert rows[0]["slot"] == slot
+    assert rows[0]["blocked_pax"] == slot.capacity
+    assert rows[0]["remaining"] == 0
 
 
 @pytest.mark.django_db

@@ -616,19 +616,18 @@ def _agenda_sections(selected_date, range_days):
 
 def _agenda_row(service_date, row):
     slot = row["slot"]
-    bookings = _agenda_bookings(service_date, slot)
+    bookings = row.get("bookings") or _agenda_bookings(service_date, slot)
     booking_cards = [_agenda_booking_card(booking) for booking in bookings]
-    active_booked = sum(
-        card["pax"] for card in booking_cards if card["counts_for_capacity"]
-    )
+    active_booked = row["active_pax"]
+    blocked = row.get("blocked_pax", 0)
     capacity = row["capacity"]
-    available = None if capacity is None else max(capacity - active_booked, 0)
+    available = row["remaining"]
     has_warning = any(card["warning"] for card in booking_cards)
     return {
         "time": _agenda_time_label(row),
         "title": _agenda_title(row),
         "booked": active_booked,
-        "blocked": 0,
+        "blocked": blocked,
         "capacity": capacity,
         "available": available,
         "status": _agenda_status(
@@ -641,6 +640,7 @@ def _agenda_row(service_date, row):
         "has_warning": has_warning,
         "bookings": booking_cards,
         "slot": slot,
+        "is_unscheduled": row.get("is_unscheduled", False),
         "modal_id": _agenda_modal_id(service_date, row),
         "sort_id": _agenda_sort_id(row),
         "slot_url": _slot_url(service_date, row),
@@ -648,21 +648,25 @@ def _agenda_row(service_date, row):
 
 
 def _agenda_title(row):
+    if row.get("is_unscheduled"):
+        return "Unscheduled / unmapped"
     activity = row["activity"]
     return activity.internal_display_name or activity.name
 
 
 def _show_in_home_agenda(row):
+    if row.get("is_unscheduled"):
+        return True
     activity = row["slot"].schedule.activity if row["slot"] else None
     settings = activity.display_settings if activity else {}
     if settings.get("show_home_agenda") is False:
         return False
-    if settings.get("show_home_agenda") is True:
-        return True
-    return bool(row["booked"] or row["bookings"])
+    return True
 
 
 def _agenda_time_label(row):
+    if row.get("is_unscheduled"):
+        return "Unscheduled"
     slot = row["slot"]
     exception = row.get("exception")
     start_time = (
@@ -717,6 +721,16 @@ def _agenda_booking_card(booking):
         pax_value = booking.provider_traveler_count
     pax = pax_value or 0
     attendance = booking.get_attendance_status_display()
+    detail_url = reverse("bookings:detail", args=[booking.id])
+    product_mismatch = booking.review_items.filter(
+        status=ReviewQueueItem.Status.OPEN,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+    ).first()
+    if product_mismatch:
+        detail_url = (
+            f"{reverse('settings_provider_aliases')}"
+            f"?review_id={product_mismatch.id}"
+        )
     return {
         "booking": booking,
         "pax": pax,
@@ -731,11 +745,13 @@ def _agenda_booking_card(booking):
             Booking.Status.MANUAL_REVIEW,
         },
         "counts_for_capacity": booking.is_active_for_capacity,
-        "detail_url": reverse("bookings:detail", args=[booking.id]),
+        "detail_url": detail_url,
     }
 
 
 def _agenda_modal_id(service_date, row):
+    if row.get("is_unscheduled"):
+        return f"agenda-unscheduled-{service_date:%Y%m%d}"
     slot = row["slot"]
     if slot:
         return f"agenda-slot-{service_date:%Y%m%d}-{slot.id}"
@@ -744,6 +760,8 @@ def _agenda_modal_id(service_date, row):
 
 
 def _agenda_sort_id(row):
+    if row.get("is_unscheduled"):
+        return 999999
     slot = row["slot"]
     if slot:
         return slot.id

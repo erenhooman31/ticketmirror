@@ -1985,17 +1985,26 @@ def _capacity_rows(
         for booking in filtered_bookings
         if booking.schedule_slot_id
     }
-    if restrict_to_bookings and not allowed_slot_ids:
+    allowed_unscheduled = any(
+        _booking_is_unscheduled(booking) for booking in filtered_bookings
+    )
+    if restrict_to_bookings and not allowed_slot_ids and not allowed_unscheduled:
         return []
     rows = []
     seen_slot_ids = set()
     for summary in get_daily_capacity_summary(selected_date):
         slot = summary["slot"]
+        is_unscheduled = summary.get("is_unscheduled", False)
+        if is_unscheduled:
+            if filters["activity"] or filters["category"]:
+                continue
+            if restrict_to_bookings and not allowed_unscheduled:
+                continue
+        elif restrict_to_bookings and (not slot or slot.id not in allowed_slot_ids):
+            continue
         if filters["activity"] and summary["activity"].id != filters["activity"]:
             continue
         if filters["category"] and summary["activity"].category != filters["category"]:
-            continue
-        if restrict_to_bookings and (not slot or slot.id not in allowed_slot_ids):
             continue
         rows.append(
             _calendar_row(
@@ -2040,11 +2049,31 @@ def _summary_for_slot(selected_date, slot):
 
 def _calendar_row(selected_date, summary, filtered_bookings, filters, url_params):
     slot = summary["slot"]
-    matching_slot_bookings = [
-        booking
-        for booking in filtered_bookings
-        if slot and booking.schedule_slot_id == slot.id
-    ]
+    if summary.get("is_unscheduled"):
+        matching_slot_bookings = [
+            booking for booking in filtered_bookings if _booking_is_unscheduled(booking)
+        ]
+        confirmed = _calendar_sum_pax(
+            matching_slot_bookings,
+            {Booking.Status.CONFIRMED, Booking.Status.MODIFIED},
+        )
+        pending = _calendar_sum_pax(
+            matching_slot_bookings,
+            {Booking.Status.PENDING_PROVIDER_ACCEPTANCE},
+        )
+        manual_review = _calendar_sum_pax(
+            matching_slot_bookings,
+            {Booking.Status.MANUAL_REVIEW},
+        )
+    else:
+        matching_slot_bookings = [
+            booking
+            for booking in filtered_bookings
+            if slot and booking.schedule_slot_id == slot.id
+        ]
+        confirmed = summary["confirmed_pax"]
+        pending = summary["pending_pax"]
+        manual_review = summary["manual_review_pax"]
     cancelled_count = sum(
         1
         for booking in matching_slot_bookings
@@ -2063,11 +2092,10 @@ def _calendar_row(selected_date, summary, filtered_bookings, filters, url_params
         "activity": summary["activity"],
         "slot": slot,
         "slot_label": summary["slot_label"],
-        "confirmed": summary["confirmed_pax"],
-        "pending": summary["pending_pax"],
-        "manual_review": (
-            summary["manual_review_pax"] if filters["show_manual_review"] else 0
-        ),
+        "confirmed": confirmed,
+        "pending": pending,
+        "manual_review": (manual_review if filters["show_manual_review"] else 0),
+        "blocked": summary.get("blocked_pax", 0),
         "cancelled_count": cancelled_count if filters["show_cancelled"] else 0,
         "capacity": summary["capacity"],
         "remaining": summary["remaining"],
@@ -2078,11 +2106,30 @@ def _calendar_row(selected_date, summary, filtered_bookings, filters, url_params
 
 
 def _calendar_row_sort_key(row):
+    if row.get("slot_label") == "Unscheduled / unmapped":
+        return (row["date"], datetime.max.time(), "zzzzzz")
     slot = row["slot"]
     return (
         row["date"],
         slot.start_time if slot else datetime.max.time(),
-        row["activity"].name,
+        row["activity"].name if row["activity"] else "zzzzzz",
+    )
+
+
+def _booking_is_unscheduled(booking):
+    if booking.schedule_slot_id is None:
+        return True
+    return booking.review_items.filter(
+        status=ReviewQueueItem.Status.OPEN,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+    ).exists()
+
+
+def _calendar_sum_pax(bookings, statuses):
+    return sum(
+        booking.active_traveler_count or 0
+        for booking in bookings
+        if booking.status in statuses
     )
 
 

@@ -7,6 +7,7 @@ from helpers import create_activity_setup, create_booking
 
 from apps.accounts.models import UserProfile
 from apps.bookings.models import (
+    ActivityScheduleException,
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
@@ -106,6 +107,7 @@ def test_dashboard_renders_messages_and_agenda(client, users, booking_data):
     assert b"New booking - Alex Sample" in response.content
     assert b"City Tour" in response.content
     assert response.context["agenda_sections"][0]["rows"][0]["booked"] == 2
+    assert response.context["agenda_sections"][0]["rows"][0]["available"] == 3
 
 
 @pytest.mark.django_db
@@ -494,6 +496,101 @@ def test_dashboard_agenda_excludes_product_mismatch_bookings(
 
     assert row["booked"] == 2
     assert all(card["reference"] != "BR-MISMATCH" for card in row["bookings"])
+    unscheduled = response.context["agenda_sections"][0]["rows"][-1]
+    assert unscheduled["title"] == "Unscheduled / unmapped"
+    assert any(card["reference"] == "BR-MISMATCH" for card in unscheduled["bookings"])
+
+
+@pytest.mark.django_db
+def test_dashboard_agenda_shows_empty_scheduled_slots(client, users):
+    create_activity_setup(
+        provider_code="empty-provider",
+        provider_name="Empty Provider",
+        activity_name="Empty Slot Tour",
+        start_time=time(14, 0),
+        capacity=12,
+        alias=False,
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    rows = response.context["agenda_sections"][0]["rows"]
+
+    assert any(row["title"] == "Empty Slot Tour" for row in rows)
+    empty_row = next(row for row in rows if row["title"] == "Empty Slot Tour")
+    assert empty_row["booked"] == 0
+    assert empty_row["available"] == 12
+
+
+@pytest.mark.django_db
+def test_dashboard_agenda_shows_blocked_capacity(client, users, booking_data):
+    ActivityScheduleException.objects.create(
+        schedule=booking_data["schedule"],
+        exception_type=ActivityScheduleException.ExceptionType.BLOCKED,
+        date=booking_data["date"],
+        start_time=booking_data["slot"].start_time,
+        reason="Maintenance",
+        active=True,
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    row = response.context["agenda_sections"][0]["rows"][0]
+
+    assert row["blocked"] == 5
+    assert row["available"] == -2
+
+
+@pytest.mark.django_db
+def test_dashboard_agenda_shows_dated_unmapped_booking(client, users):
+    provider = Provider.objects.create(name="Viator", code="viator")
+    Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="BR-UNMAPPED",
+        status=Booking.Status.CONFIRMED,
+        active_travel_date=date(2026, 6, 21),
+        active_traveler_count=4,
+        lead_traveler_name="Unmapped Guest",
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    rows = response.context["agenda_sections"][0]["rows"]
+    unscheduled = rows[-1]
+
+    assert unscheduled["title"] == "Unscheduled / unmapped"
+    assert unscheduled["booked"] == 4
+    assert any(card["reference"] == "BR-UNMAPPED" for card in unscheduled["bookings"])
+
+
+@pytest.mark.django_db
+def test_daily_calendar_shows_empty_slots_and_unmapped_group(client, users):
+    create_activity_setup(
+        provider_code="daily-empty",
+        provider_name="Daily Empty",
+        activity_name="Daily Empty Slot Tour",
+        start_time=time(16, 0),
+        capacity=20,
+        alias=False,
+    )
+    provider = Provider.objects.create(name="Klook", code="klook")
+    Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="KL-UNMAPPED",
+        status=Booking.Status.CONFIRMED,
+        active_travel_date=date(2026, 6, 21),
+        active_traveler_count=2,
+        lead_traveler_name="Daily Unmapped",
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("bookings:daily"), {"date": "2026-06-21"})
+    rows = response.context["day_sections"][0]["rows"]
+
+    assert any(row["activity"].name == "Daily Empty Slot Tour" for row in rows)
+    unscheduled = rows[-1]
+    assert unscheduled["slot_label"] == "Unscheduled / unmapped"
+    assert unscheduled["confirmed"] == 2
 
 
 @pytest.mark.django_db

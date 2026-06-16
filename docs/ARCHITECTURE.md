@@ -34,6 +34,23 @@ bookings, but setup mutation is admin-only.
 
 Provider updates must not silently overwrite manual overrides. Any future merge policy should explicitly compare provider values, internal active values, and manual override history.
 
+## Agenda And Capacity Views
+
+Home agenda rows and `/bookings/daily/` calendar rows use
+`get_daily_capacity_summary()` as the shared source for scheduled slots, extra
+exception slots, blocked capacity, and unscheduled/unmapped booking rows.
+
+Scheduled `ActivityScheduleSlot` rows are shown for the selected weekday even
+when empty, unless the activity explicitly sets
+`display_settings.show_home_agenda = False`. Dated bookings without a
+`schedule_slot`, and bookings with an open product-mismatch review, are grouped
+under `Unscheduled / unmapped` so operators can map products or open the booking
+instead of losing it from the day view.
+
+Production environments must have current `ActivitySchedule` and
+`ActivityScheduleSlot` records, normally from `seed_bookeo_products` plus any
+operator configuration, for the agenda to enumerate empty scheduled slots.
+
 ## Internal Roles
 
 The initial role model is stored on `accounts.UserProfile`:
