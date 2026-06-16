@@ -134,11 +134,26 @@ booking whether it arrives through Bookeo, directly from the OTA, or both.
 - Missing reference, date, or traveler count should produce manual-review output
   instead of raising parser exceptions.
 
+### Russian-language parsing
+
+- Shared parsing supports Russian month names and numeric `dd.mm.yyyy` dates in
+  `parse_date_flexible`, so labeled fields such as `Дата`, `Дата и время`, and
+  `Время начала` do not need provider-local month maps.
+- Shared event detection treats Russian cancellation stems such as `отмен` as
+  cancellations and modification stems such as `измен` as updates. A Russian
+  cancellation must never fall through to a new-booking event.
+- Shared labels include common Cyrillic fields such as `Телефон`,
+  `Электронная почта`, `Язык`, `Тип билета`, `Стоимость`, `Место встречи`, and
+  `Комментарий туриста`.
+- Ticket breakdown parsing recognizes Russian adult, child, and infant terms
+  alongside English ticket labels.
+
 ### Provisional Providers
 
 The repo currently lacks real booking-confirmation fixtures for Alle, Klook, and
-Travel Experience. Their parsers remain provisional and should not be considered
-final until representative real booking-confirmation samples are added under
+Travel Experience. Alle is not confirmed as Russian-language from the available
+fixtures. These parsers remain provisional and should not be considered final
+until representative real booking-confirmation samples are added under
 `tests/fixtures/emails/` and covered by deterministic parser tests.
 
 ## AI Extraction

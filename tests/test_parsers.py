@@ -7,7 +7,11 @@ from apps.ingestion.parsers.common import (
     EVENT_UPDATE,
     STATUS_CANCELLED,
     STATUS_MANUAL_REVIEW,
+    STATUS_MODIFIED,
     extract_forwarded_headers,
+    infer_event_type,
+    parse_date_flexible,
+    status_for_event,
 )
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "emails"
@@ -60,6 +64,30 @@ def test_extract_forwarded_headers():
     assert headers.sender == "bookings@viator.com"
     assert headers.subject == "Viator booking BR-FWD-42 confirmed"
     assert headers.date == "Wed, 17 Jun 2026 at 10:01"
+
+
+def test_shared_russian_date_parsing_for_labeled_values():
+    assert parse_date_flexible("1 июля 2026").isoformat() == "2026-07-01"
+    assert parse_date_flexible("Дата и время: 12 апреля 2026 в 19:00").isoformat() == (
+        "2026-04-12"
+    )
+    assert parse_date_flexible("12.04.2026").isoformat() == "2026-04-12"
+
+
+def test_shared_russian_event_and_status_detection():
+    cancellation = infer_event_type(
+        "Отмена заказа №6645992",
+        "Бронирование отменено клиентом.",
+    )
+    update = infer_event_type(
+        "Изменение заказа №6645992",
+        "Изменилось время начала экскурсии.",
+    )
+
+    assert cancellation == EVENT_CANCELLATION
+    assert status_for_event(cancellation, "отменено") == STATUS_CANCELLED
+    assert update == EVENT_UPDATE
+    assert status_for_event(update, "изменено") == STATUS_MODIFIED
 
 
 def test_parse_viator_new_booking():
@@ -227,6 +255,61 @@ def test_parse_realistic_sputnik8_russian_new_booking():
     assert parsed.travel_date.isoformat() == "2026-04-12"
     assert parsed.start_time.isoformat() == "19:00:00"
     assert parsed.traveler_count == 2
+
+
+def test_parse_tripster_russian_cancellation_is_not_new_booking():
+    body = """
+    Отмена заказа
+    Экскурсия: Великолепный Стамбул в Европе и Азии
+    Дата: 1 июля 2026
+    Время: 08:30
+    Участников: 3
+    Тип билета: взрослый 2; ребёнок 1; младенец 1
+    Стоимость: 1500 RUB
+    Клиент: Алексей Иванов
+    Телефон: +1 555 010 1002
+    Электронная почта: alexey.ivanov@example.test
+    """
+
+    parsed = parse_by_provider(
+        "tripster",
+        "Отмена заказа №6645992",
+        "orders@experience.tripster.example",
+        body,
+    )
+
+    assert parsed.provider_booking_reference == "6645992"
+    assert parsed.event_type == EVENT_CANCELLATION
+    assert parsed.status == STATUS_CANCELLED
+    assert parsed.travel_date.isoformat() == "2026-07-01"
+    assert parsed.traveler_count == 3
+    assert parsed.ticket_breakdown == {"adult": 2, "child": 1, "infant": 1}
+    assert parsed.price == {"amount": "1500", "currency": "RUB"}
+
+
+def test_parse_sputnik8_russian_update_status():
+    body = """
+    Изменение бронирования
+    Экскурсия: Морская прогулка по Босфору
+    Дата и время: 12 апреля 2026 в 19:00
+    Участников: 2
+    Имя: Alex Sample
+    Телефон: +1 555 010 1003
+    Email: alex.sample@example.test
+    """
+
+    parsed = parse_by_provider(
+        "sputnik8",
+        "Изменение заказа 5349319",
+        "orders@sputnik8.example",
+        body,
+    )
+
+    assert parsed.provider_booking_reference == "5349319"
+    assert parsed.event_type == EVENT_UPDATE
+    assert parsed.status == STATUS_MODIFIED
+    assert parsed.travel_date.isoformat() == "2026-04-12"
+    assert parsed.start_time.isoformat() == "19:00:00"
 
 
 def test_parse_getyourguide_update():

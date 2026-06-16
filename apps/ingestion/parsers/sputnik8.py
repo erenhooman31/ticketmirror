@@ -37,23 +37,50 @@ class Sputnik8Parser(ProviderEmailParser):
             sender=sender,
             body_text=body_text,
             reference_patterns=[
-                r"заказ\s*(\d{6,})",
+                r"заказ[а]?\s*(\d{6,})",
                 r"Order number\s*[:#-]\s*([A-Z0-9-]+)",
                 r"Booking number\s*[:#-]\s*([A-Z0-9-]+)",
                 r"\b(SP8-[A-Z0-9-]+)\b",
             ],
             order_patterns=[r"Order ID\s*[:#-]\s*([A-Z0-9-]+)"],
-            product_labels=["Excursion", "Tour", "Product"],
-            option_labels=["Option", "Route"],
-            date_labels=["Excursion date", "Date", "Travel date", "Date and time"],
-            start_time_labels=["Excursion time", "Time", "Start time", "Date and time"],
+            product_labels=["Excursion", "Tour", "Product", "Экскурсия", "Тур"],
+            option_labels=["Option", "Route", "Тип билета"],
+            date_labels=[
+                "Excursion date",
+                "Date",
+                "Travel date",
+                "Date and time",
+                "Дата",
+                "Дата и время",
+            ],
+            start_time_labels=[
+                "Excursion time",
+                "Time",
+                "Start time",
+                "Date and time",
+                "Время",
+                "Время начала",
+                "Дата и время",
+            ],
             traveler_count_labels=[
                 "Participants",
                 "Participants (tickets)",
                 "Persons",
                 "Guests",
+                "Участников",
+                "Участники",
+                "Гостей",
+                "Билеты",
             ],
-            name_labels=["Customer", "Lead traveler", "Name"],
+            name_labels=["Customer", "Lead traveler", "Name", "Клиент", "Имя"],
+            language_labels=["Language", "Язык"],
+            meeting_labels=["Meeting point", "Meeting location", "Место встречи"],
+            requirements_labels=[
+                "Special requirements",
+                "Notes",
+                "Комментарий туриста",
+            ],
+            message_labels=["Customer message", "Message", "Сообщение клиента"],
         )
         if "заказ" not in subject.lower():
             return parsed
@@ -68,7 +95,7 @@ class Sputnik8Parser(ProviderEmailParser):
 
 
 def _reference(subject: str) -> str:
-    match = re.search(r"заказ\s*(\d{6,})", subject, re.I)
+    match = re.search(r"заказ[а]?\s*(\d{6,})", subject, re.I)
     return match.group(1) if match else ""
 
 

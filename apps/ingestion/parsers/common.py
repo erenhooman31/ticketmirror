@@ -24,9 +24,42 @@ SLOT_PRIVATE_GROUP = "private_group"
 
 EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
 PHONE_RE = re.compile(r"(?:\+?\d[\d\s().-]{6,}\d)")
+RU_MONTHS = {
+    "января": 1,
+    "январь": 1,
+    "февраля": 2,
+    "февраль": 2,
+    "марта": 3,
+    "март": 3,
+    "апреля": 4,
+    "апрель": 4,
+    "мая": 5,
+    "май": 5,
+    "июня": 6,
+    "июнь": 6,
+    "июля": 7,
+    "июль": 7,
+    "августа": 8,
+    "август": 8,
+    "сентября": 9,
+    "сентябрь": 9,
+    "октября": 10,
+    "октябрь": 10,
+    "ноября": 11,
+    "ноябрь": 11,
+    "декабрь": 12,
+    "декабря": 12,
+}
 MONEY_RE = re.compile(
     r"(?P<currency>USD|EUR|GBP|TRY|\$|€|£)\s*(?P<amount>\d+(?:[,.]\d{2})?)"
     r"|(?P<amount_alt>\d+(?:[,.]\d{2})?)\s*(?P<currency_alt>USD|EUR|GBP|TRY|€|£)",
+    re.IGNORECASE,
+)
+
+
+RUB_MONEY_RE = re.compile(
+    r"(?P<currency>RUB|₽|руб\.?)\s*(?P<amount>\d+(?:[,.]\d{2})?)"
+    r"|(?P<amount_alt>\d+(?:[,.]\d{2})?)\s*(?P<currency_alt>RUB|₽|руб\.?)",
     re.IGNORECASE,
 )
 
@@ -78,12 +111,42 @@ def first_match(text: str, patterns: list[str], flags: int = re.IGNORECASE) -> s
     return ""
 
 
+def _parse_russian_date(value: str) -> date | None:
+    numeric_match = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b", value)
+    if numeric_match:
+        day, month, year = (int(part) for part in numeric_match.groups())
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
+
+    month_match = re.search(
+        r"\b(\d{1,2})\s+([а-яё]+)(?:\s+(20\d{2}))?",
+        value,
+        re.IGNORECASE,
+    )
+    if not month_match:
+        return None
+    month = RU_MONTHS.get(month_match.group(2).lower())
+    if not month:
+        return None
+    year = int(month_match.group(3)) if month_match.group(3) else date.today().year
+    try:
+        return date(year, month, int(month_match.group(1)))
+    except ValueError:
+        return None
+
+
 def parse_date_flexible(value: str | None) -> date | None:
     value = normalize_whitespace(value)
     if not value:
         return None
     value = re.sub(r"(?<=\d)(st|nd|rd|th)\b", "", value, flags=re.IGNORECASE)
+    russian_date = _parse_russian_date(value)
+    if russian_date:
+        return russian_date
     value = re.sub(r"\bat\b\s+\d{1,2}:\d{2}\s*(?:AM|PM)?", "", value, flags=re.I)
+    value = re.sub(r"\bв\b\s+\d{1,2}:\d{2}", "", value, flags=re.I)
     value_without_time = re.sub(
         r"\s+\d{1,2}:\d{2}\s*(?:AM|PM)?$", "", value, flags=re.I
     )
@@ -159,7 +222,11 @@ def extract_email(text: str) -> str | None:
 
 def extract_phone(text: str) -> str | None:
     for line in text.splitlines():
-        if not re.search(r"\b(phone|mobile|tel|telephone|contact)\b", line, re.I):
+        if not re.search(
+            r"\b(phone|mobile|tel|telephone|contact)\b|телефон",
+            line,
+            re.I,
+        ):
             continue
         match = PHONE_RE.search(line)
         if match:
@@ -215,7 +282,7 @@ def extract_forwarded_headers(body_text: str) -> ForwardedHeaders:
 
 
 def extract_money(text: str) -> dict:
-    match = MONEY_RE.search(text)
+    match = MONEY_RE.search(text) or RUB_MONEY_RE.search(text)
     if not match:
         return {}
     currency = match.group("currency") or match.group("currency_alt")
@@ -232,6 +299,7 @@ def extract_traveler_count(text: str) -> int | None:
         r"(\d+)\s*(?:traveler|traveller|participant|guest|ticket|person|people|pax)s?\b",
         r"(?:adult|adults)\s*[:#-]?\s*(\d+)",
         r"\b(?:adult|adults)\s+(\d+)\b",
+        r"(?:участников|участники|гостей|билетов|человек)\s*[:#-]?\s*(\d+)",
         r"\b(\d+)\s*(?:pcs|шт|чел|человек)\b",
     ]
     for pattern in patterns:
@@ -253,9 +321,9 @@ def split_names(value: str | None) -> list[str]:
 
 def infer_event_type(subject: str, body_text: str) -> str:
     haystack = f"{subject}\n{body_text}".lower()
-    if re.search(r"\b(cancelled|canceled|cancellation)\b", haystack):
+    if re.search(r"\b(cancelled|canceled|cancellation)\b|отмен", haystack):
         return EVENT_CANCELLATION
-    if re.search(r"\b(update|modified|changed|amended)\b", haystack):
+    if re.search(r"\b(update|modified|changed|amended)\b|измен", haystack):
         return EVENT_UPDATE
     if re.search(r"\b(request|pending|acceptance required|urgent)\b", haystack):
         return EVENT_REQUEST
@@ -270,7 +338,7 @@ def status_for_event(event_type: str, body_text: str) -> str:
         return STATUS_MODIFIED
     if event_type == EVENT_REQUEST or "pending" in haystack:
         return STATUS_PENDING
-    if "confirmed" in haystack or "confirmation" in haystack:
+    if "confirmed" in haystack or "confirmation" in haystack or "подтвержд" in haystack:
         return STATUS_CONFIRMED
     return STATUS_PENDING
 
@@ -345,12 +413,21 @@ def parse_labeled_booking(
     order_reference = first_match(body_text, order_patterns or [])
     raw_product_name = labeled_value(
         body_text,
-        product_labels or ["Product", "Tour", "Activity", "Experience"],
+        product_labels
+        or [
+            "Product",
+            "Tour",
+            "Activity",
+            "Experience",
+            "Экскурсия",
+            "Тур",
+            "Активность",
+        ],
     )
     raw_option_name = (
         labeled_value(
             body_text,
-            option_labels or ["Option", "Variant", "Ticket option"],
+            option_labels or ["Option", "Variant", "Ticket option", "Тип билета"],
         )
         or None
     )
@@ -371,13 +448,22 @@ def parse_labeled_booking(
     travel_date = parse_date_flexible(
         labeled_value(
             body_text,
-            date_labels or ["Travel date", "Date", "Visit date", "Tour date"],
+            date_labels
+            or [
+                "Travel date",
+                "Date",
+                "Visit date",
+                "Tour date",
+                "Дата",
+                "Дата и время",
+            ],
         )
     )
     start_time = parse_time_flexible(
         labeled_value(
             body_text,
-            start_time_labels or ["Start time", "Time", "Visit time"],
+            start_time_labels
+            or ["Start time", "Time", "Visit time", "Время", "Время начала"],
         )
     )
     end_time = parse_time_flexible(
@@ -386,21 +472,42 @@ def parse_labeled_booking(
     traveler_count = _labeled_traveler_count(
         body_text,
         traveler_count_labels
-        or ["Travelers", "Travellers", "Participants", "Guests", "Tickets"],
+        or [
+            "Travelers",
+            "Travellers",
+            "Participants",
+            "Guests",
+            "Tickets",
+            "Участников",
+            "Участники",
+            "Гостей",
+            "Билеты",
+        ],
     )
     if traveler_count is None:
         traveler_count = extract_traveler_count(body_text)
     lead_name = (
         labeled_value(
             body_text,
-            name_labels or ["Lead traveler", "Lead traveller", "Customer", "Guest"],
+            name_labels
+            or [
+                "Lead traveler",
+                "Lead traveller",
+                "Customer",
+                "Guest",
+                "Клиент",
+                "Имя",
+            ],
         )
         or None
     )
     email = _lead_email(body_text, sender)
     phone = extract_phone(body_text)
     traveler_names = split_names(
-        labeled_value(body_text, ["Traveler names", "Travellers", "Participants"])
+        labeled_value(
+            body_text,
+            ["Traveler names", "Travellers", "Participants", "Участники", "Гости"],
+        )
     )
     price = extract_money(body_text)
     confidence, warnings = confidence_score(
@@ -436,29 +543,35 @@ def parse_labeled_booking(
         lead_traveler_phone=phone,
         traveler_names=traveler_names,
         ticket_breakdown=_ticket_breakdown(body_text),
-        language=labeled_value(body_text, language_labels or ["Language"]) or None,
+        language=labeled_value(body_text, language_labels or ["Language", "Язык"])
+        or None,
         pickup_location=labeled_value(
             body_text,
-            pickup_labels or ["Pickup", "Pickup location"],
+            pickup_labels or ["Pickup", "Pickup location", "Место посадки"],
         )
         or None,
         meeting_point=labeled_value(
             body_text,
-            meeting_labels or ["Meeting point", "Meeting location"],
+            meeting_labels or ["Meeting point", "Meeting location", "Место встречи"],
         )
         or None,
         special_requirements=labeled_value(
             body_text,
-            requirements_labels or ["Special requirements", "Notes"],
+            requirements_labels
+            or ["Special requirements", "Notes", "Комментарий туриста"],
         )
         or None,
         customer_message=labeled_value(
             body_text,
-            message_labels or ["Customer message", "Message"],
+            message_labels or ["Customer message", "Message", "Сообщение клиента"],
         )
         or None,
         price=price,
-        payment_status=labeled_value(body_text, ["Payment status", "Payment"]) or None,
+        payment_status=labeled_value(
+            body_text,
+            ["Payment status", "Payment", "Стоимость", "Оплата"],
+        )
+        or None,
         confidence=confidence,
         warnings=warnings,
         raw_fields={
@@ -490,7 +603,9 @@ def _labeled_traveler_count(text: str, labels: list[str]) -> int | None:
     if not value:
         return None
     preferred = re.search(
-        r"(\d+)[^\w\d]*(?:persons|people|participants|guests|adults|pcs|чел|человек)\b",
+        r"(\d+)[^\w\d]*(?:persons|people|participants|guests|adults|pcs|"
+        r"взросл(?:ый|ых|ые)?|дет(?:ей|и)?|реб[её]нок|младен(?:ец|цев)|"
+        r"чел|человек)\b",
         value,
         re.IGNORECASE,
     )
@@ -502,8 +617,19 @@ def _labeled_traveler_count(text: str, labels: list[str]) -> int | None:
 
 def _ticket_breakdown(text: str) -> dict:
     breakdown = {}
-    for label in ("adult", "child", "infant", "senior", "student"):
-        match = re.search(rf"\b{label}s?\s*[:#-]?\s*(\d+)", text, re.IGNORECASE)
+    labels = {
+        "adult": r"adults?|взросл(?:ый|ых|ые)?",
+        "child": r"children|child|дети|детей|реб[её]нок|реб[её]нка",
+        "infant": r"infants?|младенец|младенцев|младенца",
+        "senior": r"seniors?",
+        "student": r"students?",
+    }
+    for label, pattern in labels.items():
+        match = re.search(rf"\b(?:{pattern})\b\s*[:#-]?\s*(\d+)", text, re.IGNORECASE)
+        if match:
+            breakdown[label] = int(match.group(1))
+            continue
+        match = re.search(rf"\b(\d+)\s*(?:{pattern})\b", text, re.IGNORECASE)
         if match:
             breakdown[label] = int(match.group(1))
     return breakdown
@@ -552,7 +678,9 @@ def _short_label_false_positive(label: str, value: str, separator: str) -> bool:
 
 def _lead_email(body_text: str, sender: str) -> str | None:
     explicit = re.search(
-        r"^Email\s*[:#-]?\s*(?P<email>\S+@\S+)$", body_text, re.I | re.M
+        r"^\s*(?:Email|Электронная почта)\s*[:#-]?\s*(?P<email>\S+@\S+)$",
+        body_text,
+        re.I | re.M,
     )
     if explicit:
         return explicit.group("email")

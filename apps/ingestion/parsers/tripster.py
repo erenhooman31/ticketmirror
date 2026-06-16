@@ -38,24 +38,34 @@ class TripsterParser(ProviderEmailParser):
             body_text=body_text,
             reference_patterns=[
                 r"№\s*(\d{6,})",
-                r"заказ\s*(\d{6,})",
+                r"заказ[а]?\s*(\d{6,})",
                 r"Order number\s*[:#-]\s*([A-Z0-9-]+)",
                 r"Tripster order\s*[:#-]\s*([A-Z0-9-]+)",
                 r"\b(TS-[A-Z0-9-]+)\b",
             ],
             order_patterns=[r"Order number\s*[:#-]\s*([A-Z0-9-]+)"],
-            product_labels=["Product", "Activity", "Attraction"],
-            option_labels=["Ticket type", "Option"],
-            date_labels=["Дата", "Date"],
-            start_time_labels=["Время", "Time"],
+            product_labels=["Product", "Activity", "Attraction", "Экскурсия", "Тур"],
+            option_labels=["Ticket type", "Option", "Тип билета"],
+            date_labels=["Дата", "Дата и время", "Date"],
+            start_time_labels=["Время", "Время начала", "Дата и время", "Time"],
             traveler_count_labels=[
                 "Ticket count",
                 "Tickets",
                 "Guests",
                 "Участников",
+                "Участники",
                 "Гостей",
+                "Билеты",
             ],
             name_labels=["Customer name", "Customer", "Клиент", "Имя"],
+            language_labels=["Language", "Язык"],
+            meeting_labels=["Meeting point", "Meeting location", "Место встречи"],
+            requirements_labels=[
+                "Special requirements",
+                "Notes",
+                "Комментарий туриста",
+            ],
+            message_labels=["Customer message", "Message", "Сообщение клиента"],
         )
         if "№" not in subject and "заказ" not in subject.lower():
             return parsed
@@ -70,7 +80,7 @@ class TripsterParser(ProviderEmailParser):
 
 
 def _russian_reference(subject: str) -> str:
-    match = re.search(r"(?:№|заказ\s*)\s*(\d{6,})", subject, re.I)
+    match = re.search(r"(?:№|заказ[а]?\s*)\s*(\d{6,})", subject, re.I)
     return match.group(1) if match else ""
 
 
