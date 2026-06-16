@@ -14,5 +14,6 @@ db.sqlite3
 staticfiles/
 media/
 *.log
+.bookeo_history_import_state.json
 .DS_Store
 Thumbs.db

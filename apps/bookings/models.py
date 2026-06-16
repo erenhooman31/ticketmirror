@@ -438,6 +438,7 @@ class BookingEvent(models.Model):
         )
         PROVIDER_ALIAS_CHANGED = "provider_alias_changed", "Provider alias changed"
         CONFLICT_DETECTED = "conflict_detected", "Conflict detected"
+        BOOKEO_HISTORY_IMPORT = "bookeo_history_import", "Bookeo history import"
 
     class Source(models.TextChoices):
         EMAIL = "email", "Email"
