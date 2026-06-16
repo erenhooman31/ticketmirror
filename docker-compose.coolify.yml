@@ -34,7 +34,7 @@ services:
     build:
       context: .
     command: >
-      sh -c "
+      sh -ex -c "
       echo '--- running django check ---' &&
       python manage.py check &&
       echo '--- running migrations ---' &&
@@ -44,7 +44,12 @@ services:
       echo '--- creating initial admin ---' &&
       python manage.py create_initial_admin &&
       echo '--- starting gunicorn ---' &&
-      gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers $${GUNICORN_WORKERS:-3} --timeout $${GUNICORN_TIMEOUT:-60} --access-logfile - --error-logfile -
+      exec gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers $${GUNICORN_WORKERS:-3}
+      --timeout $${GUNICORN_TIMEOUT:-60}
+      --access-logfile -
+      --error-logfile -
       "
     environment: *app-env
     restart: unless-stopped
@@ -61,9 +66,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/healthz/ || exit 1"]
       interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
 
   worker:
     build:
