@@ -16,6 +16,7 @@ from apps.bookings.services import (
     diff_field_values,
     is_manually_overridden,
     provider_update_conflicts,
+    warn_if_capacity_overbooked,
 )
 from apps.core.privacy import mask_contact_text
 from apps.ingestion.parsers import detect_provider, get_parser
@@ -230,6 +231,9 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
         )
 
     if has_missing_data or product_mismatch:
+        raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
+
+    if warn_if_capacity_overbooked(booking=booking, raw_email=raw_email):
         raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
 
     raw_email.save(

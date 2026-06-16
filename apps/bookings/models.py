@@ -511,6 +511,7 @@ class ReviewQueueItem(models.Model):
             "cancellation_without_booking",
             "Cancellation without booking",
         )
+        CAPACITY_OVERBOOKED = "capacity_overbooked", "Capacity overbooked"
         PARSER_ERROR = "parser_error", "Parser error"
 
     class Status(models.TextChoices):

@@ -308,8 +308,9 @@ class OperatorScheduleSlotForm(forms.Form):
     )
     slot_status = forms.ChoiceField(label="Status", choices=STATUS_CHOICES)
 
-    def __init__(self, *args, instance=None, **kwargs):
+    def __init__(self, *args, instance=None, schedule=None, **kwargs):
         self.instance = instance
+        self.schedule = schedule or (instance.schedule if instance else None)
         if instance and not args and "initial" not in kwargs:
             kwargs["initial"] = {
                 "slot_days": [str(day) for day in instance.days_of_week or []],
@@ -326,6 +327,30 @@ class OperatorScheduleSlotForm(forms.Form):
 
     def clean_slot_days(self):
         return [int(day) for day in self.cleaned_data.get("slot_days", [])]
+
+    def clean(self):
+        cleaned = super().clean()
+        if not self.schedule or self.errors:
+            return cleaned
+        start_time = cleaned.get("start_time")
+        slot_days = cleaned.get("slot_days") or []
+        if not start_time:
+            return cleaned
+        queryset = ActivityScheduleSlot.objects.filter(
+            schedule=self.schedule,
+            start_time=start_time,
+            active=True,
+        )
+        if self.instance and self.instance.pk:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        for slot in queryset:
+            if _slot_days_overlap(slot.days_of_week or [], slot_days):
+                self.add_error(
+                    "start_time",
+                    "An active slot already uses this time for one of these days.",
+                )
+                break
+        return cleaned
 
     def save(self, *, schedule):
         slot = self.instance or ActivityScheduleSlot(schedule=schedule)
@@ -670,3 +695,9 @@ def _date_ranges_overlap(left_from, left_to, right_from, right_to):
     right_start = right_from or low
     right_end = right_to or high
     return left_start <= right_end and right_start <= left_end
+
+
+def _slot_days_overlap(left_days, right_days):
+    if not left_days or not right_days:
+        return True
+    return bool(set(left_days).intersection(right_days))

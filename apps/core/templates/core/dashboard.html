@@ -236,6 +236,18 @@
                                   <select class="tm-mini-select" disabled><option selected>0</option></select>
                                 </td>
                               </tr>
+                              {% if user.is_superuser or user.profile.role == "admin" %}
+                                <tr>
+                                  <th>Capacity:</th>
+                                  <td>
+                                    <label class="form-check">
+                                      <input class="form-check-input" type="checkbox" name="allow_overcapacity">
+                                      <span class="form-check-label">Allow overcapacity</span>
+                                    </label>
+                                    <textarea class="form-control form-control-sm mt-2" name="capacity_override_reason" rows="2" placeholder="Required when overriding capacity"></textarea>
+                                  </td>
+                                </tr>
+                              {% endif %}
                             </tbody>
                           </table>
                         </fieldset>

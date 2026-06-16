@@ -12,6 +12,7 @@ from .views import (
     search,
     settings_customer_fields,
     settings_home,
+    settings_ingestion,
     settings_users_roles,
 )
 
@@ -45,5 +46,6 @@ urlpatterns = [
         settings_customer_fields,
         name="settings_customer_fields",
     ),
+    path("settings/ingestion/", settings_ingestion, name="settings_ingestion"),
     path("settings/users/", settings_users_roles, name="settings_users_roles"),
 ]

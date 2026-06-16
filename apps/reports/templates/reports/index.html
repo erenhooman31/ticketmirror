@@ -45,5 +45,24 @@
         </form>
       </div>
     </div>
+    <div class="col-md-6">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Overcapacity</h2>
+        <form class="d-flex gap-2" action="{% url 'reports:overcapacity_csv' %}">
+          <input class="form-control" type="date" name="date_from" value="{{ date_from }}">
+          <input class="form-control" type="date" name="date_to" value="{{ date_to }}">
+          <button class="btn btn-primary">CSV</button>
+        </form>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="tm-card p-3 h-100">
+        <h2 class="h6">Review exports</h2>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-primary" href="{% url 'reports:unmapped_provider_products_csv' %}">Unmapped products CSV</a>
+          <a class="btn btn-outline-primary" href="{% url 'reports:parser_failures_csv' %}">Parser failures CSV</a>
+        </div>
+      </div>
+    </div>
   </div>
 {% endblock %}

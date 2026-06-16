@@ -18,4 +18,11 @@ urlpatterns = [
         views.provider_summary_csv,
         name="provider_summary_csv",
     ),
+    path("overcapacity.csv", views.overcapacity_csv, name="overcapacity_csv"),
+    path(
+        "unmapped-provider-products.csv",
+        views.unmapped_provider_products_csv,
+        name="unmapped_provider_products_csv",
+    ),
+    path("parser-failures.csv", views.parser_failures_csv, name="parser_failures_csv"),
 ]
