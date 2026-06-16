@@ -36,7 +36,13 @@
             <td>{{ booking.lead_traveler_name|default:"" }}</td>
             <td>{{ booking.lead_traveler_phone|default:"" }}</td>
             <td>{{ booking.lead_traveler_email|default:"" }}</td>
-            <td>{{ booking.raw_product_name|default:booking.activity.name }}</td>
+            <td>
+              {% if booking.raw_product_name %}
+                {{ booking.raw_product_name }}
+              {% elif booking.activity %}
+                {{ booking.activity.name }}
+              {% endif %}
+            </td>
             <td>{{ booking.active_travel_date|default:"" }}</td>
             <td>{{ booking.status }}</td>
           </tr>

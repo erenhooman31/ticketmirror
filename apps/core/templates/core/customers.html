@@ -78,7 +78,13 @@
                 <tr data-href="{% url 'bookings:detail' booking.id %}">
                   <td>{% if booking.active_travel_date %}{{ booking.active_travel_date|date:"j/n/Y" }}{% endif %}</td>
                   <td>{{ booking.provider_booking_reference }}</td>
-                  <td>{{ booking.raw_product_name|default:booking.activity.name }}</td>
+                  <td>
+                    {% if booking.raw_product_name %}
+                      {{ booking.raw_product_name }}
+                    {% elif booking.activity %}
+                      {{ booking.activity.name }}
+                    {% endif %}
+                  </td>
                   <td>{{ booking.active_traveler_count|default:"" }}</td>
                   <td>{{ booking.get_status_display }}</td>
                 </tr>

@@ -13,6 +13,9 @@ from apps.bookings.models import (
     Provider,
     ReviewQueueItem,
 )
+from apps.ingestion.models import RawEmail
+from apps.ingestion.parsers.base import ParsedBooking
+from apps.ingestion.services import upsert_booking_from_parsed
 
 
 @pytest.fixture
@@ -1004,3 +1007,74 @@ def test_customers_directory_search_alpha_and_detail(client, users, booking_data
 
     assert "Bella Guest" in alpha_html
     assert "Alex Sample" not in alpha_html
+
+
+@pytest.mark.django_db
+def test_customers_directory_renders_with_empty_database(client, users):
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:customers"))
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "No customers found." in html
+    assert "1 - 0 of 0" in html
+
+
+@pytest.mark.django_db
+def test_customers_directory_renders_imported_unmapped_gmail_booking(client, users):
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="gmail-unmapped-1",
+        gmail_thread_id="thread-unmapped-1",
+        gmail_outer_sender="forwarder@example.test",
+        original_forwarded_sender="supplier@example.test",
+        subject="Booking notification",
+        received_at=timezone.now(),
+        body_text="Imported booking fixture",
+    )
+    parsed = ParsedBooking(
+        provider_code="tiqets",
+        provider_booking_reference="TQ-UNMAPPED-1",
+        raw_product_name="Supplier Product Pending Mapping",
+        travel_date=date(2026, 6, 22),
+        traveler_count=4,
+        lead_traveler_name="Imported Guest",
+        lead_traveler_email="imported@example.test",
+        lead_traveler_phone="+1 555 0200",
+        confidence=1.0,
+    )
+    booking = upsert_booking_from_parsed(raw_email, parsed)
+
+    assert booking.activity is None
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:customers"))
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Imported Guest" in html
+    assert "Supplier Product Pending Mapping" in html
+    assert "TQ-UNMAPPED-1" in html
+
+
+@pytest.mark.django_db
+def test_customers_directory_renders_booking_with_missing_product_and_activity(
+    client,
+    users,
+):
+    provider = Provider.objects.create(name="Imported Provider", code="imported")
+    Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="NO-PRODUCT-1",
+        status=Booking.Status.MANUAL_REVIEW,
+        lead_traveler_name="Missing Product Guest",
+        lead_traveler_email="missing-product@example.test",
+        active_traveler_count=1,
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:customers"))
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Missing Product Guest" in html
+    assert "NO-PRODUCT-1" in html
