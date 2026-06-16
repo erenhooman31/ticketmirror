@@ -18,6 +18,19 @@ from apps.accounts.permissions import (
     operator_required,
     viewer_required,
 )
+from apps.bookings.display import (
+    activity_label,
+    clean_text,
+    customer_label,
+    email_subject_label,
+    parse_error_label,
+    provider_label,
+    received_label,
+    reference_label,
+    short_datetime_label,
+    status_label,
+    traveler_count_label,
+)
 from apps.bookings.services import (
     apply_manual_override,
     capacity_snapshot,
@@ -56,6 +69,40 @@ from .models import (
 
 ALLOWED_RANGE_DAYS = {1, 3, 7, 14}
 DEFAULT_RANGE_DAYS = 1
+
+
+@viewer_required
+def booking_list(request):
+    query = request.GET.get("q", "").strip()
+    queryset = Booking.objects.select_related(
+        "provider", "activity", "schedule_slot"
+    ).order_by("-active_travel_date", "-created_at")[:200]
+    if query:
+        queryset = _search_bookings(
+            Booking.objects.select_related("provider", "activity", "schedule_slot"),
+            query,
+        ).order_by("-active_travel_date", "-created_at")[:200]
+    rows = [
+        {
+            "booking": booking,
+            "provider": provider_label(booking.provider),
+            "reference": reference_label(booking),
+            "customer": customer_label(booking),
+            "activity": activity_label(booking),
+            "datetime": short_datetime_label(booking),
+            "participants": traveler_count_label(booking),
+            "status": status_label(booking),
+        }
+        for booking in queryset
+    ]
+    return render(
+        request,
+        "bookings/list.html",
+        {
+            "query": query,
+            "rows": rows,
+        },
+    )
 
 
 @viewer_required
@@ -866,18 +913,25 @@ def _inbox_row(raw_email, issues):
         "booking": booking,
         "issues": issues,
         "status": status,
-        "provider": (
-            raw_email.provider_detected.name if raw_email.provider_detected else ""
+        "provider": provider_label(raw_email.provider_detected),
+        "sender": clean_text(raw_email.gmail_outer_sender, "Unknown sender"),
+        "forwarded_sender": clean_text(raw_email.original_forwarded_sender),
+        "subject": email_subject_label(raw_email),
+        "parse_error": parse_error_label(raw_email, ""),
+        "received_label": received_label(raw_email.received_at),
+        "provider_reference": reference_label(booking),
+        "raw_product_title": (
+            clean_text(booking.raw_product_name, "Missing tour/activity")
+            if booking
+            else "Missing tour/activity"
         ),
-        "provider_reference": (booking.provider_booking_reference if booking else ""),
-        "raw_product_title": booking.raw_product_name if booking else "",
-        "matched_product": (
-            booking.activity.name if booking and booking.activity_id else ""
-        ),
+        "matched_product": activity_label(booking),
         "booking_date": booking.active_travel_date if booking else None,
         "booking_time": booking.active_start_time if booking else None,
-        "traveler_count": booking.active_traveler_count if booking else None,
-        "lead_traveler": booking.lead_traveler_name if booking else "",
+        "booking_datetime": short_datetime_label(booking),
+        "traveler_count": traveler_count_label(booking),
+        "lead_traveler": customer_label(booking),
+        "booking_status": status_label(booking),
         "action_url": _inbox_action_url(raw_email, booking, issues),
         "action_label": _inbox_action_label(booking, issues),
     }

@@ -76,6 +76,15 @@ class BookingEditForm(forms.ModelForm):
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", "form-control")
 
+    def clean_traveler_names(self):
+        return self.cleaned_data.get("traveler_names") or []
+
+    def clean_ticket_breakdown(self):
+        return self.cleaned_data.get("ticket_breakdown") or {}
+
+    def clean_price(self):
+        return self.cleaned_data.get("price") or {}
+
 
 class TourActivityForm(forms.ModelForm):
     visible_internally = forms.BooleanField(required=False, initial=True)

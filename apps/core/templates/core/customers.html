@@ -1,4 +1,5 @@
 {% extends "base/base.html" %}
+{% load booking_extras %}
 
 {% block title %}Customers - ticketmirror{% endblock %}
 
@@ -24,9 +25,9 @@
         <a class="tm-customer-card {% if selected_customer.id == customer.id %}active{% endif %}" href="{% url 'core:customers' %}?customer={{ customer.id }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}{% if letter %}&amp;letter={{ letter }}{% endif %}">
           <span class="tm-customer-initials">{{ customer.initials }}</span>
           <span class="tm-customer-main">
-            <span class="tm-customer-name">{{ customer.name }}</span>
-            <span class="tm-customer-email">{{ customer.email }}</span>
-            <span class="tm-customer-phone">{{ customer.phone }}</span>
+            <span class="tm-customer-name">{{ customer.name|safe_display:"Missing customer" }}</span>
+            <span class="tm-customer-email">{{ customer.email|safe_display:"Missing email" }}</span>
+            <span class="tm-customer-phone">{{ customer.phone|safe_display:"Missing phone" }}</span>
           </span>
         </a>
       {% empty %}
@@ -36,7 +37,7 @@
 
     {% if selected_customer %}
       <section class="tm-bookeo-fieldset mt-3">
-        <h2>{{ selected_customer.name }}</h2>
+        <h2>{{ selected_customer.name|safe_display:"Missing customer" }}</h2>
         <table class="tm-bookeo-dialog-table mb-3">
           <tbody>
             <tr>
@@ -55,7 +56,7 @@
                 {% endif %}
               </td>
             </tr>
-            <tr><th>Language:</th><td>{{ selected_customer.language }}</td></tr>
+            <tr><th>Language:</th><td>{{ selected_customer.language|safe_display:"Missing language" }}</td></tr>
             <tr><th>Bookings:</th><td>{{ selected_customer.bookings|length }}</td></tr>
             <tr><th>Total people:</th><td>{{ selected_customer.total_pax }}</td></tr>
           </tbody>
@@ -76,16 +77,18 @@
             <tbody>
               {% for booking in selected_customer.bookings %}
                 <tr data-href="{% url 'bookings:detail' booking.id %}">
-                  <td>{% if booking.active_travel_date %}{{ booking.active_travel_date|date:"j/n/Y" }}{% endif %}</td>
-                  <td>{{ booking.provider_booking_reference }}</td>
+                  <td>{% if booking.active_travel_date %}{{ booking.active_travel_date|date:"j/n/Y" }}{% else %}Missing date/time{% endif %}</td>
+                  <td>{{ booking.provider_booking_reference|safe_display:"Missing reference" }}</td>
                   <td>
                     {% if booking.raw_product_name %}
-                      {{ booking.raw_product_name }}
+                      {{ booking.raw_product_name|safe_display:"Missing tour/activity" }}
                     {% elif booking.activity %}
-                      {{ booking.activity.name }}
+                      {{ booking.activity.name|safe_display:"Missing tour/activity" }}
+                    {% else %}
+                      Missing tour/activity
                     {% endif %}
                   </td>
-                  <td>{{ booking.active_traveler_count|default:"" }}</td>
+                  <td>{{ booking.active_traveler_count|default:"Missing participant count" }}</td>
                   <td>{{ booking.get_status_display }}</td>
                 </tr>
               {% endfor %}

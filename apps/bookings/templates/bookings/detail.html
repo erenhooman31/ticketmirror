@@ -7,7 +7,7 @@
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
     <div>
       <h1 class="h3 mb-1">{{ booking.provider_booking_reference }}</h1>
-      <div class="tm-muted">{{ booking.provider.name }} - {{ booking.lead_traveler_name|default:"No lead traveler" }}</div>
+      <div class="tm-muted">{{ booking.provider.name|safe_display:"Unknown provider" }} - {{ booking.lead_traveler_name|safe_display:"Missing customer" }}</div>
     </div>
     {% if can_edit_booking %}
       <a class="btn btn-primary" href="{% url 'bookings:edit' booking.id %}">Edit booking</a>
@@ -19,14 +19,14 @@
       <div class="tm-card p-3 h-100">
         <h2 class="h6">Provider identity</h2>
         <dl class="row mb-0">
-          <dt class="col-sm-4">Provider</dt><dd class="col-sm-8">{{ booking.provider.name }}</dd>
-          <dt class="col-sm-4">Booking ref</dt><dd class="col-sm-8">{{ booking.provider_booking_reference }}</dd>
-          <dt class="col-sm-4">Order ref</dt><dd class="col-sm-8">{{ booking.provider_order_reference|default:"" }}</dd>
-          <dt class="col-sm-4">Raw product</dt><dd class="col-sm-8">{{ booking.raw_product_name }}</dd>
-          <dt class="col-sm-4">Raw option</dt><dd class="col-sm-8">{{ booking.raw_option_name|default:"" }}</dd>
-          <dt class="col-sm-4">Provider date</dt><dd class="col-sm-8">{{ booking.provider_travel_date|default:"" }}</dd>
-          <dt class="col-sm-4">Provider time</dt><dd class="col-sm-8">{{ booking.provider_start_time|time:"H:i"|default:"" }}</dd>
-          <dt class="col-sm-4">Provider pax</dt><dd class="col-sm-8">{{ booking.provider_traveler_count|default:"" }}</dd>
+          <dt class="col-sm-4">Provider</dt><dd class="col-sm-8">{{ booking.provider.name|safe_display:"Unknown provider" }}</dd>
+          <dt class="col-sm-4">Booking ref</dt><dd class="col-sm-8">{{ booking.provider_booking_reference|safe_display:"Missing reference" }}</dd>
+          <dt class="col-sm-4">Order ref</dt><dd class="col-sm-8">{{ booking.provider_order_reference|safe_display:"Missing reference" }}</dd>
+          <dt class="col-sm-4">Raw product</dt><dd class="col-sm-8">{{ booking.raw_product_name|safe_display:"Missing tour/activity" }}</dd>
+          <dt class="col-sm-4">Raw option</dt><dd class="col-sm-8">{{ booking.raw_option_name|safe_display:"Missing option" }}</dd>
+          <dt class="col-sm-4">Provider date</dt><dd class="col-sm-8">{{ booking.provider_travel_date|default:"Missing date/time" }}</dd>
+          <dt class="col-sm-4">Provider time</dt><dd class="col-sm-8">{{ booking.provider_start_time|time:"H:i"|default:"Missing date/time" }}</dd>
+          <dt class="col-sm-4">Provider pax</dt><dd class="col-sm-8">{{ booking.provider_traveler_count|default:"Missing participant count" }}</dd>
         </dl>
       </div>
     </div>
@@ -34,15 +34,15 @@
       <div class="tm-card p-3 h-100">
         <h2 class="h6">Active operations</h2>
         <dl class="row mb-0">
-          <dt class="col-sm-4">Status</dt><dd class="col-sm-8 {% if booking|field_overridden:'status' %}tm-manual{% endif %}">{{ booking.status }}</dd>
+          <dt class="col-sm-4">Status</dt><dd class="col-sm-8 {% if booking|field_overridden:'status' %}tm-manual{% endif %}">{{ booking.get_status_display }}</dd>
           <dt class="col-sm-4">Attendance</dt><dd class="col-sm-8 {% if booking|field_overridden:'attendance_status' %}tm-manual{% endif %}">{{ booking.get_attendance_status_display }}</dd>
-          <dt class="col-sm-4">Activity</dt><dd class="col-sm-8">{{ booking.activity.name|default:"Unmapped" }}</dd>
-          <dt class="col-sm-4">Slot</dt><dd class="col-sm-8">{% if booking.schedule_slot %}{{ booking.schedule_slot.start_time|time:"H:i" }}{% else %}Unmapped{% endif %}</dd>
-          <dt class="col-sm-4">Date</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_travel_date' %}tm-manual{% endif %}">{{ booking.active_travel_date|default:"" }}</dd>
-          <dt class="col-sm-4">Start</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_start_time' %}tm-manual{% endif %}">{{ booking.active_start_time|time:"H:i"|default:"" }}</dd>
-          <dt class="col-sm-4">Pax</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_traveler_count' %}tm-manual{% endif %}">{{ booking.active_traveler_count|default:"" }}</dd>
-          <dt class="col-sm-4">Pickup</dt><dd class="col-sm-8">{{ booking.pickup_location|default:"" }}</dd>
-          <dt class="col-sm-4">Meeting</dt><dd class="col-sm-8">{{ booking.meeting_point|default:"" }}</dd>
+          <dt class="col-sm-4">Activity</dt><dd class="col-sm-8">{{ booking.activity.name|safe_display:"Missing tour/activity" }}</dd>
+          <dt class="col-sm-4">Slot</dt><dd class="col-sm-8">{% if booking.schedule_slot %}{{ booking.schedule_slot.start_time|time:"H:i" }}{% else %}Missing date/time{% endif %}</dd>
+          <dt class="col-sm-4">Date</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_travel_date' %}tm-manual{% endif %}">{{ booking.active_travel_date|default:"Missing date/time" }}</dd>
+          <dt class="col-sm-4">Start</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_start_time' %}tm-manual{% endif %}">{{ booking.active_start_time|time:"H:i"|default:"Missing date/time" }}</dd>
+          <dt class="col-sm-4">Pax</dt><dd class="col-sm-8 {% if booking|field_overridden:'active_traveler_count' %}tm-manual{% endif %}">{{ booking.active_traveler_count|default:"Missing participant count" }}</dd>
+          <dt class="col-sm-4">Pickup</dt><dd class="col-sm-8">{{ booking.pickup_location|safe_display:"Missing pickup" }}</dd>
+          <dt class="col-sm-4">Meeting</dt><dd class="col-sm-8">{{ booking.meeting_point|safe_display:"Missing meeting point" }}</dd>
         </dl>
       </div>
     </div>

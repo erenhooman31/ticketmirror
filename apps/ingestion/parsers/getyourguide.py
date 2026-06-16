@@ -37,7 +37,12 @@ class GetYourGuideParser(ProviderEmailParser):
                 "Travelers",
                 "Guests",
             ],
-            name_labels=["Customer", "Lead traveler", "Lead traveller"],
+            name_labels=[
+                "Main customer",
+                "Customer",
+                "Lead traveler",
+                "Lead traveller",
+            ],
             date_labels=["Date"],
             start_time_labels=["Date", "Time", "Start time"],
         )

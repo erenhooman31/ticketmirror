@@ -345,9 +345,9 @@
               {% csrf_token %}
               <input type="hidden" name="next" value="{{ request.get_full_path }}">
               <input type="hidden" name="active_slot_type" value="{{ booking.active_slot_type|default:'' }}">
-              <input type="hidden" name="traveler_names" value="{{ booking.traveler_names|json_dumps }}">
-              <input type="hidden" name="ticket_breakdown" value="{{ booking.ticket_breakdown|json_dumps }}">
-              <input type="hidden" name="price" value="{{ booking.price|json_dumps }}">
+              <input type="hidden" name="traveler_names" value="{{ booking.traveler_names|json_form_value }}">
+              <input type="hidden" name="ticket_breakdown" value="{{ booking.ticket_breakdown|json_form_value }}">
+              <input type="hidden" name="price" value="{{ booking.price|json_form_value }}">
               <input type="hidden" name="payment_status" value="{{ booking.payment_status|default:'' }}">
               <input type="hidden" name="status" value="{{ booking.status }}">
               <input type="hidden" name="attendance_status" value="{{ booking.attendance_status|default:'' }}">
@@ -357,8 +357,8 @@
               <input type="hidden" name="meeting_point" value="{{ booking.meeting_point|default:'' }}">
               <div class="modal-header tm-booking-modal-header">
                 <h2 class="modal-title" id="{{ modal_id }}-title">
-                  {{ booking.lead_traveler_name|default:"Booking" }}:
-                  {{ booking.active_travel_date|date:"d F Y" }}
+                  {{ booking.lead_traveler_name|safe_display:"Missing customer" }}:
+                  {{ booking.active_travel_date|date:"d F Y"|default:"Missing date" }}
                   {% if booking.active_start_time %}{{ booking.active_start_time|time:"H:i" }}{% endif %}
                 </h2>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -477,13 +477,15 @@
                               <th>Created:</th>
                               <td>by {{ booking.provider.name }}{% if booking.last_email_received_at %}, {{ booking.last_email_received_at|date:"d/m/Y H:i" }}{% endif %}</td>
                             </tr>
-                            <tr>
-                              <th>External ref:</th>
-                              <td>{{ booking.provider_order_reference|default:"" }}</td>
-                            </tr>
+                            {% if booking.provider_order_reference %}
+                              <tr>
+                                <th>External ref:</th>
+                                <td>{{ booking.provider_order_reference|safe_display }}</td>
+                              </tr>
+                            {% endif %}
                             <tr>
                               <th>Booking number:</th>
-                              <td>{{ booking.provider_booking_reference }}</td>
+                              <td>{{ booking.provider_booking_reference|safe_display:"Missing reference" }}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -497,7 +499,7 @@
                           <tbody>
                             <tr>
                               <th>First name</th>
-                              <td><input class="form-control form-control-sm" type="text" name="lead_traveler_name" value="{{ booking.lead_traveler_name|default:'' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
+                              <td><input class="form-control form-control-sm" type="text" name="lead_traveler_name" value="{{ booking.lead_traveler_name|safe_display }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
                             </tr>
                             <tr>
                               <th>Last name</th>
@@ -505,12 +507,12 @@
                             </tr>
                             <tr>
                               <th>Email:</th>
-                              <td><input class="form-control form-control-sm" type="email" name="lead_traveler_email" value="{{ booking.lead_traveler_email|default:'' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
+                              <td><input class="form-control form-control-sm" type="email" name="lead_traveler_email" value="{{ booking.lead_traveler_email|safe_display }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}></td>
                             </tr>
                             <tr>
                               <th>Phone:</th>
                               <td>
-                                <input class="form-control form-control-sm" type="text" name="lead_traveler_phone" value="{{ booking.lead_traveler_phone|default:'' }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>
+                                <input class="form-control form-control-sm" type="text" name="lead_traveler_phone" value="{{ booking.lead_traveler_phone|safe_display }}" {% if not user.is_superuser and not user.profile.can_edit_bookings %}readonly{% endif %}>
                                 <span class="tm-phone-types">mobile&nbsp;&nbsp;work&nbsp;&nbsp;home</span>
                                 <button class="tm-inline-small-button mt-1" type="button" disabled>Add more numbers...</button>
                               </td>

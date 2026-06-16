@@ -81,6 +81,7 @@ def test_parse_realistic_getyourguide_new_booking():
     assert parsed.travel_date.isoformat() == "2026-04-12"
     assert parsed.start_time.isoformat() == "17:00:00"
     assert parsed.traveler_count == 9
+    assert parsed.lead_traveler_name == "Alex Sample"
     assert parsed.lead_traveler_email == "alex.sample@example.test"
     assert parsed.lead_traveler_phone == "+1 555 010 1000"
     assert parsed.language == "English"
@@ -142,6 +143,8 @@ def test_parse_realistic_viator_new_booking():
     assert parsed.travel_date.isoformat() == "2025-04-13"
     assert parsed.start_time.isoformat() == "10:00:00"
     assert parsed.traveler_count == 2
+    assert parsed.lead_traveler_name == "Alex Sample"
+    assert parsed.lead_traveler_phone == "+1 555 010 1001"
 
 
 def test_parse_realistic_tripster_russian_new_booking():

@@ -1,0 +1,49 @@
+{% extends "base/base.html" %}
+
+{% block title %}Bookings - ticketmirror{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">Bookings</h1>
+      <div class="tm-muted">Recent mirrored booking records.</div>
+    </div>
+    <form class="d-flex gap-2" method="get">
+      <input class="form-control" type="search" name="q" value="{{ query }}" placeholder="Reference, customer, provider, product">
+      <button class="btn btn-primary" type="submit">Search</button>
+    </form>
+  </div>
+
+  <div class="tm-card">
+    <div class="table-responsive">
+      <table class="table table-hover tm-table mb-0">
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>Reference</th>
+            <th>Customer</th>
+            <th>Activity</th>
+            <th>Date/time</th>
+            <th class="text-end">Participants</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr data-href="{% url 'bookings:detail' row.booking.id %}">
+              <td>{{ row.provider }}</td>
+              <td>{{ row.reference }}</td>
+              <td>{{ row.customer }}</td>
+              <td>{{ row.activity }}</td>
+              <td>{{ row.datetime }}</td>
+              <td class="text-end">{{ row.participants }}</td>
+              <td>{{ row.status }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="text-center tm-muted py-4">No bookings found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

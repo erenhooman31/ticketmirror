@@ -36,19 +36,19 @@
       <tbody>
         {% for booking in bookings %}
           <tr data-href="{% url 'bookings:detail' booking.id %}">
-            <td>{{ booking.provider.name }}</td>
-            <td>{{ booking.provider_booking_reference }}</td>
-            <td>{{ booking.lead_traveler_name|default:"" }}</td>
-            <td class="text-end">{{ booking.active_traveler_count|default:"" }}</td>
+            <td>{{ booking.provider.name|safe_display:"Unknown provider" }}</td>
+            <td>{{ booking.provider_booking_reference|safe_display:"Missing reference" }}</td>
+            <td>{{ booking.lead_traveler_name|safe_display:"Missing customer" }}</td>
+            <td class="text-end">{{ booking.active_traveler_count|default:"Missing participant count" }}</td>
             <td>
               <span class="badge text-bg-{{ booking.status|status_class }}">{{ booking.get_status_display }}</span>
               {% if booking.status == "manual_review" or booking.status == "pending_provider_acceptance" %}
                 <span class="tm-calendar-alert ms-2" aria-label="Needs review" title="Needs review">!</span>
               {% endif %}
             </td>
-            <td>{{ booking.pickup_location|default:booking.meeting_point|default:"" }}</td>
-            <td>{{ booking.language|default:"" }}</td>
-            <td>{{ booking.special_requirements|default:booking.customer_message|default:"" }}</td>
+            <td>{{ booking.pickup_location|default:booking.meeting_point|safe_display:"Missing pickup/meeting" }}</td>
+            <td>{{ booking.language|safe_display:"Missing language" }}</td>
+            <td>{{ booking.special_requirements|default:booking.customer_message|safe_display:"No notes" }}</td>
           </tr>
         {% empty %}
           <tr><td colspan="8" class="text-center tm-muted py-4">No bookings in this slot.</td></tr>

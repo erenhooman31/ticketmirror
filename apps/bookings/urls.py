@@ -5,6 +5,7 @@ from . import views
 app_name = "bookings"
 
 urlpatterns = [
+    path("", views.booking_list, name="list"),
     path("daily/", views.daily_operations, name="daily"),
     path(
         "slots/<str:date>/<int:slot_id>/",

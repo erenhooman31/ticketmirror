@@ -76,6 +76,14 @@ Duplicate Gmail messages are deduplicated by `RawEmail.gmail_message_id`. Pendin
 raw emails can be retried with `process_pending_raw_emails`, and unexpected
 pending-email processing failures create parser-error review queue items.
 
+`python manage.py repair_parsed_booking_display_fields` is a safe repair command
+for already stored raw emails. It reparses raw email text, fills only missing
+display and booking fields, respects manual overrides on active operational
+fields, preserves raw records, and creates review items when provider, reference,
+date/time, participant count, lead traveler, or product mapping is still missing.
+The command is idempotent and prints `scanned`, `repaired`, `sent_to_review`, and
+`skipped` counts.
+
 If a parser cannot find `provider_booking_reference`, ingestion must not create
 a normal booking. The raw email is marked `needs_review` and a
 `reference_missing` review item is created.

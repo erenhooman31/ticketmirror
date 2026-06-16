@@ -26,6 +26,7 @@ from apps.ingestion.parsers.common import (
     STATUS_MANUAL_REVIEW,
     extract_forwarded_headers,
 )
+from apps.ingestion.providers import provider_display_name
 
 from .models import RawEmail
 
@@ -196,7 +197,7 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
             booking=booking,
             issue_type=ReviewQueueItem.IssueType.LOW_CONFIDENCE_PARSE,
             title="Low confidence parse",
-            details=", ".join(parsed_booking.warnings),
+            details=_warnings_review_details(parsed_booking.warnings),
         )
     else:
         raw_email.parse_status = RawEmail.ParseStatus.PARSED
@@ -488,10 +489,14 @@ def _get_or_create_provider(provider_code: str) -> Provider:
     provider, _created = Provider.objects.get_or_create(
         code=provider_code,
         defaults={
-            "name": provider_code.replace("-", " ").title(),
+            "name": provider_display_name(provider_code),
             "parser_key": provider_code,
         },
     )
+    canonical_name = provider_display_name(provider_code)
+    if provider.name != canonical_name:
+        provider.name = canonical_name
+        provider.save(update_fields=["name", "updated_at"])
     return provider
 
 
@@ -572,7 +577,7 @@ def _create_manual_conflict_review(
         booking=booking,
         issue_type=ReviewQueueItem.IssueType.MANUAL_OVERRIDE_CONFLICT,
         title="Provider update conflicts with manual override",
-        details=str(_json_safe(conflicts)),
+        details=_manual_conflict_details(conflicts),
     )
 
 
@@ -594,12 +599,52 @@ def _create_cancellation_without_booking_review_if_needed(
 
 
 def _provider_alias_review_details(parsed, alias_match: ProviderAliasMatch) -> str:
-    details = [f"Raw product: {parsed.raw_product_name}"]
+    details = [f"Raw product: {parsed.raw_product_name or 'Missing tour/activity'}"]
     if parsed.raw_option_name:
         details.append(f"Raw option: {parsed.raw_option_name}")
     if alias_match.suggestions:
-        details.append(f"Suggestions: {alias_match.suggestions}")
+        details.append("Suggested mappings:")
+        for suggestion in alias_match.suggestions:
+            option = (
+                f" / {suggestion['raw_option_name']}"
+                if suggestion.get("raw_option_name")
+                else ""
+            )
+            details.append(
+                "- "
+                f"{suggestion['linked_activity']} from "
+                f"{suggestion['raw_product_name']}{option} "
+                f"({int(suggestion['score'] * 100)}% match)"
+            )
     return "\n".join(details)
+
+
+def _warnings_review_details(warnings: list[str]) -> str:
+    if not warnings:
+        return "Parser confidence was below the automatic approval threshold."
+    labels = {
+        "provider_missing": "provider",
+        "reference_missing": "booking reference",
+        "travel_date_missing": "travel date",
+        "product_name_missing": "tour/activity",
+        "traveler_count_missing": "participant count",
+        "forwarded_email": "forwarded email",
+        "needs_review": "manual review",
+    }
+    readable = [labels.get(warning, warning.replace("_", " ")) for warning in warnings]
+    return "Check " + ", ".join(readable) + "."
+
+
+def _manual_conflict_details(conflicts: dict[str, dict[str, Any]]) -> str:
+    if not conflicts:
+        return "Provider update conflicts with a manual override."
+    lines = []
+    for field_name, values in conflicts.items():
+        lines.append(
+            f"{field_name.replace('_', ' ').title()} was kept from manual edit; "
+            f"provider sent {values.get('provider_value') or 'blank'}."
+        )
+    return "\n".join(lines)
 
 
 def _fuzzy_alias_suggestions(queryset, parsed) -> list[dict[str, Any]]:

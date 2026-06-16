@@ -14,6 +14,19 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.models import UserProfile
 from apps.accounts.permissions import admin_required, can_mutate, is_admin
+from apps.bookings.display import (
+    activity_label,
+    clean_text,
+    customer_label,
+    datetime_label,
+    product_label,
+    provider_label,
+    reference_label,
+    review_details_label,
+    short_datetime_label,
+    status_label,
+    traveler_count_label,
+)
 from apps.bookings.models import (
     ActivityScheduleSlot,
     Booking,
@@ -491,11 +504,13 @@ def _customer_rows(bookings):
             {
                 "key": key,
                 "id": booking.id,
-                "name": booking.lead_traveler_name or "",
-                "initials": _customer_initials(booking.lead_traveler_name or ""),
-                "phone": booking.lead_traveler_phone or "",
-                "email": booking.lead_traveler_email or "",
-                "language": booking.language or "",
+                "name": customer_label(booking),
+                "initials": _customer_initials(
+                    customer_label(booking, fallback=""),
+                ),
+                "phone": clean_text(booking.lead_traveler_phone, "Missing phone"),
+                "email": clean_text(booking.lead_traveler_email, "Missing email"),
+                "language": clean_text(booking.language, "Missing language"),
                 "bookings": [],
                 "last_booking": None,
                 "total_pax": 0,
@@ -704,8 +719,8 @@ def _agenda_booking_card(booking):
         "pax": pax,
         "pax_label": "adult" if pax == 1 else "adults",
         "reference": booking.provider_booking_reference,
-        "traveler": booking.lead_traveler_name or "Traveler pending",
-        "status": booking.get_status_display(),
+        "traveler": customer_label(booking),
+        "status": status_label(booking),
         "attendance": attendance if booking.attendance_status else "",
         "warning": booking.status
         in {
@@ -806,8 +821,8 @@ def _message_from_event(event):
         "created_at": event.created_at,
         "created_label": _home_message_created_label(event.created_at),
         "title": title,
-        "subtitle": _booking_datetime_label(booking),
-        "product": _booking_product_label(booking),
+        "subtitle": datetime_label(booking),
+        "product": product_label(booking),
         "meta": _booking_meta_label(booking),
         "href": href,
         "booking": booking,
@@ -829,8 +844,8 @@ def _message_from_review(item):
         "created_label": _home_message_created_label(item.created_at),
         "title": f"Review needed - {item.title}",
         "subtitle": item.get_issue_type_display(),
-        "product": _booking_product_label(item.booking),
-        "meta": item.details,
+        "product": product_label(item.booking),
+        "meta": review_details_label(item),
         "href": href,
         "booking": item.booking,
         "review_item": item,
@@ -839,18 +854,17 @@ def _message_from_review(item):
 
 
 def _message_from_failed_email(raw_email):
-    provider_name = (
-        raw_email.provider_detected.name if raw_email.provider_detected else ""
-    )
+    provider_name = provider_label(raw_email.provider_detected)
+    subject = clean_text(raw_email.subject, "Email without subject")
     return {
         "kind": "error",
         "key": f"raw-email:{raw_email.id}",
         "created_at": raw_email.received_at,
         "created_label": _home_message_created_label(raw_email.received_at),
-        "title": f"Parser failed - {raw_email.subject}",
+        "title": f"Parser failed - {subject}",
         "subtitle": provider_name,
         "product": "",
-        "meta": raw_email.parse_error or "",
+        "meta": clean_text(raw_email.parse_error, "Parser error"),
         "href": reverse("bookings:raw_email_detail", args=[raw_email.id]),
         "booking": None,
         "raw_email": raw_email,
@@ -859,7 +873,7 @@ def _message_from_failed_email(raw_email):
 
 
 def _event_title(event, booking):
-    traveler = booking.lead_traveler_name if booking else ""
+    traveler = customer_label(booking, fallback="") if booking else ""
     if event.event_type == BookingEvent.EventType.EMAIL_CANCELLATION:
         prefix = "Booking canceled"
     elif event.event_type == BookingEvent.EventType.EMAIL_UPDATE:
@@ -901,34 +915,26 @@ def _event_kind(event_type):
 
 
 def _booking_datetime_label(booking):
-    if not booking or not booking.active_travel_date:
-        return ""
-    date_label = booking.active_travel_date.strftime("%A, %d %B %Y")
-    if booking.active_start_time:
-        return f"{date_label} {booking.active_start_time:%H:%M}"
-    return date_label
+    return datetime_label(booking, fallback="")
 
 
 def _booking_product_label(booking):
-    if not booking:
-        return ""
-    if booking.schedule_slot_id:
-        activity_name = booking.activity.name if booking.activity else ""
-        return f"{activity_name} - {booking.schedule_slot.start_time:%H:%M}"
-    if booking.activity_id:
-        return booking.activity.name
-    return booking.raw_product_name
+    return product_label(booking, fallback="")
 
 
 def _booking_meta_label(booking):
     if not booking:
         return ""
-    pax = booking.active_traveler_count or booking.provider_traveler_count or 0
-    pax_label = f"{pax} adult" if pax == 1 else f"{pax} adults"
-    reference = booking.provider_booking_reference or booking.provider_order_reference
-    if reference:
-        return f"{pax_label} - {reference}"
-    return pax_label
+    parts = [
+        provider_label(booking.provider),
+        reference_label(booking),
+        customer_label(booking),
+        activity_label(booking),
+        short_datetime_label(booking),
+        traveler_count_label(booking),
+        status_label(booking),
+    ]
+    return " - ".join(dict.fromkeys(part for part in parts if part))
 
 
 def _agenda_day_label(service_date):

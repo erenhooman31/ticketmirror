@@ -32,28 +32,25 @@
         <tbody>
           {% for row in rows %}
             <tr>
-              <td>{{ row.raw_email.received_at|date:"Y-m-d H:i" }}</td>
-              <td>{{ row.provider|default:"" }}</td>
+              <td>{{ row.received_label }}</td>
+              <td>{{ row.provider }}</td>
               <td>
-                {{ row.raw_email.gmail_outer_sender }}
-                {% if row.raw_email.original_forwarded_sender %}
-                  <div class="small tm-muted">fwd: {{ row.raw_email.original_forwarded_sender }}</div>
+                {{ row.sender }}
+                {% if row.forwarded_sender %}
+                  <div class="small tm-muted">fwd: {{ row.forwarded_sender }}</div>
                 {% endif %}
               </td>
               <td>
-                <a href="{% url 'bookings:raw_email_detail' row.raw_email.id %}">{{ row.raw_email.subject }}</a>
-                {% if row.raw_email.parse_error %}
-                  <div class="small text-danger">{{ row.raw_email.parse_error|truncatechars:120 }}</div>
+                <a href="{% url 'bookings:raw_email_detail' row.raw_email.id %}">{{ row.subject }}</a>
+                {% if row.parse_error %}
+                  <div class="small text-danger">{{ row.parse_error|truncatechars:120 }}</div>
                 {% endif %}
               </td>
               <td>{{ row.provider_reference }}</td>
               <td>{{ row.raw_product_title }}</td>
               <td>{{ row.matched_product }}</td>
-              <td>
-                {{ row.booking_date|date:"Y-m-d"|default:"" }}
-                {% if row.booking_time %}{{ row.booking_time|time:"H:i" }}{% endif %}
-              </td>
-              <td class="text-end">{{ row.traveler_count|default:"" }}</td>
+              <td>{{ row.booking_datetime }}</td>
+              <td class="text-end">{{ row.traveler_count }}</td>
               <td>{{ row.lead_traveler }}</td>
               <td>
                 <span class="badge badge-status text-bg-{% if row.status == 'Complete' %}success{% elif row.status == 'Ignored' %}secondary{% elif row.status == 'Parse failed' or row.status == 'Product mismatch' %}danger{% else %}warning{% endif %}">{{ row.status }}</span>

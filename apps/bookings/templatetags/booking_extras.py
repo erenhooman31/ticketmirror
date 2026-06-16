@@ -4,6 +4,8 @@ from django import template
 from django.utils.html import conditional_escape
 from django.utils.safestring import mark_safe
 
+from apps.bookings.display import clean_text
+
 register = template.Library()
 
 
@@ -38,3 +40,15 @@ def status_class(status):
 @register.filter
 def json_dumps(value):
     return mark_safe(conditional_escape(json.dumps(value, ensure_ascii=False)))
+
+
+@register.filter
+def json_form_value(value):
+    if value in (None, {}, []):
+        return ""
+    return mark_safe(conditional_escape(json.dumps(value, ensure_ascii=False)))
+
+
+@register.filter
+def safe_display(value, fallback=""):
+    return clean_text(value, fallback)

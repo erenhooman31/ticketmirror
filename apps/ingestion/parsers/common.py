@@ -158,6 +158,22 @@ def extract_email(text: str) -> str | None:
 
 
 def extract_phone(text: str) -> str | None:
+    for line in text.splitlines():
+        if not re.search(r"\b(phone|mobile|tel|telephone|contact)\b", line, re.I):
+            continue
+        match = PHONE_RE.search(line)
+        if match:
+            return normalize_whitespace(match.group(0))
+    skipped_labels = re.compile(
+        r"\b(booking|reference|order|product|grade|code|id|rate)\b",
+        re.I,
+    )
+    for line in text.splitlines():
+        if skipped_labels.search(line):
+            continue
+        match = PHONE_RE.search(line)
+        if match:
+            return normalize_whitespace(match.group(0))
     match = PHONE_RE.search(text)
     if not match:
         return None
