@@ -30,41 +30,29 @@ x-app-env: &app-env
   GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
 
 services:
-  migrate:
+  web:
     build:
       context: .
     command: >
       sh -c "
+      echo '--- running django check ---' &&
+      python manage.py check &&
+      echo '--- running migrations ---' &&
       python manage.py migrate --noinput &&
+      echo '--- running collectstatic ---' &&
       python manage.py collectstatic --noinput &&
-      python manage.py create_initial_admin
+      echo '--- creating initial admin ---' &&
+      python manage.py create_initial_admin &&
+      echo '--- starting gunicorn ---' &&
+      gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers $${GUNICORN_WORKERS:-3} --timeout $${GUNICORN_TIMEOUT:-60} --access-logfile - --error-logfile -
       "
     environment: *app-env
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - static_data:/app/staticfiles
-      - media_data:/app/media
-    restart: "no"
-
-  web:
-    build:
-      context: .
-    command: >
-      gunicorn config.wsgi:application
-      --bind 0.0.0.0:8000
-      --workers ${GUNICORN_WORKERS:-3}
-      --timeout ${GUNICORN_TIMEOUT:-60}
-      --access-logfile -
-      --error-logfile -
-    environment: *app-env
-    restart: unless-stopped
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     volumes:
       - static_data:/app/staticfiles
       - media_data:/app/media
@@ -84,8 +72,8 @@ services:
     environment: *app-env
     restart: unless-stopped
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      web:
+        condition: service_healthy
     volumes:
       - media_data:/app/media
 
@@ -96,8 +84,8 @@ services:
     environment: *app-env
     restart: unless-stopped
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      web:
+        condition: service_healthy
     volumes:
       - media_data:/app/media
 
