@@ -1,0 +1,26 @@
+:80 {
+	encode gzip zstd
+
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+	}
+
+	handle_path /media/* {
+		root * /srv/media
+		file_server
+		header Content-Disposition "attachment"
+	}
+
+	reverse_proxy web:8000 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+	}
+}
