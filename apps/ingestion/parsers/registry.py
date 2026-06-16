@@ -1,6 +1,7 @@
 import re
 
 from .alle import AlleParser
+from .bookeo import BookeoParser
 from .common import effective_message
 from .direct import DirectParser
 from .getyourguide import GetYourGuideParser
@@ -12,6 +13,16 @@ from .tripster import TripsterParser
 from .viator import ViatorParser
 
 PROVIDER_PATTERNS = {
+    "bookeo": {
+        "sender": [r"noreply@bookeo\.com", r"\bbookeo\b"],
+        "subject": [
+            r"New booking\s+-",
+            r"Booking canceled\s+-",
+            r"Booking cancelled\s+-",
+            r"Booking changed\s+-",
+        ],
+        "body": [r"Booking details", r"powered by Bookeo", r"Booking number\s*:"],
+    },
     "getyourguide": {
         "sender": [r"getyourguide", r"\bgyg\b"],
         "subject": [r"getyourguide", r"\bgyg\b"],
@@ -85,14 +96,23 @@ def detect_provider(
     )
     candidates = []
     for provider_code, groups in PROVIDER_PATTERNS.items():
-        if not _matches_any(effective_sender, groups["sender"]):
-            continue
         score = 0
-        score += 0.5
-        if _matches_any(effective_subject, groups["subject"]):
+        sender_matches = _matches_any(effective_sender, groups["sender"])
+        subject_matches = _matches_any(effective_subject, groups["subject"])
+        body_matches = _matches_any(body_text, groups["body"])
+        if sender_matches:
+            score += 0.5
+        if subject_matches:
             score += 0.3
-        if _matches_any(body_text, groups["body"]):
+        if body_matches:
             score += 0.2
+        if not _is_acceptable_candidate(
+            sender_matches=sender_matches,
+            subject_matches=subject_matches,
+            body_matches=body_matches,
+            provider_code=provider_code,
+        ):
+            continue
         if score:
             candidates.append((provider_code, round(min(score, 1), 2)))
     if not candidates:
@@ -130,8 +150,23 @@ def _matches_any(value: str, patterns: list[str]) -> bool:
     return any(re.search(pattern, value or "", re.IGNORECASE) for pattern in patterns)
 
 
+def _is_acceptable_candidate(
+    *,
+    sender_matches: bool,
+    subject_matches: bool,
+    body_matches: bool,
+    provider_code: str,
+) -> bool:
+    if sender_matches:
+        return True
+    if provider_code == "bookeo":
+        return subject_matches and body_matches
+    return False
+
+
 for parser in (
     AlleParser,
+    BookeoParser,
     DirectParser,
     GetYourGuideParser,
     KlookParser,

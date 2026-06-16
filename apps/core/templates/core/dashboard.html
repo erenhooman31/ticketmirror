@@ -158,7 +158,7 @@
                     {% for card in row.bookings %}
                       <a class="tm-agenda-booking {% if card.warning %}tm-agenda-booking-warning{% endif %}" href="{{ card.detail_url }}">
                         <span class="tm-agenda-booking-title">{{ card.traveler }}</span>
-                        <span>People: {{ card.pax }} {{ card.pax_label }}</span>
+                        <span>People: {{ card.pax_display }}</span>
                         <span>Booking number: {{ card.reference }}</span>
                         <span>Status: {{ card.status }}{% if card.attendance %} - {{ card.attendance }}{% endif %}</span>
                         {% if not card.counts_for_capacity %}

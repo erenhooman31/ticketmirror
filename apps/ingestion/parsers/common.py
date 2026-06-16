@@ -183,18 +183,31 @@ def extract_phone(text: str) -> str | None:
 def extract_forwarded_headers(body_text: str) -> ForwardedHeaders:
     lines = body_text.splitlines()
     sender = subject = sent_date = None
+    in_forwarded_block = False
     for index, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.lower().startswith("from:"):
+        lowered = stripped.lower()
+        if (
+            "forwarded message" in lowered
+            or "original message" in lowered
+            or "begin forwarded message" in lowered
+        ):
+            in_forwarded_block = True
+            continue
+        if lowered.startswith("from:"):
             nearby = "\n".join(lines[max(0, index - 2) : index + 6]).lower()
-            if "forwarded" not in nearby and "original message" not in nearby:
+            if (
+                not in_forwarded_block
+                and "forwarded" not in nearby
+                and "original message" not in nearby
+            ):
                 continue
             sender = _address_header_value(stripped)
-        elif stripped.lower().startswith("subject:") and sender:
+        elif lowered.startswith("subject:") and (sender or in_forwarded_block):
             subject = _plain_header_value(stripped)
-        elif stripped.lower().startswith(("date:", "sent:")) and sender:
+        elif lowered.startswith(("date:", "sent:")) and (sender or in_forwarded_block):
             sent_date = _plain_header_value(stripped)
         if sender and subject and sent_date:
             break

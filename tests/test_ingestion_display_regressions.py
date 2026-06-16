@@ -62,6 +62,24 @@ def test_unknown_provider_goes_to_review_queue_with_clear_reason():
 
 
 @pytest.mark.django_db
+def test_non_booking_noise_is_ignored_without_review_queue_item():
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="tiqets-report-noise-1",
+        gmail_outer_sender="reports@tiqets.com",
+        subject="Tiqets guestlist report",
+        received_at=timezone.now(),
+        body_text="Daily guestlist report for your venue. No booking action required.",
+    )
+
+    result = process_raw_email(raw_email.id)
+    raw_email.refresh_from_db()
+
+    assert result is None
+    assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
+    assert ReviewQueueItem.objects.filter(raw_email=raw_email).count() == 0
+
+
+@pytest.mark.django_db
 def test_dashboard_renders_imported_messages_without_raw_structures(client, users):
     setup = create_activity_setup(
         provider_code="viator",

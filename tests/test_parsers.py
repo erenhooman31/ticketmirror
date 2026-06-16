@@ -30,6 +30,19 @@ def test_detect_provider_uses_forwarded_sender_before_outer_sender():
     assert confidence >= 0.7
 
 
+def test_detect_provider_identifies_bookeo_notifications():
+    body = fixture("bookeo_viator_new.txt")
+
+    provider_code, confidence = detect_provider(
+        subject="New booking - Alex Bookeo",
+        sender="noreply@bookeo.com",
+        body_text=body,
+    )
+
+    assert provider_code == "bookeo"
+    assert confidence == 1
+
+
 def test_detect_provider_rejects_spoofed_body_from_unknown_sender():
     provider_code, confidence = detect_provider(
         subject="Viator booking BR-SPOOF confirmed",
@@ -66,6 +79,35 @@ def test_parse_viator_new_booking():
     assert parsed.traveler_count == 2
     assert parsed.confidence == 1
     assert parsed.warnings == []
+
+
+def test_parse_bookeo_notification_uses_underlying_ota_identity():
+    parsed = parse_by_provider(
+        "bookeo",
+        "New booking - Alex Bookeo",
+        "noreply@bookeo.com",
+        fixture("bookeo_viator_new.txt"),
+    )
+
+    assert parsed.provider_code == "viator"
+    assert parsed.provider_booking_reference == "1411335703"
+    assert parsed.provider_order_reference == "Bookeo 2557606167491444"
+    assert (
+        parsed.raw_product_name
+        == "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR"
+    )
+    assert parsed.travel_date.isoformat() == "2026-06-17"
+    assert parsed.start_time.isoformat() == "11:00:00"
+    assert parsed.traveler_count == 3
+    assert parsed.lead_traveler_name == "Alex Bookeo"
+    assert parsed.lead_traveler_email == "alex.bookeo@example.test"
+    assert parsed.lead_traveler_phone == "+1 555 010 2222"
+    assert parsed.traveler_names == [
+        "Alex Bookeo",
+        "Casey Bookeo",
+        "Jordan Bookeo",
+    ]
+    assert parsed.confidence == 1
 
 
 def test_parse_realistic_getyourguide_new_booking():

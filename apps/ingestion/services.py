@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
@@ -30,7 +31,7 @@ from apps.ingestion.providers import provider_display_name
 
 from .models import RawEmail
 
-LOW_CONFIDENCE_THRESHOLD = 1.0
+LOW_CONFIDENCE_THRESHOLD = 0.8
 PARSER_VERSION = "deterministic-v1"
 
 
@@ -82,6 +83,11 @@ def process_raw_email(raw_email_id: int) -> Booking | None:
         raw_email.body_text,
     )
     if not provider_code:
+        if _should_ignore_non_booking_email(raw_email):
+            raw_email.parse_status = RawEmail.ParseStatus.IGNORED
+            raw_email.parse_error = "Ignored non-booking email."
+            raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+            return None
         raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
         raw_email.parse_error = "Provider could not be detected."
         raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
@@ -98,6 +104,12 @@ def process_raw_email(raw_email_id: int) -> Booking | None:
     raw_email.provider_detected = provider
     raw_email.parser_version = PARSER_VERSION
     raw_email.save(update_fields=["provider_detected", "parser_version", "updated_at"])
+
+    if _should_ignore_non_booking_email(raw_email):
+        raw_email.parse_status = RawEmail.ParseStatus.IGNORED
+        raw_email.parse_error = "Ignored non-booking email."
+        raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+        return None
 
     parser = get_parser(provider.parser_key or provider.code)
     if parser is None:
@@ -370,6 +382,8 @@ def _create_booking(
     booking = Booking.objects.create(
         provider=provider,
         provider_booking_reference=parsed.provider_booking_reference,
+        source_thread_id=raw_email.gmail_thread_id,
+        last_email_received_at=raw_email.received_at,
         **values,
         **active_values,
     )
@@ -397,6 +411,12 @@ def _update_booking(
     for field_name, diff in provider_diffs.items():
         if field_name == "status" and is_manually_overridden(booking, "status"):
             continue
+        if _skip_empty_provider_update(
+            field_name=field_name,
+            old_value=diff["old"],
+            new_value=diff["new"],
+        ):
+            continue
         old_values[field_name] = diff["old"]
         new_values[field_name] = diff["new"]
         setattr(booking, field_name, diff["new"])
@@ -423,6 +443,10 @@ def _update_booking(
         new_values[field_name] = diff["new"]
         setattr(booking, field_name, diff["new"])
 
+    if raw_email.received_at:
+        booking.last_email_received_at = raw_email.received_at
+    if raw_email.gmail_thread_id:
+        booking.source_thread_id = raw_email.gmail_thread_id
     booking.save()
     conflicts = provider_update_conflicts(
         booking=booking,
@@ -483,6 +507,49 @@ def _provider_values_from_parsed(parsed) -> dict[str, Any]:
         "price": parsed.price,
         "payment_status": parsed.payment_status,
     }
+
+
+def _should_ignore_non_booking_email(raw_email: RawEmail) -> bool:
+    subject = raw_email.subject or ""
+    body_text = raw_email.body_text or ""
+    haystack = f"{subject}\n{body_text}".lower()
+    if _has_booking_intent(haystack):
+        return False
+    return bool(
+        re.search(
+            r"\b(newsletter|guest\s*list|guestlist|report|reminder|"
+            r"question about activity|inquiry|enquiry|digest|promotion|"
+            r"marketing|survey|payout|invoice)\b",
+            haystack,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _has_booking_intent(haystack: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(new booking|booking details|booking reference|booking ref|"
+            r"booking number|booking request|booking canceled|booking cancelled|"
+            r"booking changed|order id|order number|reference id|confirmed booking|"
+            r"cancellation)\b",
+            haystack,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _skip_empty_provider_update(
+    *,
+    field_name: str,
+    old_value: Any,
+    new_value: Any,
+) -> bool:
+    if field_name == "status":
+        return False
+    if old_value in (None, "", [], {}):
+        return False
+    return new_value in (None, "", [], {})
 
 
 def _get_or_create_provider(provider_code: str) -> Provider:

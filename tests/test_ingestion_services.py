@@ -96,6 +96,37 @@ def viator_message(message_id="gmail-viator-1") -> dict:
     }
 
 
+def bookeo_message(message_id="gmail-bookeo-1") -> dict:
+    return {
+        "gmail_message_id": message_id,
+        "gmail_thread_id": "thread-bookeo-1",
+        "gmail_history_id": "history-bookeo-1",
+        "gmail_outer_sender": "noreply@bookeo.com",
+        "subject": "New booking - Alex Bookeo",
+        "received_at": timezone.now(),
+        "body_text": fixture("bookeo_viator_new.txt"),
+    }
+
+
+def viator_same_booking_message(message_id="gmail-viator-same-1") -> dict:
+    return {
+        "gmail_message_id": message_id,
+        "gmail_thread_id": "thread-viator-same-1",
+        "gmail_history_id": "history-viator-same-1",
+        "gmail_outer_sender": "bookings@viator.com",
+        "subject": "Viator booking 1411335703 confirmed",
+        "received_at": timezone.now(),
+        "body_text": """
+        Booking reference: 1411335703
+        Tour Name: 2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR
+        Travel date: 2026-06-17
+        Start time: 11:00
+        Participants: 3
+        Lead traveler: Alex Bookeo
+        """,
+    }
+
+
 @pytest.mark.django_db
 def test_process_gmail_message_creates_booking_and_event(viator_alias):
     raw = process_gmail_message(viator_message())
@@ -110,6 +141,32 @@ def test_process_gmail_message_creates_booking_and_event(viator_alias):
     assert booking.activity == viator_alias.linked_activity
     assert booking.schedule_slot == viator_alias.linked_slot
     assert booking.events.get().event_type == BookingEvent.EventType.EMAIL_NEW_BOOKING
+
+
+@pytest.mark.django_db
+def test_bookeo_and_direct_ota_messages_merge_on_underlying_reference():
+    create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="Bosphorus Cruise",
+        raw_product_name="2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+        raw_option_name="",
+        start_time=time(11, 0),
+        service_date=date(2026, 6, 17),
+    )
+
+    bookeo_raw = process_gmail_message(bookeo_message())
+    direct_raw = process_gmail_message(viator_same_booking_message())
+    booking = Booking.objects.get()
+
+    assert bookeo_raw.parse_status == RawEmail.ParseStatus.PARSED
+    assert direct_raw.parse_status == RawEmail.ParseStatus.PARSED
+    assert booking.provider.code == "viator"
+    assert booking.provider_booking_reference == "1411335703"
+    assert booking.provider_order_reference == "Bookeo 2557606167491444"
+    assert booking.provider_traveler_count == 3
+    assert Booking.objects.count() == 1
+    assert booking.events.count() == 2
 
 
 @pytest.mark.django_db
@@ -255,6 +312,27 @@ def test_missing_booking_fields_create_specific_review_items(viator_provider):
         ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
         ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
     }
+
+
+@pytest.mark.django_db
+def test_single_missing_field_does_not_force_manual_review_status(viator_alias):
+    raw = raw_email(message_id="missing-lead-only")
+    booking = upsert_booking_from_parsed(
+        raw,
+        parsed_booking(
+            lead_traveler_name="",
+            confidence=0.8,
+            warnings=["lead_traveler_missing"],
+        ),
+    )
+    raw.refresh_from_db()
+
+    assert booking.status == Booking.Status.CONFIRMED
+    assert raw.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW
+    assert not ReviewQueueItem.objects.filter(
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.LOW_CONFIDENCE_PARSE,
+    ).exists()
 
 
 @pytest.mark.django_db

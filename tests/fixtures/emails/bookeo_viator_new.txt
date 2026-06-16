@@ -1,0 +1,21 @@
+Booking details
+
+Date: Wednesday, 17 June 2026
+Time: 11:00
+Tour: 2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR
+Participants: 3 adults
+Booking number: 2557606167491444
+
+Customer: Alex Bookeo
+Email: alex.bookeo@example.test
+Phone: +1 555 010 2222
+Preferred language: English
+
+Participants
+Adult 1: Alex Bookeo
+Adult 2: Casey Bookeo
+Adult 3: Jordan Bookeo
+
+Notes by Viator, please confirm at the pier. Booking reference: 1411335703
+
+powered by Bookeo

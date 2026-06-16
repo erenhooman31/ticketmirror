@@ -9,6 +9,7 @@ Parser files live under `apps/ingestion/parsers/`:
 - `base.py`: parser interface and `ParsedBooking` DTO.
 - `common.py`: shared deterministic helpers for whitespace, dates, times, money, forwarded headers, and confidence.
 - `registry.py`: provider parser registry.
+- `bookeo.py`
 - `direct.py`
 - `getyourguide.py`
 - `klook.py`
@@ -51,13 +52,34 @@ Every parser change must include tests with representative email body fixtures. 
 
 Tests must assert normalized `ParsedBooking` output and booking upsert behavior where relevant.
 
-Provider confidence is high only when provider, booking reference, travel date, product name, and traveler count are found. Missing references should produce manual-review output rather than an exception.
+Provider confidence is high when provider, booking reference, travel date, product name, and traveler count are found. One missing non-reference field can still create a booking plus a focused review item; missing references should produce manual-review output rather than an exception.
 
 ## Provider Assumptions
 
 The parser fixtures include anonymized examples derived from real provider
 templates. Names, emails, phone numbers, and references are fake but preserve the
 provider label structure.
+
+During the Bookeo phase-out, ingestion supports two live channels:
+
+- Bookeo notification emails from `noreply@bookeo.com`.
+- Direct OTA booking emails.
+
+Bookeo notifications are parsed as a source channel, not as the booking identity.
+The parser extracts `Notes by <OTA> ... Booking reference: <ref>` and returns the
+underlying OTA provider/reference as `provider_code` and
+`provider_booking_reference`. Bookeo's `Booking number` is retained in
+`provider_order_reference`. This keeps one booking record for the same OTA
+booking whether it arrives through Bookeo, directly from the OTA, or both.
+
+### Bookeo
+
+- New, changed, and canceled notification subjects are supported.
+- `Date`, `Time`, `Tour`, `Participants`, `Booking number`, customer contact
+  fields, participant names, and `Notes by <OTA> ... Booking reference: <ref>`
+  are parsed explicitly.
+- If the underlying OTA or OTA reference is missing, the email is sent to review
+  rather than creating a Bookeo-identified booking.
 
 ### GetYourGuide
 
@@ -111,6 +133,13 @@ provider label structure.
 - Klook remains conservative until anonymized real samples are added.
 - Missing reference, date, or traveler count should produce manual-review output
   instead of raising parser exceptions.
+
+### Provisional Providers
+
+The repo currently lacks real booking-confirmation fixtures for Alle, Klook, and
+Travel Experience. Their parsers remain provisional and should not be considered
+final until representative real booking-confirmation samples are added under
+`tests/fixtures/emails/` and covered by deterministic parser tests.
 
 ## AI Extraction
 

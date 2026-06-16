@@ -1,4 +1,5 @@
 CANONICAL_PROVIDER_LABELS = {
+    "bookeo": "Bookeo",
     "getyourguide": "GetYourGuide",
     "viator": "Viator",
     "klook": "Klook",

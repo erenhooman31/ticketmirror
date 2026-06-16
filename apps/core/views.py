@@ -712,12 +712,15 @@ def _agenda_bookings(service_date, slot):
 
 
 def _agenda_booking_card(booking):
-    pax = booking.active_traveler_count or booking.provider_traveler_count or 0
+    pax_value = booking.active_traveler_count
+    if pax_value is None:
+        pax_value = booking.provider_traveler_count
+    pax = pax_value or 0
     attendance = booking.get_attendance_status_display()
     return {
         "booking": booking,
         "pax": pax,
-        "pax_label": "adult" if pax == 1 else "adults",
+        "pax_display": traveler_count_label(booking),
         "reference": booking.provider_booking_reference,
         "traveler": customer_label(booking),
         "status": status_label(booking),
