@@ -1,6 +1,8 @@
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 
+from apps.bookings.management.commands.seed_bookeo_products import DIRECT_OTA_ALIASES
 from apps.bookings.models import (
     ActivitySchedule,
     ActivityScheduleSlot,
@@ -8,6 +10,8 @@ from apps.bookings.models import (
     ProviderAlias,
     TourActivity,
 )
+from apps.ingestion.parsers.base import ParsedBooking
+from apps.ingestion.services import match_product_alias
 
 
 @pytest.mark.django_db
@@ -26,7 +30,7 @@ def test_seed_bookeo_products_command_is_idempotent():
 
     assert TourActivity.objects.count() == 12
     assert ActivitySchedule.objects.count() == 34
-    assert ProviderAlias.objects.count() == 12
+    assert ProviderAlias.objects.count() == 30
 
 
 @pytest.mark.django_db
@@ -34,13 +38,22 @@ def test_seed_bookeo_products_aliases_link_to_activity_and_slot():
     call_command("seed_bookeo_products")
 
     alias = ProviderAlias.objects.get(
-        raw_product_name="Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR"
+        provider__code="viator",
+        raw_product_name="Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR",
     )
 
     assert alias.provider.code == "viator"
     assert alias.linked_activity.name == alias.raw_product_name
     assert alias.linked_slot.start_time.strftime("%H:%M") == "11:00"
+    assert alias.approved is True
     assert alias.needs_manual_confirmation is True
+
+    bookeo_alias = ProviderAlias.objects.get(
+        provider__code="bookeo",
+        raw_product_name="Bosphorus Cruise Tour In Istanbul For 2 Hours VIATOR",
+    )
+    assert bookeo_alias.linked_activity == alias.linked_activity
+    assert bookeo_alias.approved is True
 
 
 @pytest.mark.django_db
@@ -183,7 +196,11 @@ def test_seed_bookeo_products_keeps_yacht_unconfirmed_without_fixed_slot():
     call_command("seed_bookeo_products")
 
     activity = TourActivity.objects.get(name="gyg yacht")
-    alias = ProviderAlias.objects.get(linked_activity=activity)
+    alias = ProviderAlias.objects.get(
+        linked_activity=activity,
+        provider__code="getyourguide",
+        raw_product_name="gyg yacht",
+    )
 
     assert activity.category == TourActivity.Category.YACHT
     assert activity.schedules.count() == 1
@@ -199,6 +216,70 @@ def test_seed_bookeo_products_keeps_yacht_unconfirmed_without_fixed_slot():
     assert duration_slot.active is False
     assert alias.linked_slot is None
     assert alias.needs_manual_confirmation is True
+
+
+@pytest.mark.django_db
+def test_seed_bookeo_products_aliases_real_incoming_product_strings():
+    call_command("seed_bookeo_products")
+
+    direct_alias = ProviderAlias.objects.get(
+        provider__code="sputnik8",
+        raw_product_name=next(
+            item["raw_product_name"]
+            for item in DIRECT_OTA_ALIASES
+            if item["provider"] == "sputnik8"
+        ),
+    )
+
+    assert direct_alias.approved is True
+    assert direct_alias.needs_manual_confirmation is False
+    assert direct_alias.linked_activity.name == "GYG 2 Hours Bosphorus Tour SL-(2-3)"
+    assert direct_alias.linked_slot.start_time.strftime("%H:%M") == "19:00"
+
+    tripster_alias = ProviderAlias.objects.get(
+        provider__code="tripster",
+        raw_product_name=next(
+            item["raw_product_name"]
+            for item in DIRECT_OTA_ALIASES
+            if item["provider"] == "tripster"
+        ),
+    )
+    assert (
+        tripster_alias.linked_activity.name
+        == "Istanbul Two Continents Tour By Bus And Bosphorus Cruise"
+    )
+
+
+@pytest.mark.django_db
+def test_match_product_alias_normalizes_whitespace_and_ignores_case():
+    call_command("seed_bookeo_products")
+
+    parsed = ParsedBooking(
+        provider_code="viator",
+        raw_product_name="  guided   bosphorus cruise boat tour in istanbul  ",
+        raw_option_name="Guided Bosphorus Cruise Boat Tour In Istanbul 10:00",
+    )
+
+    alias_match = match_product_alias(parsed)
+
+    assert alias_match.alias is not None
+    assert (
+        alias_match.alias.linked_activity.name
+        == "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR"
+    )
+
+
+@pytest.mark.django_db
+def test_seed_bookeo_products_fails_on_catalog_drift():
+    TourActivity.objects.create(
+        name="Unexpected public checkout tour",
+        internal_display_name="Unexpected",
+        active=True,
+        category=TourActivity.Category.OTHER,
+    )
+
+    with pytest.raises(CommandError, match="Bookeo catalog drift detected"):
+        call_command("seed_bookeo_products")
 
 
 @pytest.mark.django_db

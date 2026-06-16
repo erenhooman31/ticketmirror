@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.bookings.models import (
@@ -13,6 +13,13 @@ from apps.bookings.models import (
 )
 
 PROVIDERS = [
+    {
+        "code": "bookeo",
+        "name": "Bookeo",
+        "parser_key": "bookeo",
+        "known_sender_patterns": ["bookeo", "noreply@bookeo.com"],
+        "known_subject_patterns": ["New booking", "Booking changed"],
+    },
     {
         "code": "getyourguide",
         "name": "GetYourGuide",
@@ -297,23 +304,89 @@ BOOKEO_PRODUCTS = [
 ]
 
 
+LIVE_BOOKEO_PRODUCT_NAMES = tuple(payload["name"] for payload in BOOKEO_PRODUCTS)
+
+
+DIRECT_OTA_ALIASES = [
+    {
+        "provider": "viator",
+        "raw_product_name": "Guided Bosphorus Cruise Boat Tour In Istanbul",
+        "activity_name": "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+        "slot_start_time": "11:00",
+        "notes": (
+            "Confirmed from tests/fixtures/emails/real_viator_new.txt. "
+            "Parser may provide a provider time that picks a different slot."
+        ),
+    },
+    {
+        "provider": "viator",
+        "raw_product_name": "Istanbul Private Luxury Yacht on Bosphorus",
+        "activity_name": "gyg yacht",
+        "slot_start_time": None,
+        "notes": "Confirmed from tests/fixtures/emails/real_viator_request.txt.",
+    },
+    {
+        "provider": "getyourguide",
+        "raw_product_name": "Istanbul: Luxury Yacht on Bosphorus",
+        "activity_name": "gyg yacht",
+        "slot_start_time": None,
+        "notes": "Confirmed from tests/fixtures/emails/real_getyourguide_new.txt.",
+    },
+    {
+        "provider": "tiqets",
+        "raw_product_name": (
+            "Istanbul: Guided Bosphorus Sightseeing Cruise + Audio Guide"
+        ),
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": "Confirmed from tests/fixtures/emails/real_tiqets_new.txt.",
+    },
+    {
+        "provider": "tripster",
+        "raw_product_name": "Великолепный Стамбул в Европе и Азии",
+        "activity_name": "Istanbul Two Continents Tour By Bus And Bosphorus Cruise",
+        "slot_start_time": "08:15",
+        "notes": "Confirmed from tests/fixtures/emails/real_tripster_new_ru.txt.",
+    },
+    {
+        "provider": "sputnik8",
+        "raw_product_name": "Морская прогулка по Босфору с аудиогидом",
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": "Confirmed from tests/fixtures/emails/real_sputnik8_new_ru.txt.",
+    },
+]
+
+UNMAPPED_SAMPLE_PRODUCT_STRINGS = [
+    {
+        "provider": "klook",
+        "raw_product_name": "Airport Transfer",
+        "reason": (
+            "Sample email is missing a booking reference and is not a Bookeo tour."
+        ),
+    },
+]
+
+
 class Command(BaseCommand):
     help = "Seed the 12 inspected Bookeo products as TicketMirror activities."
 
     @transaction.atomic
     def handle(self, *args, **options):
-        providers = seed_providers()
+        providers, provider_stats = seed_providers()
         stats = {
-            "activities": 0,
-            "schedules": 0,
-            "slots": 0,
-            "people_rules": 0,
-            "aliases": 0,
+            "activities": _stats(),
+            "schedules": _stats(),
+            "slots": _stats(),
+            "people_rules": _stats(),
+            "aliases": _stats(),
         }
+        activities = {}
 
         for payload in BOOKEO_PRODUCTS:
-            activity, created = TourActivity.objects.update_or_create(
-                name=payload["name"],
+            activity, status = _update_or_create_tracked(
+                TourActivity,
+                lookup={"name": payload["name"]},
                 defaults={
                     "internal_display_name": payload.get(
                         "display_name",
@@ -330,9 +403,10 @@ class Command(BaseCommand):
                     "notes": payload["notes"],
                 },
             )
-            stats["activities"] += int(created)
-            stats["people_rules"] += seed_people_rule(activity, payload)
-            current_schedule, schedule_created = seed_schedule(
+            activities[activity.name] = activity
+            _count(stats["activities"], status)
+            _count(stats["people_rules"], seed_people_rule(activity, payload))
+            current_schedule, schedule_status = seed_schedule(
                 activity,
                 ActivitySchedule.ScheduleKind.CURRENT,
                 "Current schedule",
@@ -341,39 +415,93 @@ class Command(BaseCommand):
                 date_from=payload["current_from"],
                 date_to=payload["current_to"],
             )
-            stats["schedules"] += int(schedule_created)
-            stats["schedules"] += seed_other_schedules(activity, payload)
-            stats["slots"] += seed_slots(current_schedule, payload)
+            _count(stats["schedules"], schedule_status)
+            _merge_stats(stats["schedules"], seed_other_schedules(activity, payload))
+            _merge_stats(stats["slots"], seed_slots(current_schedule, payload))
             provider = providers[payload["provider"]]
             linked_slot = (
                 current_schedule.slots.filter(active=True)
                 .order_by("start_time")
                 .first()
             )
-            stats["aliases"] += seed_alias(
-                provider=provider,
-                activity=activity,
-                slot=linked_slot,
-                payload=payload,
+            _count(
+                stats["aliases"],
+                seed_alias(
+                    provider=provider,
+                    activity=activity,
+                    slot=linked_slot,
+                    raw_product_name=payload["name"],
+                    manual=payload["manual"],
+                    notes=payload["notes"],
+                ),
             )
+            _count(
+                stats["aliases"],
+                seed_alias(
+                    provider=providers["bookeo"],
+                    activity=activity,
+                    slot=linked_slot,
+                    raw_product_name=payload["name"],
+                    manual=payload["manual"],
+                    notes=f"Bookeo Tour field for {payload['name']}.",
+                ),
+            )
+
+        _merge_stats(
+            stats["aliases"],
+            seed_direct_ota_aliases(providers=providers, activities=activities),
+        )
+        assert_catalog_drift()
+        alias_coverage = build_alias_coverage()
 
         self.stdout.write(
             self.style.SUCCESS(
-                "Seeded Bookeo-inspired activities: "
-                f"{stats['activities']} activities, "
-                f"{stats['schedules']} schedules, "
-                f"{stats['slots']} slots, "
-                f"{stats['people_rules']} people rules, "
-                f"{stats['aliases']} aliases created."
+                "Seeded Bookeo catalog: "
+                f"providers created={provider_stats['created']} "
+                f"updated={provider_stats['updated']} "
+                f"skipped={provider_stats['skipped']}; "
+                f"activities created={stats['activities']['created']} "
+                f"updated={stats['activities']['updated']} "
+                f"skipped={stats['activities']['skipped']}; "
+                f"schedules created={stats['schedules']['created']} "
+                f"updated={stats['schedules']['updated']} "
+                f"skipped={stats['schedules']['skipped']}; "
+                f"slots created={stats['slots']['created']} "
+                f"updated={stats['slots']['updated']} "
+                f"skipped={stats['slots']['skipped']}; "
+                f"people rules created={stats['people_rules']['created']} "
+                f"updated={stats['people_rules']['updated']} "
+                f"skipped={stats['people_rules']['skipped']}; "
+                f"aliases created={stats['aliases']['created']} "
+                f"updated={stats['aliases']['updated']} "
+                f"skipped={stats['aliases']['skipped']}."
             )
         )
+        self.stdout.write(
+            "Alias coverage: "
+            f"{len(alias_coverage['mapped'])} incoming product strings map; "
+            f"{len(alias_coverage['unmapped'])} sample strings remain unmapped."
+        )
+        if alias_coverage["unmapped"]:
+            self.stdout.write("Unmapped incoming sample strings:")
+            for item in alias_coverage["unmapped"]:
+                self.stdout.write(
+                    f"- {item['provider']}: {item['raw_product_name']} "
+                    f"({item['reason']})"
+                )
+        if alias_coverage["manual_products"]:
+            self.stdout.write("Products still lacking confirmed direct-OTA strings:")
+            for product_name in alias_coverage["manual_products"]:
+                self.stdout.write(f"- {product_name}")
 
 
 def seed_providers():
     providers = {}
+    stats = _stats()
     for payload in PROVIDERS:
-        provider, _created = Provider.objects.update_or_create(
-            code=payload["code"],
+        provider, status = _update_or_create_tracked(
+            Provider,
+            lookup={"code": payload["code"]},
             defaults={
                 "name": payload["name"],
                 "active": True,
@@ -382,13 +510,15 @@ def seed_providers():
                 "known_subject_patterns": payload["known_subject_patterns"],
             },
         )
+        _count(stats, status)
         providers[provider.code] = provider
-    return providers
+    return providers, stats
 
 
 def seed_people_rule(activity, payload):
-    _rule, created = ActivityPeopleRule.objects.update_or_create(
-        activity=activity,
+    _rule, status = _update_or_create_tracked(
+        ActivityPeopleRule,
+        lookup={"activity": activity},
         defaults={
             "min_people_per_booking": 1,
             "max_people_per_booking": 20 if payload["capacity"] else None,
@@ -396,14 +526,17 @@ def seed_people_rule(activity, payload):
             "capacity_note": payload["notes"],
         },
     )
-    return int(created)
+    return status
 
 
 def seed_schedule(activity, schedule_kind, name, active, priority, date_from, date_to):
-    return ActivitySchedule.objects.update_or_create(
-        activity=activity,
-        schedule_kind=schedule_kind,
-        priority=priority,
+    return _update_or_create_tracked(
+        ActivitySchedule,
+        lookup={
+            "activity": activity,
+            "schedule_kind": schedule_kind,
+            "priority": priority,
+        },
         defaults={
             "name": name,
             "active": active,
@@ -418,11 +551,11 @@ def seed_schedule(activity, schedule_kind, name, active, priority, date_from, da
 
 def seed_other_schedules(activity, payload):
     kept_ids = []
-    created_count = 0
+    stats = _stats()
     for priority, (date_from, date_to, name) in enumerate(
         payload["other_schedules"], start=200
     ):
-        schedule, created = seed_schedule(
+        schedule, status = seed_schedule(
             activity,
             ActivitySchedule.ScheduleKind.OTHER,
             name,
@@ -433,7 +566,7 @@ def seed_other_schedules(activity, payload):
         )
         schedule.slots.all().delete()
         kept_ids.append(schedule.id)
-        created_count += int(created)
+        _count(stats, status)
 
     stale = ActivitySchedule.objects.filter(
         activity=activity,
@@ -442,16 +575,18 @@ def seed_other_schedules(activity, payload):
     if kept_ids:
         stale = stale.exclude(id__in=kept_ids)
     stale.delete()
-    return created_count
+    return stats
 
 
 def seed_slots(schedule, payload):
-    wanted_times = {_parse_time(value) for value in payload["times"]}
-    schedule.slots.exclude(start_time__in=wanted_times).delete()
+    stats = _stats()
     if payload.get("duration_only") and payload["duration"]:
-        ActivityScheduleSlot.objects.update_or_create(
-            schedule=schedule,
-            start_time=_parse_time("00:00"),
+        _slot, status = _update_or_create_tracked(
+            ActivityScheduleSlot,
+            lookup={
+                "schedule": schedule,
+                "start_time": _parse_time("00:00"),
+            },
             defaults={
                 "end_time": _end_time(_parse_time("00:00"), payload["duration"]),
                 "duration_minutes": payload["duration"],
@@ -461,14 +596,16 @@ def seed_slots(schedule, payload):
                 "active": False,
             },
         )
-        return 0
-    created_count = 0
+        _count(stats, status)
+        return stats
+    wanted_times = {_parse_time(value) for value in payload["times"]}
+    schedule.slots.exclude(start_time__in=wanted_times).delete()
     for value in payload["times"]:
         start_time = _parse_time(value)
         duration = payload["duration"] or 1
-        slot, created = ActivityScheduleSlot.objects.update_or_create(
-            schedule=schedule,
-            start_time=start_time,
+        _slot, status = _update_or_create_tracked(
+            ActivityScheduleSlot,
+            lookup={"schedule": schedule, "start_time": start_time},
             defaults={
                 "end_time": _end_time(start_time, duration),
                 "duration_minutes": duration,
@@ -478,27 +615,137 @@ def seed_slots(schedule, payload):
                 "active": True,
             },
         )
-        created_count += int(created and slot is not None)
-    return created_count
+        _count(stats, status)
+    return stats
 
 
-def seed_alias(provider, activity, slot, payload):
-    _alias, created = ProviderAlias.objects.update_or_create(
-        provider=provider,
-        raw_product_name=payload["name"],
-        raw_option_name="",
-        provider_product_code="",
-        provider_option_code="",
+def seed_alias(
+    *,
+    provider,
+    activity,
+    slot,
+    raw_product_name,
+    manual,
+    notes,
+):
+    _alias, status = _update_or_create_tracked(
+        ProviderAlias,
+        lookup={
+            "provider": provider,
+            "raw_product_name": raw_product_name,
+            "raw_option_name": "",
+            "provider_product_code": "",
+            "provider_option_code": "",
+        },
         defaults={
             "linked_activity": activity,
             "linked_schedule": slot.schedule if slot else None,
             "linked_slot": slot,
-            "approved": not payload["manual"],
-            "needs_manual_confirmation": payload["manual"],
-            "notes": payload["notes"],
+            "approved": True,
+            "needs_manual_confirmation": manual,
+            "notes": notes,
         },
     )
-    return int(created)
+    return status
+
+
+def seed_direct_ota_aliases(*, providers, activities):
+    stats = _stats()
+    for payload in DIRECT_OTA_ALIASES:
+        activity = activities[payload["activity_name"]]
+        slot = _activity_slot(activity, payload["slot_start_time"])
+        _count(
+            stats,
+            seed_alias(
+                provider=providers[payload["provider"]],
+                activity=activity,
+                slot=slot,
+                raw_product_name=payload["raw_product_name"],
+                manual=False,
+                notes=payload["notes"],
+            ),
+        )
+    return stats
+
+
+def assert_catalog_drift():
+    expected = set(LIVE_BOOKEO_PRODUCT_NAMES)
+    actual = set(TourActivity.objects.values_list("name", flat=True))
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append(f"missing={missing}")
+        if extra:
+            details.append(f"extra={extra}")
+        raise CommandError("Bookeo catalog drift detected: " + "; ".join(details))
+
+
+def build_alias_coverage():
+    direct_activity_names = {payload["activity_name"] for payload in DIRECT_OTA_ALIASES}
+    mapped = []
+    for payload in DIRECT_OTA_ALIASES:
+        if ProviderAlias.objects.filter(
+            provider__code=payload["provider"],
+            raw_product_name=payload["raw_product_name"],
+            approved=True,
+        ).exists():
+            mapped.append(payload)
+    manual_products = [
+        product_name
+        for product_name in LIVE_BOOKEO_PRODUCT_NAMES
+        if product_name not in direct_activity_names
+    ]
+    return {
+        "mapped": mapped,
+        "unmapped": UNMAPPED_SAMPLE_PRODUCT_STRINGS,
+        "manual_products": manual_products,
+    }
+
+
+def _activity_slot(activity, start_time):
+    if not start_time:
+        return None
+    return (
+        ActivityScheduleSlot.objects.filter(
+            schedule__activity=activity,
+            schedule__schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+            start_time=_parse_time(start_time),
+            active=True,
+        )
+        .order_by("id")
+        .first()
+    )
+
+
+def _update_or_create_tracked(model, *, lookup, defaults):
+    existing = model.objects.filter(**lookup).first()
+    changed = False
+    if existing:
+        changed = any(
+            getattr(existing, field_name) != value
+            for field_name, value in defaults.items()
+        )
+    instance, created = model.objects.update_or_create(**lookup, defaults=defaults)
+    if created:
+        return instance, "created"
+    if changed:
+        return instance, "updated"
+    return instance, "skipped"
+
+
+def _stats():
+    return {"created": 0, "updated": 0, "skipped": 0}
+
+
+def _count(stats, status):
+    stats[status] += 1
+
+
+def _merge_stats(target, source):
+    for key, value in source.items():
+        target[key] += value
 
 
 def _parse_time(value):

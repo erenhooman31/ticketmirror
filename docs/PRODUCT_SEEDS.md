@@ -47,17 +47,21 @@ python manage.py seed_bookeo_products
 This command is useful for local schedule/capacity fixture setup. It creates or
 updates:
 
-- providers for Viator and GetYourGuide
+- Bookeo plus configured direct OTA providers used by deterministic parsers
 - one `TourActivity` for each inspected Bookeo product
 - a current and other `ActivitySchedule` for every activity
 - `ActivityScheduleSlot` rows where inspected times and capacity were visible
 - one `ActivityPeopleRule` per activity
-- one `ProviderAlias` per inspected provider product
+- approved canonical provider aliases, approved Bookeo `Tour:` aliases, and
+  approved direct-OTA aliases confirmed from representative sample emails
 
 Ambiguous inspected items are marked with
-`ProviderAlias.needs_manual_confirmation=True`. This includes transfer timing,
-SL-1 / SL-(2-3) meaning, shared inventory assumptions, future seasonal times,
-and the yacht capacity/schedule special case.
+`ProviderAlias.needs_manual_confirmation=True` as an advisory flag only; approved
+aliases still match automatically. This includes transfer timing, SL-1 /
+SL-(2-3) meaning, shared inventory assumptions, future seasonal times, and the
+yacht capacity/schedule special case. The command also prints alias coverage for
+confirmed incoming sample product strings and reports sample strings that remain
+unmapped.
 
 Deprecated wrappers:
 

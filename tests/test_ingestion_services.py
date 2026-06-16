@@ -2,6 +2,7 @@ from datetime import date, time
 from pathlib import Path
 
 import pytest
+from django.core.management import call_command
 from django.utils import timezone
 from helpers import create_activity_setup
 
@@ -349,3 +350,29 @@ def test_capacity_impacting_traveler_count_update_is_audited(viator_alias):
     assert event.old_values["provider_traveler_count"] == 2
     assert event.new_values["changed_values"]["provider_traveler_count"] == 7
     assert event.new_values["changed_values"]["active_traveler_count"] == 7
+
+
+@pytest.mark.django_db
+def test_seeded_alias_uses_parsed_time_to_select_matching_slot():
+    call_command("seed_bookeo_products")
+    raw = raw_email(message_id="seeded-slot-time")
+
+    booking = upsert_booking_from_parsed(
+        raw,
+        ParsedBooking(
+            provider_code="viator",
+            provider_booking_reference="BR-SEEDED-1900",
+            event_type=EVENT_NEW_BOOKING,
+            status=STATUS_CONFIRMED,
+            raw_product_name="2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+            travel_date=date(2026, 6, 21),
+            start_time=time(19, 0),
+            slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+            traveler_count=2,
+            lead_traveler_name="Alex Sample",
+            confidence=1,
+        ),
+    )
+
+    assert booking.schedule_slot.start_time == time(19, 0)
+    assert booking.active_start_time == time(19, 0)

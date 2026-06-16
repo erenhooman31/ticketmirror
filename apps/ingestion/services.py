@@ -6,6 +6,8 @@ from typing import Any
 from django.db import transaction
 
 from apps.bookings.models import (
+    ActivitySchedule,
+    ActivityScheduleSlot,
     Booking,
     BookingEvent,
     Provider,
@@ -330,24 +332,34 @@ def match_product_alias(parsed_booking) -> ProviderAliasMatch:
     if parsed_booking.provider_product_code:
         alias = approved.filter(
             provider_product_code=parsed_booking.provider_product_code,
-            provider_option_code=parsed_booking.provider_option_code,
+            provider_option_code=parsed_booking.provider_option_code or "",
         ).first()
         if alias:
             return ProviderAliasMatch(alias=alias)
 
     if parsed_booking.raw_product_name:
-        exact = approved.filter(
-            raw_product_name__iexact=parsed_booking.raw_product_name,
-            raw_option_name__iexact=parsed_booking.raw_option_name or "",
-        ).first()
+        exact = _normalized_alias_match(
+            approved,
+            product_name=parsed_booking.raw_product_name,
+            option_name=parsed_booking.raw_option_name,
+            include_option=True,
+        )
+        if not exact and parsed_booking.raw_option_name:
+            exact = _normalized_alias_match(
+                approved,
+                product_name=parsed_booking.raw_product_name,
+                option_name="",
+                include_option=False,
+            )
         if exact:
             return ProviderAliasMatch(alias=exact)
 
-        exact_suggestions = queryset.filter(
-            raw_product_name__iexact=parsed_booking.raw_product_name,
-            raw_option_name__iexact=parsed_booking.raw_option_name or "",
+        exact_suggestions = _normalized_alias_suggestions(
+            queryset,
+            product_name=parsed_booking.raw_product_name,
+            option_name=parsed_booking.raw_option_name,
         )
-        if exact_suggestions.exists():
+        if exact_suggestions:
             return ProviderAliasMatch(
                 suggestions=[
                     _alias_suggestion(alias, 1.0) for alias in exact_suggestions[:3]
@@ -377,8 +389,9 @@ def _create_booking(
     }
     if alias_match.alias:
         values["activity"] = alias_match.alias.linked_activity
-        values["schedule_slot"] = alias_match.alias.linked_slot
-        _apply_alias_slot_values(active_values, alias_match.alias)
+        matched_slot = _slot_for_parsed_time(alias_match.alias, parsed)
+        values["schedule_slot"] = matched_slot
+        _apply_alias_slot_values(active_values, alias_match.alias, slot=matched_slot)
     booking = Booking.objects.create(
         provider=provider,
         provider_booking_reference=parsed.provider_booking_reference,
@@ -431,7 +444,7 @@ def _update_booking(
         new_values[field_name] = diff["new"]
         setattr(booking, field_name, diff["new"])
 
-    alias_values = _alias_values(alias_match)
+    alias_values = _alias_values(alias_match, parsed)
     alias_diffs = diff_field_values(booking, alias_values)
     for field_name, diff in alias_diffs.items():
         if field_name.startswith("active_") and is_manually_overridden(
@@ -567,19 +580,25 @@ def _get_or_create_provider(provider_code: str) -> Provider:
     return provider
 
 
-def _alias_values(alias_match: ProviderAliasMatch) -> dict[str, Any]:
+def _alias_values(alias_match: ProviderAliasMatch, parsed) -> dict[str, Any]:
     if not alias_match.alias:
         return {}
+    matched_slot = _slot_for_parsed_time(alias_match.alias, parsed)
     values = {
         "activity": alias_match.alias.linked_activity,
-        "schedule_slot": alias_match.alias.linked_slot,
+        "schedule_slot": matched_slot,
     }
-    _apply_alias_slot_values(values, alias_match.alias)
+    _apply_alias_slot_values(values, alias_match.alias, slot=matched_slot)
     return values
 
 
-def _apply_alias_slot_values(values: dict[str, Any], alias: ProviderAlias) -> None:
-    slot = alias.linked_slot
+def _apply_alias_slot_values(
+    values: dict[str, Any],
+    alias: ProviderAlias,
+    *,
+    slot=None,
+) -> None:
+    slot = slot if slot is not None else alias.linked_slot
     if not slot:
         return
     values.setdefault("active_start_time", slot.start_time)
@@ -743,7 +762,68 @@ def _alias_suggestion(alias: ProviderAlias, score: float) -> dict[str, Any]:
 
 def _alias_key(product_name: str | None, option_name: str | None) -> str:
     return " ".join(
-        part.lower().strip() for part in [product_name, option_name] if part
+        _normalize_alias_text(part) for part in [product_name, option_name] if part
+    )
+
+
+def _normalize_alias_text(value: str | None) -> str:
+    return re.sub(r"\s+", " ", value or "").strip().lower()
+
+
+def _normalized_alias_match(
+    queryset,
+    *,
+    product_name: str,
+    option_name: str | None,
+    include_option: bool,
+) -> ProviderAlias | None:
+    target_product = _normalize_alias_text(product_name)
+    target_option = _normalize_alias_text(option_name)
+    for alias in queryset:
+        if _normalize_alias_text(alias.raw_product_name) != target_product:
+            continue
+        if (
+            include_option
+            and _normalize_alias_text(alias.raw_option_name) != target_option
+        ):
+            continue
+        return alias
+    return None
+
+
+def _normalized_alias_suggestions(
+    queryset,
+    *,
+    product_name: str,
+    option_name: str | None,
+) -> list[ProviderAlias]:
+    matches = []
+    target_product = _normalize_alias_text(product_name)
+    target_option = _normalize_alias_text(option_name)
+    for alias in queryset:
+        if _normalize_alias_text(alias.raw_product_name) != target_product:
+            continue
+        if _normalize_alias_text(alias.raw_option_name) not in {"", target_option}:
+            continue
+        matches.append(alias)
+    return matches
+
+
+def _slot_for_parsed_time(
+    alias: ProviderAlias,
+    parsed,
+) -> ActivityScheduleSlot | None:
+    if not parsed.start_time:
+        return alias.linked_slot
+    return (
+        ActivityScheduleSlot.objects.filter(
+            schedule__activity=alias.linked_activity,
+            schedule__schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+            start_time=parsed.start_time,
+            active=True,
+        )
+        .order_by("id")
+        .first()
     )
 
 
