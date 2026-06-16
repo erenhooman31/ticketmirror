@@ -125,6 +125,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
     environment:
       SERVICE_URL_CADDY: ${SERVICE_URL_CADDY:?set SERVICE_URL_CADDY}
     depends_on:
@@ -135,7 +136,36 @@ services:
     volumes:
       - static_data:/srv/static:ro
       - media_data:/srv/media:ro
-      - ./deployment/caddy/Caddyfile.coolify:/etc/caddy/Caddyfile:ro
+    command: |
+      cat > /etc/caddy/Caddyfile <<'EOF'
+      :80 {
+        encode gzip zstd
+
+        handle_path /static/* {
+          root * /srv/static
+          file_server
+        }
+
+        handle_path /media/* {
+          root * /srv/media
+          file_server
+          header Content-Disposition "attachment"
+        }
+
+        reverse_proxy web:8000 {
+          header_up Host {host}
+          header_up X-Forwarded-Proto https
+          header_up X-Forwarded-Host {host}
+          header_up X-Real-IP {remote_host}
+        }
+
+        header {
+          X-Content-Type-Options nosniff
+          Referrer-Policy same-origin
+        }
+      }
+      EOF
+      exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
 
 volumes:
   postgres_data:
