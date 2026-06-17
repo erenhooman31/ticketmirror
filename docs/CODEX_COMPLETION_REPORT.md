@@ -67,7 +67,8 @@ command is not installed or not on `PATH`.
   GMAIL_CLIENT_ID
   GMAIL_CLIENT_SECRET
   GMAIL_REFRESH_TOKEN
-  GMAIL_INBOX_LABEL
+  GMAIL_SYNC_QUERY
+  GMAIL_SYNC_LABEL_IDS
   ```
 
 - Continue to run ingestion actions from Settings with internal roles only:

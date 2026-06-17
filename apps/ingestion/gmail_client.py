@@ -29,6 +29,8 @@ class GmailConfig:
     client_id: str
     client_secret: str
     refresh_token: str
+    sync_query: str
+    sync_label_ids: tuple[str, ...] = ()
 
     @property
     def user_id(self) -> str:
@@ -47,6 +49,8 @@ class GmailClient:
             client_id=settings.GMAIL_CLIENT_ID,
             client_secret=settings.GMAIL_CLIENT_SECRET,
             refresh_token=settings.GMAIL_REFRESH_TOKEN,
+            sync_query=settings.GMAIL_SYNC_QUERY,
+            sync_label_ids=tuple(settings.GMAIL_SYNC_LABEL_IDS),
         )
         self._access_token = access_token
 
@@ -130,17 +134,28 @@ class GmailClient:
             "message_ids": message_ids,
         }
 
-    def list_recent_messages(self, *, limit: int = 100, query: str = "newer_than:7d"):
+    def list_recent_messages(
+        self,
+        *,
+        limit: int = 100,
+        query: str | None = None,
+        label_ids: list[str] | tuple[str, ...] | None = None,
+    ):
         remaining = limit
         page_token = None
         message_ids: list[str] = []
+        active_query = self.config.sync_query if query is None else query
+        active_label_ids = (
+            self.config.sync_label_ids if label_ids is None else label_ids
+        )
         while remaining > 0:
             request_query: dict[str, Any] = {
                 "maxResults": min(remaining, 100),
-                "labelIds": "INBOX",
             }
-            if query:
-                request_query["q"] = query
+            if active_query:
+                request_query["q"] = active_query
+            if active_label_ids:
+                request_query["labelIds"] = list(active_label_ids)
             if page_token:
                 request_query["pageToken"] = page_token
             response = self._request(
@@ -167,7 +182,7 @@ class GmailClient:
     ) -> dict[str, Any]:
         url = f"{GMAIL_API_BASE_URL}{path}"
         if query:
-            url = f"{url}?{urlencode(query)}"
+            url = f"{url}?{urlencode(query, doseq=True)}"
         headers = {"Authorization": f"Bearer {self.authenticate()}"}
         data = None
         if body is not None:

@@ -4,11 +4,16 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 
-from apps.ingestion.gmail_client import extract_message_text, normalize_gmail_message
+from apps.ingestion.gmail_client import (
+    GmailClient,
+    extract_message_text,
+    normalize_gmail_message,
+)
 from apps.ingestion.models import GmailSyncState, RawEmail
-from apps.ingestion.polling import poll_gmail_once
+from apps.ingestion.polling import poll_gmail_once, sync_recent_gmail
 from apps.ingestion.tasks import fetch_and_process_gmail_message
 
 
@@ -42,6 +47,31 @@ def normalized_message(message_id="gmail-normalized-1", history_id="101"):
     )
 
 
+class RecordingGmailClient(GmailClient):
+    def __init__(self, pages):
+        super().__init__(access_token="test-token")
+        self.pages = list(pages)
+        self.requests = []
+
+    def _request(
+        self,
+        path,
+        *,
+        method="GET",
+        query=None,
+        body=None,
+    ):
+        self.requests.append(
+            {
+                "path": path,
+                "method": method,
+                "query": query or {},
+                "body": body,
+            }
+        )
+        return self.pages.pop(0)
+
+
 def test_gmail_message_decoding_works_for_plain_text():
     decoded = extract_message_text(gmail_message())
 
@@ -71,6 +101,85 @@ def test_gmail_message_decoding_works_for_multipart():
 
     assert decoded["body_text"] == "Plain booking body"
     assert decoded["body_html"] == "<p>HTML booking body</p>"
+
+
+@override_settings(
+    GMAIL_SYNC_QUERY="newer_than:90d -in:spam -in:trash",
+    GMAIL_SYNC_LABEL_IDS=[],
+)
+def test_gmail_list_uses_default_sync_query_without_inbox_label():
+    client = RecordingGmailClient([{"messages": [{"id": "msg-1"}]}])
+
+    assert client.list_recent_messages(limit=10) == ["msg-1"]
+
+    query = client.requests[0]["query"]
+    assert query["q"] == "newer_than:90d -in:spam -in:trash"
+    assert "labelIds" not in query
+    assert "in:inbox" not in query["q"].lower()
+
+
+@override_settings(
+    GMAIL_SYNC_QUERY="newer_than:90d -in:spam -in:trash category:updates",
+    GMAIL_SYNC_LABEL_IDS=[],
+)
+def test_gmail_list_passes_category_updates_query():
+    client = RecordingGmailClient([{"messages": [{"id": "msg-1"}]}])
+
+    client.list_recent_messages(limit=10)
+
+    assert client.requests[0]["query"]["q"] == (
+        "newer_than:90d -in:spam -in:trash category:updates"
+    )
+    assert "labelIds" not in client.requests[0]["query"]
+
+
+@override_settings(
+    GMAIL_SYNC_QUERY="newer_than:90d -in:spam -in:trash label:SomeCustomLabel",
+    GMAIL_SYNC_LABEL_IDS=[],
+)
+def test_gmail_list_passes_custom_label_query():
+    client = RecordingGmailClient([{"messages": [{"id": "msg-1"}]}])
+
+    client.list_recent_messages(limit=10)
+
+    assert client.requests[0]["query"]["q"] == (
+        "newer_than:90d -in:spam -in:trash label:SomeCustomLabel"
+    )
+    assert "labelIds" not in client.requests[0]["query"]
+
+
+@override_settings(
+    GMAIL_SYNC_QUERY="newer_than:90d -in:spam -in:trash",
+    GMAIL_SYNC_LABEL_IDS=["Label_123", "CATEGORY_UPDATES"],
+)
+def test_gmail_list_uses_label_ids_only_when_configured():
+    client = RecordingGmailClient([{"messages": [{"id": "msg-1"}]}])
+
+    client.list_recent_messages(limit=10)
+
+    assert client.requests[0]["query"]["labelIds"] == [
+        "Label_123",
+        "CATEGORY_UPDATES",
+    ]
+
+
+@override_settings(
+    GMAIL_SYNC_QUERY="newer_than:90d -in:spam -in:trash",
+    GMAIL_SYNC_LABEL_IDS=[],
+)
+def test_gmail_list_paginates_safely():
+    client = RecordingGmailClient(
+        [
+            {
+                "messages": [{"id": "msg-1"}],
+                "nextPageToken": "next-page",
+            },
+            {"messages": [{"id": "msg-2"}]},
+        ]
+    )
+
+    assert client.list_recent_messages(limit=2) == ["msg-1", "msg-2"]
+    assert client.requests[1]["query"]["pageToken"] == "next-page"
 
 
 @pytest.mark.django_db
@@ -181,6 +290,53 @@ def test_poll_gmail_history_expiry_falls_back_to_recent_list():
     assert result.fallback_used is True
     assert state.latest_history_id == "110"
     client.list_recent_messages.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_sync_recent_gmail_forces_configured_recent_search():
+    GmailSyncState.objects.create(
+        mailbox_email="bookings@example.com",
+        latest_history_id="100",
+    )
+    client = Mock()
+    client.list_recent_messages.return_value = ["updates-msg-1"]
+    client.fetch_message.return_value = normalized_message("updates-msg-1", "111")
+
+    with patch("apps.ingestion.polling.process_raw_email"):
+        result = sync_recent_gmail(client=client, mailbox="bookings@example.com")
+
+    assert result["fallback_used"] is True
+    client.list_history.assert_not_called()
+    client.list_recent_messages.assert_called_once()
+    assert RawEmail.objects.filter(gmail_message_id="updates-msg-1").exists()
+
+
+@pytest.mark.django_db
+def test_poll_gmail_imports_message_from_configured_non_inbox_search():
+    client = Mock()
+    client.list_recent_messages.return_value = ["archived-msg-1"]
+    client.fetch_message.return_value = normalized_message("archived-msg-1", "120")
+
+    with patch("apps.ingestion.polling.process_raw_email"):
+        result = poll_gmail_once(client=client, mailbox="bookings@example.com")
+
+    assert result.fallback_used is True
+    assert result.stored == 1
+    client.list_recent_messages.assert_called_once()
+    assert RawEmail.objects.filter(gmail_message_id="archived-msg-1").count() == 1
+
+
+@pytest.mark.django_db
+def test_repeated_recent_sync_remains_idempotent():
+    client = Mock()
+    client.list_recent_messages.return_value = ["custom-label-msg-1"]
+    client.fetch_message.return_value = normalized_message("custom-label-msg-1", "130")
+
+    with patch("apps.ingestion.polling.process_raw_email"):
+        sync_recent_gmail(client=client, mailbox="bookings@example.com")
+        sync_recent_gmail(client=client, mailbox="bookings@example.com")
+
+    assert RawEmail.objects.filter(gmail_message_id="custom-label-msg-1").count() == 1
 
 
 @pytest.mark.django_db

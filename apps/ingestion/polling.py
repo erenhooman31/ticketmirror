@@ -58,6 +58,7 @@ def poll_gmail_once(
     limit: int = DEFAULT_RECENT_LIMIT,
     fallback_days: int = DEFAULT_FALLBACK_DAYS,
     process: bool = True,
+    force_recent: bool = False,
 ) -> PollResult:
     mailbox = mailbox or settings.GMAIL_MAILBOX or "me"
     token = _acquire_poll_lock(mailbox)
@@ -71,7 +72,10 @@ def poll_gmail_once(
     try:
         state = GmailSyncState.objects.get(mailbox_email=mailbox)
         start_history_id = state.latest_history_id
-        if start_history_id:
+        if force_recent:
+            fallback_used = True
+            message_ids = client.list_recent_messages(limit=limit)
+        elif start_history_id:
             try:
                 history = client.list_history(start_history_id)
                 message_ids = history["message_ids"]
@@ -80,16 +84,10 @@ def poll_gmail_once(
                 if exc.code != 404:
                     raise
                 fallback_used = True
-                message_ids = client.list_recent_messages(
-                    limit=limit,
-                    query=f"newer_than:{fallback_days}d",
-                )
+                message_ids = client.list_recent_messages(limit=limit)
         else:
             fallback_used = True
-            message_ids = client.list_recent_messages(
-                limit=limit,
-                query=f"newer_than:{fallback_days}d",
-            )
+            message_ids = client.list_recent_messages(limit=limit)
 
         for message_id in message_ids[: max(limit, 0)]:
             fetched += 1
@@ -195,6 +193,7 @@ def sync_recent_gmail(
         mailbox=mailbox,
         limit=limit,
         fallback_days=DEFAULT_FALLBACK_DAYS,
+        force_recent=True,
     ).as_dict()
 
 

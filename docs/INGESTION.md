@@ -1,6 +1,7 @@
 # Ingestion
 
-Ingestion polls one dedicated internal Gmail inbox and turns provider emails into mirrored bookings.
+Ingestion polls one dedicated internal Gmail mailbox and turns provider emails
+into mirrored bookings.
 
 ## Required Order
 
@@ -28,9 +29,37 @@ Do not commit real Gmail credentials. The integration reads credentials from env
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
-- `GMAIL_INBOX_LABEL`
+- `GMAIL_SYNC_QUERY`
+- `GMAIL_SYNC_LABEL_IDS`
 
 Use an OAuth refresh token with read-only Gmail access. Tests mock Gmail responses; no real Google credentials are required.
+
+`GMAIL_SYNC_QUERY` is passed directly to Gmail API `messages.list` as `q`.
+The default is:
+
+```env
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash
+```
+
+That default is intentionally not Inbox-only. It can match booking mail in
+Inbox, Updates, Reservations, archived mail, and custom labels while excluding
+Spam and Trash. Gmail search operators are supported, for example:
+
+```env
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash (category:updates OR category:reservations OR in:inbox)
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash (label:Bookings OR category:updates OR category:reservations)
+```
+
+`GMAIL_SYNC_LABEL_IDS` is optional. Leave it blank for broad mailbox search:
+
+```env
+GMAIL_SYNC_LABEL_IDS=
+```
+
+Only set `GMAIL_SYNC_LABEL_IDS` when Gmail API label filtering is deliberately
+needed. Do not set `GMAIL_SYNC_LABEL_IDS=INBOX` if booking emails can arrive in
+Updates, Reservations, archived mail, or custom labels.
 
 ## Gmail Polling
 
@@ -46,7 +75,12 @@ Run continuously:
 python manage.py poll_gmail --loop --interval 60
 ```
 
-Production compose runs the continuous poller as its own service. After downtime, the poller catches up from Gmail history. If the stored history ID has expired, it falls back to a date-bounded recent-message list and resumes from the newest stored message history ID.
+Production compose runs the continuous poller as its own service. After
+downtime, the poller catches up from Gmail history. If the stored history ID has
+expired, it falls back to `GMAIL_SYNC_QUERY` and resumes from the newest stored
+message history ID. The `sync_recent_gmail` command also uses
+`GMAIL_SYNC_QUERY`, making it the right command for backfilling existing Gmail
+Updates, Reservations, archived, or custom-label messages.
 
 `GmailSyncState` stores the latest processed history ID per mailbox plus a short-lived poll lock. The lock prevents overlapping poller processes from double-processing the same cycle.
 

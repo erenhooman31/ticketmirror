@@ -185,8 +185,13 @@ def test_ingestion_settings_roles_and_process_action(client, users):
     client.force_login(users["viewer"])
     response = client.get(reverse("core:settings_ingestion"))
     assert response.status_code == 200
-    assert "GMAIL_CLIENT_SECRET" in response.content.decode()
-    assert "test-secret" not in response.content.decode()
+    html = response.content.decode()
+    assert "GMAIL_CLIENT_SECRET" in html
+    assert "test-secret" not in html
+    assert "GMAIL_SYNC_QUERY" in html
+    assert "newer_than:90d -in:spam -in:trash" in html
+    assert "GMAIL_SYNC_LABEL_IDS" in html
+    assert "not restricted" in html
 
     response = client.post(
         reverse("core:settings_ingestion"),

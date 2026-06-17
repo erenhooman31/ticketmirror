@@ -34,6 +34,20 @@ Gmail polling values:
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
+- `GMAIL_SYNC_QUERY`
+- `GMAIL_SYNC_LABEL_IDS`
+
+Recommended Gmail sync values:
+
+```env
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash
+GMAIL_SYNC_LABEL_IDS=
+```
+
+Leave `GMAIL_SYNC_LABEL_IDS` blank unless you deliberately want to restrict
+Gmail API `messages.list` by label ID. Do not use `GMAIL_SYNC_LABEL_IDS=INBOX`
+when booking mail may land in Updates, Reservations, archived mail, or custom
+labels.
 
 Use a read-only Gmail OAuth grant for the poller. Do not commit real secrets or real provider email samples.
 

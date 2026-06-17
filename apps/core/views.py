@@ -515,22 +515,50 @@ def _settings_sections(user):
 
 
 def _gmail_config_status():
-    names = [
+    secret_names = [
         "GMAIL_MAILBOX",
         "GMAIL_CLIENT_ID",
         "GMAIL_CLIENT_SECRET",
         "GMAIL_REFRESH_TOKEN",
     ]
     rows = []
-    for name in names:
+    for name in secret_names:
         value = getattr(settings, name, "")
         rows.append(
             {
                 "name": name,
                 "configured": bool(value),
+                "status_text": "configured" if value else "missing",
+                "status_class": "success" if value else "secondary",
                 "display": value if name == "GMAIL_MAILBOX" and value else "",
             }
         )
+    rows.extend(
+        [
+            {
+                "name": "GMAIL_SYNC_QUERY",
+                "configured": bool(settings.GMAIL_SYNC_QUERY),
+                "status_text": "configured" if settings.GMAIL_SYNC_QUERY else "missing",
+                "status_class": "success" if settings.GMAIL_SYNC_QUERY else "secondary",
+                "display": settings.GMAIL_SYNC_QUERY,
+            },
+            {
+                "name": "GMAIL_SYNC_LABEL_IDS",
+                "configured": bool(settings.GMAIL_SYNC_LABEL_IDS),
+                "status_text": (
+                    "restricted" if settings.GMAIL_SYNC_LABEL_IDS else "not restricted"
+                ),
+                "status_class": (
+                    "warning" if settings.GMAIL_SYNC_LABEL_IDS else "success"
+                ),
+                "display": (
+                    ", ".join(settings.GMAIL_SYNC_LABEL_IDS)
+                    if settings.GMAIL_SYNC_LABEL_IDS
+                    else "not restricted"
+                ),
+            },
+        ]
+    )
     return rows
 
 

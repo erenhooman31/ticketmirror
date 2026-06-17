@@ -28,7 +28,10 @@ class Command(BaseCommand):
             "--fallback-days",
             type=int,
             default=7,
-            help="Date-bounded recent-message fallback window for expired history IDs.",
+            help=(
+                "Legacy option retained for compatibility. Recent-message fallback "
+                "uses GMAIL_SYNC_QUERY."
+            ),
         )
         parser.add_argument(
             "--no-process",

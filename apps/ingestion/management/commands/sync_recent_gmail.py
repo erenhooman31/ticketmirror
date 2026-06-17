@@ -4,7 +4,7 @@ from apps.ingestion.polling import sync_recent_gmail
 
 
 class Command(BaseCommand):
-    help = "Queue recent Gmail inbox messages for ingestion."
+    help = "Queue recent Gmail messages matching GMAIL_SYNC_QUERY for ingestion."
 
     def add_arguments(self, parser):
         parser.add_argument("--limit", type=int, default=100)

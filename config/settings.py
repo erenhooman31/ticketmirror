@@ -12,6 +12,8 @@ env = environ.Env(
     CSRF_TRUSTED_ORIGINS=(list, []),
     DJANGO_SECURE_SSL_REDIRECT=(bool, False),
     TRANSLATE_ENABLED=(bool, True),
+    GMAIL_SYNC_QUERY=(str, "newer_than:90d -in:spam -in:trash"),
+    GMAIL_SYNC_LABEL_IDS=(list, []),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -107,8 +109,16 @@ LOGOUT_REDIRECT_URL = "login"
 GMAIL_CLIENT_ID = env("GMAIL_CLIENT_ID", default="")
 GMAIL_CLIENT_SECRET = env("GMAIL_CLIENT_SECRET", default="")
 GMAIL_REFRESH_TOKEN = env("GMAIL_REFRESH_TOKEN", default="")
-GMAIL_INBOX_LABEL = env("GMAIL_INBOX_LABEL", default="INBOX")
 GMAIL_MAILBOX = env("GMAIL_MAILBOX", default="")
+GMAIL_SYNC_QUERY = env(
+    "GMAIL_SYNC_QUERY",
+    default="newer_than:90d -in:spam -in:trash",
+)
+GMAIL_SYNC_LABEL_IDS = [
+    label_id.strip()
+    for label_id in env.list("GMAIL_SYNC_LABEL_IDS", default=[])
+    if label_id.strip()
+]
 TRANSLATE_ENABLED = env.bool("TRANSLATE_ENABLED", default=not running_tests)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

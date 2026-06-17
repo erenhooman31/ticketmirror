@@ -32,11 +32,50 @@ from apps.ingestion.parsers.common import (
     extract_forwarded_headers,
 )
 from apps.ingestion.providers import provider_display_name
+from apps.ingestion.translate import to_english
 
 from .models import RawEmail
 
 LOW_CONFIDENCE_THRESHOLD = 0.8
 PARSER_VERSION = "deterministic-v1"
+
+
+class TranslatedRawEmailView:
+    def __init__(
+        self,
+        raw_email: RawEmail,
+        *,
+        subject: str,
+        body_text: str,
+    ) -> None:
+        self._raw_email = raw_email
+        self._original_subject = raw_email.subject
+        self._original_body = raw_email.body_text
+        self._translated_subject = subject
+        self._translated_body = body_text
+        self._translation_applied = (
+            subject != raw_email.subject or body_text != raw_email.body_text
+        )
+        self.subject = subject
+        self.body_text = body_text
+
+    def __getattr__(self, name: str):
+        return getattr(self._raw_email, name)
+
+
+def translated_raw_email_view(raw_email: RawEmail):
+    translated_subject = to_english(raw_email.subject)
+    translated_body = to_english(raw_email.body_text)
+    if (
+        translated_subject == raw_email.subject
+        and translated_body == raw_email.body_text
+    ):
+        return raw_email
+    return TranslatedRawEmailView(
+        raw_email,
+        subject=translated_subject,
+        body_text=translated_body,
+    )
 
 
 @dataclass(frozen=True)
@@ -81,18 +120,19 @@ def process_gmail_message(message_data: dict) -> RawEmail:
 @transaction.atomic
 def process_raw_email(raw_email_id: int) -> Booking | None:
     raw_email = RawEmail.objects.select_for_update().get(id=raw_email_id)
-    ignore_reason = non_booking_ignore_reason(raw_email)
+    parser_email = translated_raw_email_view(raw_email)
+    ignore_reason = non_booking_ignore_reason(parser_email)
     if ignore_reason:
         _mark_raw_email_ignored(raw_email, ignore_reason)
         return None
 
     provider_code, _confidence = detect_provider(
-        raw_email.subject,
-        raw_email.gmail_outer_sender,
-        raw_email.body_text,
+        parser_email.subject,
+        parser_email.gmail_outer_sender,
+        parser_email.body_text,
     )
     if not provider_code:
-        ignore_reason = non_booking_ignore_reason(raw_email)
+        ignore_reason = non_booking_ignore_reason(parser_email)
         if ignore_reason:
             _mark_raw_email_ignored(raw_email, ignore_reason)
             return None
@@ -113,7 +153,7 @@ def process_raw_email(raw_email_id: int) -> Booking | None:
     raw_email.parser_version = PARSER_VERSION
     raw_email.save(update_fields=["provider_detected", "parser_version", "updated_at"])
 
-    ignore_reason = non_booking_ignore_reason(raw_email)
+    ignore_reason = non_booking_ignore_reason(parser_email)
     if ignore_reason:
         _mark_raw_email_ignored(raw_email, ignore_reason)
         return None
@@ -133,7 +173,7 @@ def process_raw_email(raw_email_id: int) -> Booking | None:
         return None
 
     try:
-        parsed = parser.parse(raw_email)
+        parsed = parser.parse(parser_email)
     except Exception as exc:
         raw_email.parse_status = RawEmail.ParseStatus.FAILED
         raw_email.parse_error = mask_contact_text(str(exc), limit=500)

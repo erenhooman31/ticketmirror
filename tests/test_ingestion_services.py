@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from django.core.management import call_command
+from django.test import override_settings
 from django.utils import timezone
 from helpers import create_activity_setup
 
@@ -26,6 +27,7 @@ from apps.ingestion.parsers.common import (
 )
 from apps.ingestion.services import (
     process_gmail_message,
+    process_raw_email,
     upsert_booking_from_parsed,
 )
 
@@ -195,6 +197,64 @@ def getyourguide_new_message(
         "received_at": timezone.now(),
         "body_text": body,
     }
+
+
+@pytest.mark.django_db
+@override_settings(TRANSLATE_ENABLED=True)
+def test_process_raw_email_translates_before_provider_detection(monkeypatch):
+    subject = "\u0411\u0440\u043e\u043d\u044c ALLE-RU-1"
+    body = "\n".join(
+        [
+            "\u042d\u043a\u0441\u043a\u0443\u0440\u0441\u0438\u044f: "
+            "\u0411\u043e\u0441\u0444\u043e\u0440",
+            "\u0414\u0430\u0442\u0430: 2026-06-17",
+            "\u0412\u0440\u0435\u043c\u044f: 14:00",
+            "\u0423\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u0438: 2",
+            "\u041a\u043b\u0438\u0435\u043d\u0442: Tatyana K.",
+        ]
+    )
+    translations = {
+        subject: "Alle booking: ALLE-RU-1",
+        body: "\n".join(
+            [
+                "Booking reference: ALLE-RU-1",
+                "Product: Bosphorus Boat Cruise with Audio Guide",
+                "Date: 2026-06-17",
+                "Time: 14:00",
+                "Participants: 2",
+                "Customer: Tatyana K.",
+            ]
+        ),
+    }
+    monkeypatch.setattr(
+        "apps.ingestion.translate._translate_text",
+        lambda text: translations[text],
+    )
+    raw = RawEmail.objects.create(
+        gmail_message_id="translated-before-detect",
+        gmail_outer_sender="owner@gmail.com",
+        subject=subject,
+        received_at=timezone.now(),
+        body_text=body,
+    )
+
+    booking = process_raw_email(raw.id)
+    raw.refresh_from_db()
+
+    assert booking is not None
+    assert raw.provider_detected.code == "alle"
+    assert raw.body_text == body
+    assert booking.provider_booking_reference == "ALLE-RU-1"
+    assert booking.provider_travel_date.isoformat() == "2026-06-17"
+    assert booking.provider_start_time.isoformat() == "14:00:00"
+    assert booking.provider_traveler_count == 2
+    assert booking.lead_traveler_name == "Tatyana K."
+    event = booking.events.latest("id")
+    assert event.new_values["raw_fields"]["translation_applied"] is True
+    assert event.new_values["raw_fields"]["original_subject"] == subject
+    assert event.new_values["raw_fields"]["translated_subject"] == (
+        "Alle booking: ALLE-RU-1"
+    )
 
 
 @pytest.mark.django_db

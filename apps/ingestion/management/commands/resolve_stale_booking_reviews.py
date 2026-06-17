@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from apps.bookings.models import Booking, BookingEvent, ReviewQueueItem
 from apps.ingestion.models import RawEmail
-from apps.ingestion.services import non_booking_ignore_reason
+from apps.ingestion.services import non_booking_ignore_reason, translated_raw_email_view
 
 
 class Command(BaseCommand):
@@ -94,7 +94,7 @@ class Command(BaseCommand):
     @transaction.atomic
     def _reclassify_non_booking_email(self, raw_email: RawEmail) -> dict:
         raw_email = RawEmail.objects.select_for_update().get(id=raw_email.id)
-        reason = non_booking_ignore_reason(raw_email)
+        reason = non_booking_ignore_reason(translated_raw_email_view(raw_email))
         if not reason:
             return {"ignored": False, "resolved_reviews": 0, "cancelled_bookings": 0}
 

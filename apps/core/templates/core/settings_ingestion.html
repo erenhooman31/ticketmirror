@@ -29,8 +29,8 @@
                 <tr>
                   <td>{{ item.name }}</td>
                   <td>
-                    <span class="badge text-bg-{% if item.configured %}success{% else %}secondary{% endif %}">
-                      {% if item.configured %}configured{% else %}missing{% endif %}
+                    <span class="badge text-bg-{{ item.status_class|default:'secondary' }}">
+                      {{ item.status_text|default:"missing" }}
                     </span>
                   </td>
                   <td>{{ item.display|default:"" }}</td>

@@ -14,6 +14,7 @@ from apps.ingestion.services import (
     mark_raw_email_failed,
     match_product_alias,
     non_booking_ignore_reason,
+    translated_raw_email_view,
     upsert_booking_from_parsed,
 )
 
@@ -112,7 +113,8 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def _repair_raw_email(self, raw_email):
-        ignore_reason = non_booking_ignore_reason(raw_email)
+        parser_email = translated_raw_email_view(raw_email)
+        ignore_reason = non_booking_ignore_reason(parser_email)
         if ignore_reason:
             raw_email.parse_status = RawEmail.ParseStatus.IGNORED
             raw_email.parse_error = f"Ignored - not a booking: {ignore_reason}."
@@ -120,9 +122,9 @@ class Command(BaseCommand):
             return "skipped"
 
         provider_code, _confidence = detect_provider(
-            raw_email.subject,
-            raw_email.gmail_outer_sender,
-            raw_email.body_text,
+            parser_email.subject,
+            parser_email.gmail_outer_sender,
+            parser_email.body_text,
         )
         if not provider_code:
             raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
@@ -160,7 +162,7 @@ class Command(BaseCommand):
             )
             return "sent_to_review"
 
-        parsed = parser.parse(raw_email)
+        parsed = parser.parse(parser_email)
         booking_provider = _get_or_create_provider(parsed.provider_code)
         raw_email.provider_detected = booking_provider
         if not parsed.provider_booking_reference:

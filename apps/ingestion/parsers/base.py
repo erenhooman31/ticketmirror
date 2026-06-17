@@ -75,17 +75,26 @@ class ProviderEmailParser:
     def parse(self, raw_email) -> ParsedBooking:
         from apps.ingestion.translate import contains_cyrillic, to_english
 
-        original_subject = raw_email.subject
-        original_body = raw_email.body_text
-        translated_subject = to_english(original_subject)
-        translated_body = to_english(original_body)
+        original_subject = getattr(raw_email, "_original_subject", raw_email.subject)
+        original_body = getattr(raw_email, "_original_body", raw_email.body_text)
+        translated_subject = getattr(raw_email, "_translated_subject", None)
+        translated_body = getattr(raw_email, "_translated_body", None)
+        if translated_subject is None:
+            translated_subject = to_english(original_subject)
+        if translated_body is None:
+            translated_body = to_english(original_body)
         parsed = self.parse_content(
             subject=translated_subject,
             sender=getattr(raw_email, "original_forwarded_sender", None)
             or raw_email.gmail_outer_sender,
             body_text=translated_body,
         )
-        if translated_subject == original_subject and translated_body == original_body:
+        translation_applied = getattr(
+            raw_email,
+            "_translation_applied",
+            translated_subject != original_subject or translated_body != original_body,
+        )
+        if not translation_applied:
             return parsed
 
         return replace(

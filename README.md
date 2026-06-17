@@ -138,6 +138,28 @@ Gmail integration placeholders:
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
+- `GMAIL_SYNC_QUERY`: Gmail search query used by recent/backfill syncs.
+- `GMAIL_SYNC_LABEL_IDS`: Optional comma-separated Gmail label IDs. Leave blank
+  to search across Inbox, Updates, Reservations, archived mail, and custom
+  labels that match `GMAIL_SYNC_QUERY`.
+
+Recommended Gmail sync settings:
+
+```env
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash
+GMAIL_SYNC_LABEL_IDS=
+```
+
+Examples:
+
+```env
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash (category:updates OR category:reservations OR in:inbox)
+GMAIL_SYNC_QUERY=newer_than:90d -in:spam -in:trash (label:Bookings OR category:updates OR category:reservations)
+```
+
+Do not set `GMAIL_SYNC_LABEL_IDS=INBOX` if booking emails can land in Gmail
+Updates, Reservations, archived mail, or custom labels.
 
 Gmail ingestion commands:
 
