@@ -4,9 +4,10 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from apps.bookings.models import Booking, BookingEvent, ReviewQueueItem
-from apps.bookings.services import is_manually_overridden
+from apps.bookings.services import is_manually_overridden, resolve_schedule_slot_details
 from apps.ingestion.models import RawEmail
 from apps.ingestion.parsers import detect_provider, get_parser
+from apps.ingestion.parsers.common import EVENT_CANCELLATION, STATUS_CANCELLED
 from apps.ingestion.services import (
     _create_review_item,
     _get_or_create_provider,
@@ -274,9 +275,25 @@ class Command(BaseCommand):
             if booking.activity_id is None:
                 booking.activity = alias_match.alias.linked_activity
                 changes["activity"] = booking.activity.name
-            if booking.schedule_slot_id is None and alias_match.alias.linked_slot:
-                booking.schedule_slot = alias_match.alias.linked_slot
-                changes["schedule_slot"] = str(booking.schedule_slot)
+            if booking.schedule_slot_id is None and not is_manually_overridden(
+                booking, "schedule_slot"
+            ):
+                resolution = resolve_schedule_slot_details(
+                    activity=alias_match.alias.linked_activity,
+                    travel_date=parsed.travel_date,
+                    start_time=parsed.start_time,
+                    slot_type=parsed.slot_type,
+                    fallback_slot=alias_match.alias.linked_slot,
+                )
+                if resolution.slot:
+                    booking.schedule_slot = resolution.slot
+                    changes["schedule_slot"] = str(booking.schedule_slot)
+                    if resolution.no_match_for_time:
+                        self._create_slot_confirmation_review(
+                            raw_email,
+                            booking,
+                            parsed,
+                        )
 
         if not changes:
             return False
@@ -294,6 +311,8 @@ class Command(BaseCommand):
         return True
 
     def _ensure_missing_reviews(self, raw_email, booking):
+        if booking.status == STATUS_CANCELLED:
+            return
         checks = [
             (
                 not booking.activity_id,
@@ -336,6 +355,21 @@ class Command(BaseCommand):
                     title=title,
                     details=details,
                 )
+
+    def _create_slot_confirmation_review(self, raw_email, booking, parsed):
+        if parsed.event_type == EVENT_CANCELLATION or parsed.status == STATUS_CANCELLED:
+            return
+        _create_review_item(
+            raw_email=raw_email,
+            booking=booking,
+            issue_type=ReviewQueueItem.IssueType.TIME_MISSING,
+            title="Schedule slot needs confirmation",
+            details=(
+                f"Parsed start time {parsed.start_time:%H:%M} did not match an "
+                "active schedule slot for this activity/date. The alias fallback "
+                "slot was kept for now."
+            ),
+        )
 
     def _resolve_obsolete_reviews(self, raw_email, booking):
         resolved_types = []

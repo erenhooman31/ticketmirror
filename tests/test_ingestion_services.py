@@ -6,6 +6,7 @@ from django.core.management import call_command
 from django.utils import timezone
 from helpers import create_activity_setup
 
+from apps.bookings.display import product_label
 from apps.bookings.models import (
     ActivityScheduleSlot,
     Booking,
@@ -13,6 +14,7 @@ from apps.bookings.models import (
     Provider,
     ReviewQueueItem,
 )
+from apps.bookings.services import get_daily_capacity_summary
 from apps.ingestion.models import RawEmail
 from apps.ingestion.parsers.base import ParsedBooking
 from apps.ingestion.parsers.common import (
@@ -132,6 +134,37 @@ def viator_same_booking_message(message_id="gmail-viator-same-1") -> dict:
         Participants: 3
         Lead traveler: Alex Bookeo
         """,
+    }
+
+
+def getyourguide_sparse_cancellation(
+    message_id="gmail-gyg-cancel-1",
+    reference="GYG6H8ARWV5Y",
+) -> dict:
+    return {
+        "gmail_message_id": message_id,
+        "gmail_thread_id": "thread-gyg-cancel",
+        "gmail_history_id": "history-gyg-cancel",
+        "gmail_outer_sender": "supplier@getyourguide.example",
+        "subject": f"A booking has been canceled - S259500 - {reference}",
+        "received_at": timezone.now(),
+        "body_text": "This booking has been canceled.",
+    }
+
+
+def getyourguide_new_message(
+    message_id="gmail-gyg-new-1",
+    reference="GYG6H8ARWV5Y",
+) -> dict:
+    body = fixture("real_getyourguide_new.txt").replace("GYGZXCVB1234", reference)
+    return {
+        "gmail_message_id": message_id,
+        "gmail_thread_id": "thread-gyg-new",
+        "gmail_history_id": "history-gyg-new",
+        "gmail_outer_sender": "supplier@getyourguide.example",
+        "subject": f"Urgent: New booking received - S259500 - {reference}",
+        "received_at": timezone.now(),
+        "body_text": body,
     }
 
 
@@ -357,6 +390,79 @@ def test_cancellation_updates_booking_status(viator_alias):
 
 
 @pytest.mark.django_db
+def test_getyourguide_sparse_cancellation_creates_no_missing_field_reviews():
+    raw = process_gmail_message(getyourguide_sparse_cancellation())
+    booking = Booking.objects.get(provider_booking_reference="GYG6H8ARWV5Y")
+
+    assert raw.parse_status == RawEmail.ParseStatus.PARSED
+    assert booking.status == Booking.Status.CANCELLED
+    assert booking.events.filter(
+        event_type=BookingEvent.EventType.EMAIL_CANCELLATION
+    ).exists()
+    missing_issue_types = {
+        ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
+        ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        ReviewQueueItem.IssueType.DATE_MISSING,
+        ReviewQueueItem.IssueType.TIME_MISSING,
+        ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
+        ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
+        ReviewQueueItem.IssueType.LOW_CONFIDENCE_PARSE,
+    }
+    assert not ReviewQueueItem.objects.filter(
+        booking=booking,
+        issue_type__in=missing_issue_types,
+    ).exists()
+    assert (
+        ReviewQueueItem.objects.filter(
+            booking=booking,
+            issue_type=ReviewQueueItem.IssueType.CANCELLATION_WITHOUT_BOOKING,
+        ).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_getyourguide_cancellation_first_converges_when_original_arrives_later():
+    create_activity_setup(
+        provider_code="getyourguide",
+        provider_name="GetYourGuide",
+        activity_name="GYG Yacht",
+        raw_product_name="Istanbul: Luxury Yacht on Bosphorus",
+        raw_option_name="",
+        start_time=time(17, 0),
+        service_date=date(2026, 4, 12),
+    )
+    process_gmail_message(
+        getyourguide_sparse_cancellation(
+            "gmail-gyg-cancel-before-original",
+            "GYGLATER123",
+        )
+    )
+
+    raw = process_gmail_message(getyourguide_new_message(reference="GYGLATER123"))
+    booking = Booking.objects.get(provider_booking_reference="GYGLATER123")
+
+    assert raw.parse_status == RawEmail.ParseStatus.PARSED
+    assert booking.status == Booking.Status.CANCELLED
+    assert booking.activity.name == "GYG Yacht"
+    assert booking.schedule_slot.start_time == time(17, 0)
+    assert booking.active_travel_date == date(2026, 4, 12)
+    assert booking.active_traveler_count == 9
+    assert Booking.objects.count() == 1
+    assert not ReviewQueueItem.objects.filter(
+        booking=booking,
+        issue_type__in=[
+            ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
+            ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+            ReviewQueueItem.IssueType.DATE_MISSING,
+            ReviewQueueItem.IssueType.TIME_MISSING,
+            ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
+            ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
+        ],
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_missing_reference_creates_review_item_without_booking(viator_provider):
     raw = raw_email(message_id="missing-reference")
     result = upsert_booking_from_parsed(
@@ -461,6 +567,135 @@ def test_capacity_impacting_traveler_count_update_is_audited(viator_alias):
     assert event.old_values["provider_traveler_count"] == 2
     assert event.new_values["changed_values"]["provider_traveler_count"] == 7
     assert event.new_values["changed_values"]["active_traveler_count"] == 7
+
+
+@pytest.mark.django_db
+def test_multi_time_product_resolves_schedule_slot_by_parsed_start_time():
+    setup = create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="VIATOR 2H",
+        raw_product_name="VIATOR 2H",
+        raw_option_name="",
+        start_time=time(11, 0),
+        service_date=date(2026, 6, 21),
+    )
+    ActivityScheduleSlot.objects.create(
+        schedule=setup["schedule"],
+        start_time=time(14, 0),
+        end_time=time(16, 0),
+        duration_minutes=120,
+        slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        capacity=10,
+        active=True,
+    )
+    slot_1900 = ActivityScheduleSlot.objects.create(
+        schedule=setup["schedule"],
+        start_time=time(19, 0),
+        end_time=time(21, 0),
+        duration_minutes=120,
+        slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        capacity=10,
+        active=True,
+    )
+
+    booking = upsert_booking_from_parsed(
+        raw_email(message_id="slot-by-time-1900"),
+        parsed_booking(
+            raw_product_name="VIATOR 2H",
+            raw_option_name="",
+            travel_date=date(2026, 6, 21),
+            start_time=time(19, 0),
+            end_time=time(21, 0),
+            provider_booking_reference="BR-SLOT-1900",
+        ),
+    )
+
+    assert booking.schedule_slot == slot_1900
+    assert booking.active_start_time == time(19, 0)
+    assert product_label(booking) == "VIATOR 2H - 19:00"
+    rows = {
+        row["slot"].start_time: row
+        for row in get_daily_capacity_summary(date(2026, 6, 21))
+        if row.get("slot")
+    }
+    assert rows[time(11, 0)]["active_pax"] == 0
+    assert rows[time(19, 0)]["active_pax"] == 2
+
+
+@pytest.mark.django_db
+def test_unmatched_time_falls_back_to_alias_slot_and_flags_review():
+    setup = create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="VIATOR 2H",
+        raw_product_name="VIATOR 2H",
+        raw_option_name="",
+        start_time=time(11, 0),
+        service_date=date(2026, 6, 21),
+    )
+    ActivityScheduleSlot.objects.create(
+        schedule=setup["schedule"],
+        start_time=time(19, 0),
+        end_time=time(21, 0),
+        duration_minutes=120,
+        slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        capacity=10,
+        active=True,
+    )
+
+    raw = raw_email(message_id="slot-by-time-missing")
+    booking = upsert_booking_from_parsed(
+        raw,
+        parsed_booking(
+            raw_product_name="VIATOR 2H",
+            raw_option_name="",
+            travel_date=date(2026, 6, 21),
+            start_time=time(17, 0),
+            provider_booking_reference="BR-SLOT-MISSING",
+        ),
+    )
+    raw.refresh_from_db()
+
+    assert booking.schedule_slot == setup["alias"].linked_slot
+    assert booking.active_start_time == time(17, 0)
+    assert raw.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW
+    assert ReviewQueueItem.objects.filter(
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.TIME_MISSING,
+        title="Schedule slot needs confirmation",
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_single_slot_product_falls_back_without_slot_review():
+    setup = create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="Single Slot Tour",
+        raw_product_name="Single Slot Tour",
+        raw_option_name="",
+        start_time=time(11, 0),
+        service_date=date(2026, 6, 21),
+    )
+
+    raw = raw_email(message_id="single-slot-fallback")
+    booking = upsert_booking_from_parsed(
+        raw,
+        parsed_booking(
+            raw_product_name="Single Slot Tour",
+            raw_option_name="",
+            travel_date=date(2026, 6, 21),
+            start_time=time(19, 0),
+            provider_booking_reference="BR-SINGLE-SLOT",
+        ),
+    )
+
+    assert booking.schedule_slot == setup["slot"]
+    assert not ReviewQueueItem.objects.filter(
+        booking=booking,
+        title="Schedule slot needs confirmation",
+    ).exists()
 
 
 @pytest.mark.django_db

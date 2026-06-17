@@ -1,5 +1,6 @@
 import csv
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import time
 from io import StringIO
 from typing import Any
@@ -57,6 +58,15 @@ EXCLUDED_ATTENDANCE_STATUSES = {
 
 class CapacityExceededError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class ScheduleSlotResolution:
+    slot: ActivityScheduleSlot | None
+    matched_by_time: bool = False
+    used_single_slot_fallback: bool = False
+    used_alias_fallback: bool = False
+    no_match_for_time: bool = False
 
 
 def apply_manual_override(
@@ -318,6 +328,59 @@ def resolve_active_schedule(activity, service_date) -> ActivitySchedule | None:
     if not candidates:
         return None
     return sorted(candidates, key=_schedule_precedence_key)[0]
+
+
+def resolve_schedule_slot(
+    *,
+    activity,
+    travel_date,
+    start_time,
+    slot_type="",
+    fallback_slot: ActivityScheduleSlot | None = None,
+) -> ActivityScheduleSlot | None:
+    return resolve_schedule_slot_details(
+        activity=activity,
+        travel_date=travel_date,
+        start_time=start_time,
+        slot_type=slot_type,
+        fallback_slot=fallback_slot,
+    ).slot
+
+
+def resolve_schedule_slot_details(
+    *,
+    activity,
+    travel_date,
+    start_time,
+    slot_type="",
+    fallback_slot: ActivityScheduleSlot | None = None,
+) -> ScheduleSlotResolution:
+    if not activity:
+        return ScheduleSlotResolution(slot=fallback_slot, used_alias_fallback=True)
+
+    slots = _candidate_slots_for_booking(
+        activity=activity,
+        travel_date=travel_date,
+        slot_type=slot_type,
+    )
+    if start_time:
+        for slot in slots:
+            if slot.start_time == start_time:
+                return ScheduleSlotResolution(slot=slot, matched_by_time=True)
+        if len(slots) == 1:
+            return ScheduleSlotResolution(
+                slot=slots[0],
+                used_single_slot_fallback=True,
+            )
+        return ScheduleSlotResolution(
+            slot=fallback_slot,
+            used_alias_fallback=bool(fallback_slot),
+            no_match_for_time=True,
+        )
+
+    if len(slots) == 1:
+        return ScheduleSlotResolution(slot=slots[0], used_single_slot_fallback=True)
+    return ScheduleSlotResolution(slot=fallback_slot, used_alias_fallback=True)
 
 
 def capacity_snapshot(
@@ -637,6 +700,37 @@ def _slot_applies_to_weekday(slot, service_date):
     if not slot.days_of_week:
         return True
     return service_date.weekday() in slot.days_of_week
+
+
+def _candidate_slots_for_booking(*, activity, travel_date, slot_type=""):
+    if travel_date:
+        schedule = resolve_active_schedule(activity, travel_date)
+        if not schedule or not _schedule_applies_to_weekday(schedule, travel_date):
+            return []
+        queryset = schedule.slots.filter(active=True).select_related(
+            "schedule",
+            "schedule__activity",
+        )
+        slots = [
+            slot
+            for slot in queryset
+            if _slot_applies_to_weekday(slot, travel_date)
+            and not _slot_removed_by_exception(slot, travel_date)
+        ]
+    else:
+        slots = list(
+            ActivityScheduleSlot.objects.filter(
+                schedule__activity=activity,
+                active=True,
+            )
+            .select_related("schedule", "schedule__activity")
+            .order_by("schedule__priority", "start_time", "id")
+        )
+    if slot_type:
+        typed_slots = [slot for slot in slots if slot.slot_type == slot_type]
+        if typed_slots:
+            slots = typed_slots
+    return sorted(slots, key=lambda slot: (slot.start_time, slot.id))
 
 
 def _schedule_exceptions(schedule, service_date):

@@ -7,7 +7,6 @@ from django.db import transaction
 from django.db.models import Q
 
 from apps.bookings.models import (
-    ActivitySchedule,
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
@@ -20,6 +19,7 @@ from apps.bookings.services import (
     diff_field_values,
     is_manually_overridden,
     provider_update_conflicts,
+    resolve_schedule_slot_details,
     warn_if_capacity_overbooked,
 )
 from apps.core.privacy import mask_contact_text
@@ -205,7 +205,9 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
             alias_match=alias_match,
         )
 
-    if parsed_booking.confidence < LOW_CONFIDENCE_THRESHOLD:
+    is_cancellation = _is_cancellation(parsed_booking, booking)
+
+    if parsed_booking.confidence < LOW_CONFIDENCE_THRESHOLD and not is_cancellation:
         raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
         _create_review_item(
             raw_email=raw_email,
@@ -224,12 +226,24 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
             was_created=booking.events.filter(raw_email=raw_email).count() == 1,
         )
 
-    has_missing_data = _create_completeness_review_items(
+    has_missing_data = False
+    product_mismatch = False
+    if not is_cancellation:
+        has_missing_data = _create_completeness_review_items(
+            raw_email=raw_email,
+            booking=booking,
+        )
+        product_mismatch = not alias_match.alias and bool(
+            parsed_booking.raw_product_name
+        )
+
+    has_slot_review = _create_schedule_slot_review_if_needed(
         raw_email=raw_email,
         booking=booking,
+        parsed=parsed_booking,
+        alias_match=alias_match,
     )
 
-    product_mismatch = not alias_match.alias and bool(parsed_booking.raw_product_name)
     if product_mismatch:
         _create_review_item(
             raw_email=raw_email,
@@ -246,7 +260,7 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
             details=_provider_alias_review_details(parsed_booking, alias_match),
         )
 
-    if has_missing_data or product_mismatch:
+    if has_missing_data or product_mismatch or has_slot_review:
         raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
 
     if warn_if_capacity_overbooked(booking=booking, raw_email=raw_email):
@@ -323,6 +337,63 @@ def _booking_time_missing(booking: Booking) -> bool:
         "full_day",
         "half_day",
     }
+
+
+def _is_cancellation(parsed, booking: Booking | None = None) -> bool:
+    if parsed.event_type == EVENT_CANCELLATION:
+        return True
+    if parsed.status == STATUS_CANCELLED:
+        return True
+    return bool(booking and booking.status == Booking.Status.CANCELLED)
+
+
+def _preserve_cancelled_status(
+    booking: Booking,
+    *,
+    field_name: str,
+    new_value,
+) -> bool:
+    return (
+        field_name == "status"
+        and booking.status == Booking.Status.CANCELLED
+        and new_value != Booking.Status.CANCELLED
+    )
+
+
+def _create_schedule_slot_review_if_needed(
+    *,
+    raw_email: RawEmail,
+    booking: Booking,
+    parsed,
+    alias_match: ProviderAliasMatch,
+) -> bool:
+    if _is_cancellation(parsed, booking):
+        return False
+    if not alias_match.alias or not parsed.start_time:
+        return False
+    if is_manually_overridden(booking, "schedule_slot"):
+        return False
+    resolution = resolve_schedule_slot_details(
+        activity=alias_match.alias.linked_activity,
+        travel_date=parsed.travel_date,
+        start_time=parsed.start_time,
+        slot_type=parsed.slot_type,
+        fallback_slot=alias_match.alias.linked_slot,
+    )
+    if not resolution.no_match_for_time:
+        return False
+    _create_review_item(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.TIME_MISSING,
+        title="Schedule slot needs confirmation",
+        details=(
+            f"Parsed start time {parsed.start_time:%H:%M} did not match an "
+            "active schedule slot for this activity/date. The alias fallback "
+            "slot was kept for now."
+        ),
+    )
+    return True
 
 
 def match_product_alias(parsed_booking) -> ProviderAliasMatch:
@@ -423,6 +494,12 @@ def _update_booking(
     new_values = {}
     provider_diffs = diff_field_values(booking, provider_values)
     for field_name, diff in provider_diffs.items():
+        if _preserve_cancelled_status(
+            booking,
+            field_name=field_name,
+            new_value=diff["new"],
+        ):
+            continue
         if field_name == "status" and is_manually_overridden(booking, "status"):
             continue
         if _skip_empty_provider_update(
@@ -441,6 +518,12 @@ def _update_booking(
     )
     active_diffs = diff_field_values(booking, active_values)
     for field_name, diff in active_diffs.items():
+        if _preserve_cancelled_status(
+            booking,
+            field_name=field_name,
+            new_value=diff["new"],
+        ):
+            continue
         old_values[field_name] = diff["old"]
         new_values[field_name] = diff["new"]
         setattr(booking, field_name, diff["new"])
@@ -448,6 +531,11 @@ def _update_booking(
     alias_values = _alias_values(alias_match, parsed)
     alias_diffs = diff_field_values(booking, alias_values)
     for field_name, diff in alias_diffs.items():
+        if field_name == "schedule_slot" and is_manually_overridden(
+            booking,
+            field_name,
+        ):
+            continue
         if field_name.startswith("active_") and is_manually_overridden(
             booking,
             field_name,
@@ -957,18 +1045,14 @@ def _slot_for_parsed_time(
     alias: ProviderAlias,
     parsed,
 ) -> ActivityScheduleSlot | None:
-    if not parsed.start_time:
-        return alias.linked_slot
-    return (
-        ActivityScheduleSlot.objects.filter(
-            schedule__activity=alias.linked_activity,
-            schedule__schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
-            start_time=parsed.start_time,
-            active=True,
-        )
-        .order_by("id")
-        .first()
+    resolution = resolve_schedule_slot_details(
+        activity=alias.linked_activity,
+        travel_date=parsed.travel_date,
+        start_time=parsed.start_time,
+        slot_type=parsed.slot_type,
+        fallback_slot=alias.linked_slot,
     )
+    return resolution.slot
 
 
 def _json_safe(values: dict[str, Any]) -> dict[str, Any]:

@@ -2,7 +2,13 @@ import re
 from dataclasses import replace
 
 from .base import ParsedBooking, ProviderEmailParser
-from .common import parse_date_flexible, parse_labeled_booking, parse_time_flexible
+from .common import (
+    EVENT_CANCELLATION,
+    STATUS_CANCELLED,
+    parse_date_flexible,
+    parse_labeled_booking,
+    parse_time_flexible,
+)
 
 
 class GetYourGuideParser(ProviderEmailParser):
@@ -48,8 +54,19 @@ class GetYourGuideParser(ProviderEmailParser):
         )
         service_value = _service_date_value(body_text)
         product = _product_from_image_block(body_text)
+        subject_reference = _reference_from_subject(subject)
+        event_type = parsed.event_type
+        status = parsed.status
+        if _is_cancellation_subject(subject):
+            event_type = EVENT_CANCELLATION
+            status = STATUS_CANCELLED
         return replace(
             parsed,
+            provider_booking_reference=(
+                parsed.provider_booking_reference or subject_reference
+            ),
+            event_type=event_type,
+            status=status,
             raw_product_name=parsed.raw_product_name or product,
             travel_date=parse_date_flexible(service_value) or parsed.travel_date,
             start_time=parse_time_flexible(service_value) or parsed.start_time,
@@ -78,3 +95,18 @@ def _service_date_value(body_text: str) -> str:
                 if candidate and not candidate.startswith("[image:"):
                     return candidate
     return ""
+
+
+def _reference_from_subject(subject: str) -> str:
+    match = re.search(r"\b(GYG[A-Z0-9-]+)\b", subject or "", flags=re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
+def _is_cancellation_subject(subject: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(cancelled|canceled|cancellation)\b",
+            subject or "",
+            flags=re.IGNORECASE,
+        )
+    )
