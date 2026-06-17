@@ -4,21 +4,20 @@ ticketmirror is a server-rendered Django application for internal operations tea
 
 ## System Shape
 
-The MVP is a Django monolith with a PostgreSQL database, Redis, and Celery:
+The MVP is a Django monolith with a PostgreSQL database and a dedicated Gmail poller:
 
 - Django handles admin, dashboard pages, CSV exports, and business services.
 - PostgreSQL stores raw emails, parsed bookings, provider mappings, internal operational fields, audit events, and review queue items.
-- Redis is used as the Celery broker and result backend.
-- Celery runs background ingestion tasks such as fetching Gmail messages.
+- A management command polls the dedicated Gmail inbox on a schedule and stores messages before parsing.
 
 There is no separate frontend application. Normal user workflows should use Django templates, with role-restricted configuration inside Settings. Django admin is reserved for emergency superuser or developer access.
 
 ## Data Flow
 
-1. Celery fetches messages from the dedicated Gmail inbox.
+1. The poller fetches messages from the dedicated Gmail inbox.
 2. The raw message is stored in `ingestion.RawEmail`.
 3. A provider-specific parser converts raw email text into a normalized parsed booking object.
-4. The upsert service finds or creates the booking by provider and provider booking reference.
+4. The upsert service finds or creates the booking by underlying OTA identity across channels, then by provider and provider booking reference.
 5. Provider aliases map provider product names to internal activities and optional schedule slots.
 6. Ambiguous mappings create review queue items.
 7. Every create, provider update, manual edit, or review condition creates a booking event.

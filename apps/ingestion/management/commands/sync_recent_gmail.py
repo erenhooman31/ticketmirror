@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 
-from apps.ingestion.tasks import daily_reconciliation_sync
+from apps.ingestion.polling import sync_recent_gmail
 
 
 class Command(BaseCommand):
@@ -10,7 +10,5 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=100)
 
     def handle(self, *args, **options):
-        result = daily_reconciliation_sync.apply(
-            kwargs={"limit": options["limit"]}
-        ).get()
-        self.stdout.write(self.style.SUCCESS(f"Recent Gmail sync queued: {result}"))
+        result = sync_recent_gmail(limit=options["limit"])
+        self.stdout.write(self.style.SUCCESS(f"Recent Gmail sync processed: {result}"))

@@ -57,6 +57,8 @@ class GmailSyncState(models.Model):
     watch_expiration = models.DateTimeField(null=True, blank=True)
     last_successful_sync = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(null=True, blank=True)
+    poll_lock_token = models.CharField(max_length=64, null=True, blank=True)
+    poll_lock_acquired_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

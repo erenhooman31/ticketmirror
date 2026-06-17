@@ -42,11 +42,7 @@ from apps.bookings.services import (
     get_daily_capacity_summary,
 )
 from apps.ingestion.models import GmailSyncState, RawEmail
-from apps.ingestion.tasks import (
-    daily_reconciliation_sync,
-    process_pending_raw_emails,
-    renew_gmail_watch,
-)
+from apps.ingestion.polling import process_pending_raw_emails, sync_recent_gmail
 
 AGENDA_RANGE_OPTIONS = (1, 3, 7)
 DEFAULT_AGENDA_RANGE = 1
@@ -385,9 +381,7 @@ def settings_ingestion(request):
                 )
             limit = _parse_positive_int(request.POST.get("limit"), default=50) or 50
             try:
-                processed = process_pending_raw_emails.apply(
-                    kwargs={"limit": limit}
-                ).get()
+                processed = process_pending_raw_emails(limit=limit)
                 messages.success(request, f"Processed {processed} pending email(s).")
             except Exception as exc:
                 messages.error(request, f"Pending processing failed: {exc}")
@@ -398,20 +392,10 @@ def settings_ingestion(request):
                 )
             limit = _parse_positive_int(request.POST.get("limit"), default=50) or 50
             try:
-                result = daily_reconciliation_sync.apply(kwargs={"limit": limit}).get()
-                messages.success(request, f"Queued recent Gmail sync: {result}.")
+                result = sync_recent_gmail(limit=limit)
+                messages.success(request, f"Processed recent Gmail sync: {result}.")
             except Exception as exc:
                 messages.error(request, f"Recent Gmail sync failed: {exc}")
-        elif action == "renew_watch":
-            if not is_admin(request.user):
-                return HttpResponseForbidden(
-                    "You do not have permission to renew Gmail watch."
-                )
-            try:
-                result = renew_gmail_watch.apply().get()
-                messages.success(request, f"Renewed Gmail watch: {result}.")
-            except Exception as exc:
-                messages.error(request, f"Gmail watch renewal failed: {exc}")
         else:
             messages.error(request, "Unsupported ingestion action.")
         return redirect("core:settings_ingestion")
@@ -478,9 +462,6 @@ def _gmail_config_status():
         "GMAIL_CLIENT_ID",
         "GMAIL_CLIENT_SECRET",
         "GMAIL_REFRESH_TOKEN",
-        "GMAIL_PUBSUB_TOPIC",
-        "GMAIL_WEBHOOK_AUDIENCE",
-        "GOOGLE_CLOUD_PROJECT",
     ]
     rows = []
     for name in names:

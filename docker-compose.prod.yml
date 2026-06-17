@@ -15,8 +15,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
       - static_data:/app/staticfiles
       - media_data:/app/media
@@ -29,32 +27,15 @@ services:
       retries: 5
       start_period: 30s
 
-  worker:
+  poller:
     build:
       context: .
-    command: celery -A config worker -l info
+    command: python manage.py poll_gmail --loop --interval 60
     env_file:
       - ${TICKETMIRROR_ENV_FILE:-.env.prod}
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - media_data:/app/media
-
-  beat:
-    build:
-      context: .
-    command: celery -A config beat -l info --schedule=/tmp/celerybeat-schedule
-    env_file:
-      - ${TICKETMIRROR_ENV_FILE:-.env.prod}
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
+      web:
         condition: service_healthy
     volumes:
       - media_data:/app/media
@@ -78,18 +59,6 @@ services:
       retries: 5
       start_period: 20s
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -111,7 +80,6 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   static_data:
   media_data:
   caddy_data:

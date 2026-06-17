@@ -106,10 +106,10 @@ class GmailSyncStateAdmin(admin.ModelAdmin):
     list_display = (
         "mailbox_email",
         "latest_history_id",
-        "watch_expiration",
+        "poll_lock_acquired_at",
         "last_successful_sync",
         "updated_at",
     )
-    list_filter = ("watch_expiration", "last_successful_sync", "updated_at")
+    list_filter = ("last_successful_sync", "poll_lock_acquired_at", "updated_at")
     search_fields = ("mailbox_email", "latest_history_id", "last_error")
     readonly_fields = ("updated_at",)

@@ -23,7 +23,7 @@ Bookings:
 Ingestion:
 
 - `RawEmail`: stored Gmail message body, metadata, provider link, and processing state.
-- `GmailSyncState`: Gmail mailbox history/watch state.
+- `GmailSyncState`: Gmail mailbox polling cursor and lock state.
 
 ## Identity Rules
 

@@ -1,5 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 
 from apps.bookings.models import Booking, BookingEvent, ReviewQueueItem
 from apps.bookings.services import is_manually_overridden
@@ -9,6 +11,7 @@ from apps.ingestion.services import (
     _create_review_item,
     _get_or_create_provider,
     _should_ignore_non_booking_email,
+    mark_raw_email_failed,
     match_product_alias,
     upsert_booking_from_parsed,
 )
@@ -20,22 +23,91 @@ class Command(BaseCommand):
         "parser output without deleting raw records."
     )
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--status",
+            action="append",
+            choices=RawEmail.ParseStatus.values,
+            help=(
+                "RawEmail parse status to scan. Can be provided more than once. "
+                "Defaults to pending, needs_review, and failed."
+            ),
+        )
+        parser.add_argument(
+            "--since",
+            help="Only scan emails received on or after this ISO date or datetime.",
+        )
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=500,
+            help="Maximum number of raw emails to scan.",
+        )
+        parser.add_argument(
+            "--quiet",
+            action="store_true",
+            help="Suppress the summary line; per-row errors still become review items.",
+        )
+
     def handle(self, *args, **options):
         stats = {
             "scanned": 0,
             "repaired": 0,
             "sent_to_review": 0,
             "skipped": 0,
+            "failed": 0,
         }
-        for raw_email in RawEmail.objects.order_by("received_at", "id"):
+        for raw_email in self._queryset(options):
             stats["scanned"] += 1
-            result = self._repair_raw_email(raw_email)
-            stats[result] += 1
+            try:
+                result = self._repair_raw_email(raw_email)
+                stats[result] += 1
+            except Exception as exc:
+                mark_raw_email_failed(
+                    raw_email,
+                    exc,
+                    title="Repair command failed for stored raw email",
+                )
+                stats["failed"] += 1
 
-        self.stdout.write(
-            "scanned={scanned} repaired={repaired} sent_to_review={sent_to_review} "
-            "skipped={skipped}".format(**stats)
-        )
+        if not options["quiet"]:
+            self.stdout.write(
+                "scanned={scanned} repaired={repaired} "
+                "sent_to_review={sent_to_review} skipped={skipped} "
+                "failed={failed}".format(**stats)
+            )
+
+    def _queryset(self, options):
+        statuses = options.get("status") or [
+            RawEmail.ParseStatus.PENDING,
+            RawEmail.ParseStatus.NEEDS_REVIEW,
+            RawEmail.ParseStatus.FAILED,
+        ]
+        queryset = RawEmail.objects.filter(parse_status__in=statuses)
+        since = self._parse_since(options.get("since"))
+        if since:
+            queryset = queryset.filter(received_at__gte=since)
+        queryset = queryset.order_by("received_at", "id")
+        limit = options.get("limit")
+        if limit:
+            queryset = queryset[: max(limit, 0)]
+        return queryset
+
+    def _parse_since(self, value):
+        if not value:
+            return None
+        parsed = parse_datetime(value)
+        if parsed is None:
+            parsed_date = parse_date(value)
+            if parsed_date is None:
+                raise ValueError("--since must be an ISO date or datetime.")
+            parsed = timezone.datetime.combine(
+                parsed_date,
+                timezone.datetime.min.time(),
+            )
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+        return parsed
 
     @transaction.atomic
     def _repair_raw_email(self, raw_email):

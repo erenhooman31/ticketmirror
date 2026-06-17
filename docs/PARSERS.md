@@ -72,14 +72,27 @@ underlying OTA provider/reference as `provider_code` and
 `provider_order_reference`. This keeps one booking record for the same OTA
 booking whether it arrives through Bookeo, directly from the OTA, or both.
 
+## Provider Validation Status
+
+| Provider | Status | Notes |
+|---|---|---|
+| Viator | Validated | Realistic new/request fixtures plus event matrix coverage. |
+| Tiqets | Validated | Realistic new and cancellation fixtures plus event matrix coverage. |
+| Tripster | Validated | Russian realistic new fixture, Russian cancellation test, event matrix coverage. |
+| Sputnik8 | Validated | Russian realistic new fixture, Russian update test, event matrix coverage. |
+| Klook | Provisional | Event matrix and graceful-failure coverage exist; real booking/update/cancellation samples are still required. |
+| Alle | Provisional | Event matrix and Cyrillic-label tests exist; operator must confirm whether live Alle emails are Russian and provide real samples. |
+| Travel Experience | Provisional | Event matrix and simple booking coverage exist; real booking/update/cancellation samples are still required. |
+
 ### Bookeo
 
 - New, changed, and canceled notification subjects are supported.
 - `Date`, `Time`, `Tour`, `Participants`, `Booking number`, customer contact
   fields, participant names, and `Notes by <OTA> ... Booking reference: <ref>`
   are parsed explicitly.
-- If the underlying OTA or OTA reference is missing, the email is sent to review
-  rather than creating a Bookeo-identified booking.
+- If the underlying OTA or OTA reference is missing, ingestion creates a
+  provisional Bookeo-identified booking. A later matching OTA email can promote
+  that same row to the direct OTA identity.
 
 ### GetYourGuide
 
@@ -150,11 +163,12 @@ booking whether it arrives through Bookeo, directly from the OTA, or both.
 
 ### Provisional Providers
 
-The repo currently lacks real booking-confirmation fixtures for Alle, Klook, and
-Travel Experience. Alle is not confirmed as Russian-language from the available
-fixtures. These parsers remain provisional and should not be considered final
-until representative real booking-confirmation samples are added under
-`tests/fixtures/emails/` and covered by deterministic parser tests.
+The repo currently lacks real booking, update, and cancellation fixture sets for
+Klook, Alle, and Travel Experience. Alle is not confirmed as Russian-language
+from the available fixtures, but the parser now handles Cyrillic labels, dates,
+and event words provisionally. These parsers should not be considered final
+until representative real samples are added under
+`tests/fixtures/emails/<provider>/` and covered by deterministic parser tests.
 
 ## AI Extraction
 

@@ -254,7 +254,12 @@ def test_repair_command_fills_missing_booking_display_fields_idempotently():
     )
 
     first_output = StringIO()
-    call_command("repair_parsed_booking_display_fields", stdout=first_output)
+    call_command(
+        "repair_parsed_booking_display_fields",
+        "--status",
+        RawEmail.ParseStatus.PARSED,
+        stdout=first_output,
+    )
     booking = Booking.objects.get(provider_booking_reference="BR-123456789")
 
     assert "scanned=1 repaired=1" in first_output.getvalue()
@@ -265,8 +270,78 @@ def test_repair_command_fills_missing_booking_display_fields_idempotently():
     assert booking.last_email_received_at == raw_email.received_at
 
     second_output = StringIO()
-    call_command("repair_parsed_booking_display_fields", stdout=second_output)
+    call_command(
+        "repair_parsed_booking_display_fields",
+        "--status",
+        RawEmail.ParseStatus.PARSED,
+        stdout=second_output,
+    )
     assert "scanned=1 repaired=0" in second_output.getvalue()
+
+
+@pytest.mark.django_db
+def test_repair_command_marks_malformed_email_failed_and_continues(monkeypatch):
+    RawEmail.objects.create(
+        gmail_message_id="repair-bad-1",
+        gmail_outer_sender="bookings@viator.com",
+        subject="Viator booking BR-BAD confirmed",
+        received_at=timezone.now(),
+        body_text="Booking reference BR-BAD",
+        parse_status=RawEmail.ParseStatus.PENDING,
+    )
+    RawEmail.objects.create(
+        gmail_message_id="repair-review-1",
+        gmail_outer_sender="sender@example.test",
+        subject="Booking details",
+        received_at=timezone.now(),
+        body_text="A booking message without known OTA markers.",
+        parse_status=RawEmail.ParseStatus.PENDING,
+    )
+
+    class BrokenParser:
+        def parse(self, raw_email):
+            raise ValueError("broken stored email")
+
+    monkeypatch.setattr(
+        "apps.ingestion.management.commands.repair_parsed_booking_display_fields.get_parser",
+        lambda provider_code: BrokenParser() if provider_code == "viator" else None,
+    )
+    output = StringIO()
+
+    call_command("repair_parsed_booking_display_fields", stdout=output)
+
+    failed = RawEmail.objects.get(gmail_message_id="repair-bad-1")
+    review = RawEmail.objects.get(gmail_message_id="repair-review-1")
+    assert failed.parse_status == RawEmail.ParseStatus.FAILED
+    assert "broken stored email" in failed.parse_error
+    assert review.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW
+    assert "scanned=2" in output.getvalue()
+    assert "failed=1" in output.getvalue()
+
+
+@pytest.mark.django_db
+def test_repair_command_default_scan_skips_parsed_status():
+    RawEmail.objects.create(
+        gmail_message_id="repair-parsed-skip-1",
+        gmail_outer_sender="bookings@viator.com",
+        subject="Viator booking BR-SKIP confirmed",
+        received_at=timezone.now(),
+        body_text=fixture("viator_new.txt"),
+        parse_status=RawEmail.ParseStatus.PARSED,
+    )
+    RawEmail.objects.create(
+        gmail_message_id="repair-pending-target-1",
+        gmail_outer_sender="sender@example.test",
+        subject="Booking details",
+        received_at=timezone.now(),
+        body_text="A booking message without known OTA markers.",
+        parse_status=RawEmail.ParseStatus.PENDING,
+    )
+    output = StringIO()
+
+    call_command("repair_parsed_booking_display_fields", stdout=output)
+
+    assert "scanned=1" in output.getvalue()
 
 
 @pytest.mark.django_db

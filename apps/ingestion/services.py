@@ -4,6 +4,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from django.db import transaction
+from django.db.models import Q
 
 from apps.bookings.models import (
     ActivitySchedule,
@@ -176,13 +177,10 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
     if parsed_booking.event_type == EVENT_CANCELLATION:
         provider_values["status"] = STATUS_CANCELLED
 
-    booking = (
-        Booking.objects.select_for_update()
-        .filter(
-            provider=provider,
-            provider_booking_reference=parsed_booking.provider_booking_reference,
-        )
-        .first()
+    booking = _find_booking_for_parsed(
+        provider=provider,
+        parsed=parsed_booking,
+        provider_values=provider_values,
     )
     if booking is None:
         booking = _create_booking(
@@ -193,6 +191,12 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
             alias_match=alias_match,
         )
     else:
+        _promote_booking_identity_if_needed(
+            booking=booking,
+            provider=provider,
+            parsed=parsed_booking,
+            raw_email=raw_email,
+        )
         booking = _update_booking(
             booking=booking,
             raw_email=raw_email,
@@ -560,6 +564,149 @@ def _skip_empty_provider_update(
     if old_value in (None, "", [], {}):
         return False
     return new_value in (None, "", [], {})
+
+
+def mark_raw_email_failed(raw_email: RawEmail, exc: Exception, *, title: str) -> None:
+    raw_email.parse_status = RawEmail.ParseStatus.FAILED
+    raw_email.parse_error = mask_contact_text(str(exc), limit=500)
+    raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+    _create_review_item(
+        raw_email=raw_email,
+        booking=None,
+        issue_type=ReviewQueueItem.IssueType.PARSER_ERROR,
+        title=title,
+        details=raw_email.parse_error,
+    )
+
+
+def _find_booking_for_parsed(
+    *,
+    provider: Provider,
+    parsed,
+    provider_values: dict[str, Any],
+) -> Booking | None:
+    exact = (
+        Booking.objects.select_for_update()
+        .filter(
+            provider=provider,
+            provider_booking_reference=parsed.provider_booking_reference,
+        )
+        .first()
+    )
+    if exact:
+        return exact
+    return _find_bookeo_provisional_booking(parsed, provider_values)
+
+
+def _find_bookeo_provisional_booking(
+    parsed,
+    provider_values: dict[str, Any],
+) -> Booking | None:
+    if parsed.provider_code == "bookeo":
+        return None
+    bookeo_provider = Provider.objects.filter(code="bookeo").first()
+    if not bookeo_provider:
+        return None
+
+    bookeo_number = parsed.raw_fields.get("bookeo_booking_number")
+    if bookeo_number:
+        order_reference = f"Bookeo {bookeo_number}"
+        by_bookeo_number = (
+            Booking.objects.select_for_update()
+            .filter(provider=bookeo_provider)
+            .filter(
+                Q(provider_booking_reference=bookeo_number)
+                | Q(provider_order_reference=order_reference)
+            )
+            .order_by("-last_email_received_at", "-id")
+            .first()
+        )
+        if by_bookeo_number:
+            return by_bookeo_number
+
+    if not (
+        parsed.travel_date
+        and parsed.start_time
+        and parsed.traveler_count is not None
+        and parsed.lead_traveler_name
+    ):
+        return None
+
+    candidates = (
+        Booking.objects.select_for_update()
+        .filter(
+            provider=bookeo_provider,
+            provider_travel_date=parsed.travel_date,
+            provider_start_time=parsed.start_time,
+            provider_traveler_count=parsed.traveler_count,
+            lead_traveler_name__iexact=parsed.lead_traveler_name,
+        )
+        .exclude(status__in=[Booking.Status.CANCELLED, Booking.Status.REJECTED])
+        .order_by("-last_email_received_at", "-id")
+    )
+    if parsed.raw_product_name:
+        candidates = candidates.filter(
+            Q(raw_product_name__iexact=parsed.raw_product_name)
+            | Q(raw_product_name__icontains=provider_values.get("raw_product_name", ""))
+            | Q(raw_product_name__icontains=parsed.provider_code)
+            | Q(raw_product_name="")
+        )
+    return candidates.first()
+
+
+def _promote_booking_identity_if_needed(
+    *,
+    booking: Booking,
+    provider: Provider,
+    parsed,
+    raw_email: RawEmail,
+) -> None:
+    old_values = {}
+    new_values = {}
+    if booking.provider_id != provider.id:
+        old_values["provider"] = booking.provider.code
+        new_values["provider"] = provider.code
+    if booking.provider_booking_reference != parsed.provider_booking_reference:
+        old_values["provider_booking_reference"] = booking.provider_booking_reference
+        new_values["provider_booking_reference"] = parsed.provider_booking_reference
+
+    if not new_values:
+        return
+
+    conflict = (
+        Booking.objects.filter(
+            provider=provider,
+            provider_booking_reference=parsed.provider_booking_reference,
+        )
+        .exclude(id=booking.id)
+        .first()
+    )
+    if conflict:
+        _create_review_item(
+            raw_email=raw_email,
+            booking=booking,
+            issue_type=ReviewQueueItem.IssueType.POSSIBLE_DUPLICATE,
+            title="Cross-channel duplicate candidate",
+            details=(
+                "A matching OTA identity already exists on booking "
+                f"{conflict.provider.code} {conflict.provider_booking_reference}."
+            ),
+        )
+        return
+
+    booking.provider = provider
+    booking.provider_booking_reference = parsed.provider_booking_reference
+    booking.save(update_fields=["provider", "provider_booking_reference", "updated_at"])
+    _create_booking_event(
+        booking=booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        old_values=_json_safe(old_values),
+        new_values={
+            "cross_channel_identity_merge": True,
+            "changed_values": _json_safe(new_values),
+        },
+    )
 
 
 def _get_or_create_provider(provider_code: str) -> Provider:

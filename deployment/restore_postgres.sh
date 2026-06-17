@@ -35,4 +35,4 @@ cat "${BACKUP_FILE}" | docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FIL
   --clean --if-exists --no-owner --no-acl
 
 echo "Restore complete. Restarting application services."
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d web worker beat caddy
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d web poller caddy

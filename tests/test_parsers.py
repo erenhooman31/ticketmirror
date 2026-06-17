@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from apps.ingestion.parsers import detect_provider, parse_by_provider
 from apps.ingestion.parsers.common import (
     EVENT_CANCELLATION,
@@ -19,6 +21,75 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "emails"
 
 def fixture(name: str) -> str:
     return (FIXTURE_DIR / name).read_text(encoding="utf-8")
+
+
+PROVIDER_EVENT_SAMPLES = {
+    "viator": {
+        "sender": "notifications@viator.example",
+        "reference": "BR-EVENT-1",
+        "reference_line": "Booking reference: BR-EVENT-1",
+        "product_line": "Tour Name: Event Matrix Tour",
+        "count_line": "Travelers: 2",
+    },
+    "klook": {
+        "sender": "noreply@klook.example",
+        "reference": "KL12345",
+        "reference_line": "Booking ID: KL12345",
+        "product_line": "Activity: Event Matrix Tour",
+        "count_line": "Participants: 2",
+    },
+    "tiqets": {
+        "sender": "orders@tiqets.example",
+        "reference": "1234567",
+        "reference_line": "Order ID: 1234567",
+        "product_line": "Venue: Event Matrix Tour",
+        "date_line": "Visit date: 2026-06-27",
+        "count_line": "Tickets: 2",
+    },
+    "tripster": {
+        "sender": "orders@tripster.example",
+        "reference": "TS-EVENT-1",
+        "reference_line": "Order number: TS-EVENT-1",
+        "product_line": "Product: Event Matrix Tour",
+        "date_line": "Date: 2026-06-27",
+        "count_line": "Tickets: 2",
+    },
+    "sputnik8": {
+        "sender": "orders@sputnik8.example",
+        "reference": "SP8-EVENT-1",
+        "reference_line": "Booking number: SP8-EVENT-1",
+        "product_line": "Excursion: Event Matrix Tour",
+        "count_line": "Participants: 2",
+    },
+    "alle": {
+        "sender": "bookings@alletravel.example",
+        "reference": "ALLE-EVENT-1",
+        "reference_line": "Booking reference: ALLE-EVENT-1",
+        "product_line": "Product: Event Matrix Tour",
+        "count_line": "Travelers: 2",
+    },
+    "travel-experience": {
+        "sender": "ops@travel-experience.example",
+        "reference": "TE-EVENT-1",
+        "reference_line": "Booking reference: TE-EVENT-1",
+        "product_line": "Product: Event Matrix Tour",
+        "count_line": "Travelers: 2",
+    },
+}
+
+
+def event_matrix_body(sample: dict) -> str:
+    return "\n".join(
+        [
+            sample["reference_line"],
+            sample["product_line"],
+            sample.get("date_line", "Travel date: 2026-06-27"),
+            "Start time: 18:30",
+            sample["count_line"],
+            "Lead traveler: Event Sample",
+            "Email: event.sample@example.test",
+        ]
+    )
 
 
 def test_detect_provider_uses_forwarded_sender_before_outer_sender():
@@ -86,6 +157,38 @@ def test_extract_forwarded_headers():
     assert headers.sender == "bookings@viator.com"
     assert headers.subject == "Viator booking BR-FWD-42 confirmed"
     assert headers.date == "Wed, 17 Jun 2026 at 10:01"
+
+
+@pytest.mark.parametrize("provider_code", sorted(PROVIDER_EVENT_SAMPLES))
+@pytest.mark.parametrize(
+    ("subject_prefix", "expected_event", "expected_status"),
+    [
+        ("New booking", "email_new_booking", "pending_provider_acceptance"),
+        ("Booking update", EVENT_UPDATE, STATUS_MODIFIED),
+        ("Booking cancellation", EVENT_CANCELLATION, STATUS_CANCELLED),
+    ],
+)
+def test_direct_ota_parser_event_matrix(
+    provider_code,
+    subject_prefix,
+    expected_event,
+    expected_status,
+):
+    sample = PROVIDER_EVENT_SAMPLES[provider_code]
+
+    parsed = parse_by_provider(
+        provider_code,
+        f"{subject_prefix} {sample['reference']}",
+        sample["sender"],
+        event_matrix_body(sample),
+    )
+
+    assert parsed.provider_booking_reference == sample["reference"]
+    assert parsed.event_type == expected_event
+    assert parsed.status == expected_status
+    assert parsed.raw_product_name == "Event Matrix Tour"
+    assert parsed.travel_date.isoformat() == "2026-06-27"
+    assert parsed.traveler_count == 2
 
 
 def test_shared_russian_date_parsing_for_labeled_values():
@@ -450,6 +553,46 @@ def test_parse_alle_booking():
     assert parsed.raw_product_name == "Bosphorus Sunset Cruise"
     assert parsed.travel_date.isoformat() == "2026-06-27"
     assert parsed.start_time.isoformat() == "18:30:00"
+    assert parsed.traveler_count == 3
+
+
+def test_parse_alle_russian_labels_and_event_words():
+    product = (
+        "\u041f\u0440\u043e\u0433\u0443\u043b\u043a\u0430 "
+        "\u043f\u043e \u0411\u043e\u0441\u0444\u043e\u0440\u0443"
+    )
+    date_time_label = "\u0414\u0430\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f"
+    cancellation_subject = (
+        "\u041e\u0442\u043c\u0435\u043d\u0430 "
+        "\u0437\u0430\u043a\u0430\u0437\u0430 ALLE-RU-42"
+    )
+    body = "\n".join(
+        [
+            "Booking reference: ALLE-RU-42",
+            f"\u042d\u043a\u0441\u043a\u0443\u0440\u0441\u0438\u044f: {product}",
+            f"{date_time_label}: 12 "
+            "\u0430\u043f\u0440\u0435\u043b\u044f 2026 \u0432 19:00",
+            "\u0423\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u043e\u0432: 3",
+            "\u041a\u043b\u0438\u0435\u043d\u0442: "
+            "\u0410\u043b\u0435\u043a\u0441\u0435\u0439 "
+            "\u0418\u0432\u0430\u043d\u043e\u0432",
+            "\u042f\u0437\u044b\u043a: Russian",
+        ]
+    )
+
+    parsed = parse_by_provider(
+        "alle",
+        cancellation_subject,
+        "bookings@alletravel.example",
+        body,
+    )
+
+    assert parsed.provider_booking_reference == "ALLE-RU-42"
+    assert parsed.event_type == EVENT_CANCELLATION
+    assert parsed.status == STATUS_CANCELLED
+    assert parsed.raw_product_name == product
+    assert parsed.travel_date.isoformat() == "2026-04-12"
+    assert parsed.start_time.isoformat() == "19:00:00"
     assert parsed.traveler_count == 3
 
 

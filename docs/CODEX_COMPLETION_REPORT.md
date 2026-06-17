@@ -44,7 +44,7 @@ command is not installed or not on `PATH`.
 - `makemigrations --check --dry-run` emitted a warning while checking migration
   history because `.env` points at the Compose database host `postgres`, which is
   unavailable without Docker. The command still completed with no model drift.
-- Gmail sync and watch actions require real Gmail OAuth/Pub/Sub environment
+- Gmail sync actions require real Gmail OAuth environment
   values in deployment; the settings page intentionally shows only whether
   secret-bearing values are configured.
 - E2E browser smoke tests were not added because the current server-rendered
@@ -67,11 +67,9 @@ command is not installed or not on `PATH`.
   GMAIL_CLIENT_ID
   GMAIL_CLIENT_SECRET
   GMAIL_REFRESH_TOKEN
-  GMAIL_PUBSUB_TOPIC
-  GMAIL_WEBHOOK_AUDIENCE
-  GOOGLE_CLOUD_PROJECT
+  GMAIL_INBOX_LABEL
   ```
 
 - Continue to run ingestion actions from Settings with internal roles only:
   viewers are read-only, operators can process pending raw emails, and admins can
-  sync recent Gmail or renew the Gmail watch.
+  sync recent Gmail.

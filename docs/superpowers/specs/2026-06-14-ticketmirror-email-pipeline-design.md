@@ -35,8 +35,8 @@ Tiqets, Tripster, Alle, Travel Experience, Sputnik8, and direct bookings.
 - **Foundation: build on the existing codebase.** Keep the per-provider parsers,
   the data model, and the operational UI. These are the valuable, expensive
   assets and they are reusable regardless of infrastructure.
-- **Strip heavy infrastructure.** Remove Celery, Redis, Gmail Pub/Sub push, and
-  the multi-container production stack. They add failure modes without adding
+- **Strip heavy infrastructure.** Remove the old task queue, cache broker, Gmail push path, and
+  the oversized production stack. They add failure modes without adding
   value for a single-inbox internal tool.
 - **Ingestion: poll Gmail every ~1 minute with a durable cursor.** This is both
   simpler and *more reliable* than push: after downtime the poller catches up
@@ -47,8 +47,8 @@ Tiqets, Tripster, Alle, Travel Experience, Sputnik8, and direct bookings.
 
 Rejected alternatives: n8n (replaces only the easy ingestion 20%, cannot build
 the UI, adds a tool to maintain); no-code Zapier/Make→Sheets (cannot do reliable
-per-provider parsing, upsert-on-update, or a capacity UI); real-time Pub/Sub
-push (events lost during downtime, unnecessary for booking lead times).
+per-provider parsing, upsert-on-update, or a capacity UI); real-time push
+delivery (events lost during downtime, unnecessary for booking lead times).
 
 ## Bookeo parity — verified screen inventory (live, 2026-06-14)
 
@@ -174,7 +174,7 @@ routes the booking to the review queue rather than guessing.
 - One always-on machine.
 - PostgreSQL.
 - App served by a simple WSGI server; the poller scheduled via cron or a Django
-  scheduled command. No Redis, no Celery, no public webhook.
+  scheduled command. No public webhook.
 - Optional later: same code on a small VPS for off-network access.
 
 ## Implementation work (high level)
@@ -183,8 +183,8 @@ Because the goal is reliability and the existing code is currently unverified:
 
 1. **Audit** what runs today: which commands work, what the parsers actually
    handle, current state of ingestion and UI.
-2. **Strip infrastructure**: remove Celery, Redis, Gmail Pub/Sub push, and the
-   multi-container prod stack. Wire the cursor-poll command as the single
+2. **Strip infrastructure**: remove the old task queue, cache broker, Gmail push path, and the
+   oversized prod stack. Wire the cursor-poll command as the single
    ingestion path.
 3. **Harden the pipeline**: confirm and strengthen replay, review-queue, and
    validation paths with tests built on **real saved sample emails per
@@ -197,15 +197,14 @@ Because the goal is reliability and the existing code is currently unverified:
 - Customer-facing booking or payments.
 - Bookeo Marketing tab, public booking page, and waivers (do not apply to an
   email mirror).
-- Real-time sub-second triggering (Pub/Sub).
+- Real-time sub-second triggering.
 - Provider APIs (revisit later only if access becomes available).
 - Multi-inbox support.
-- Celery/Redis/distributed task processing.
+- Distributed task processing.
 
 ## Resolved decisions (from spec review)
 
 - **Gmail access:** keep the existing OAuth Gmail-API integration with a
-  **read-only** scope for the poller; drop only the Pub/Sub push part and poll
-  using a stored history cursor.
+  **read-only** scope for the poller and use a stored history cursor.
 - **Failure alert:** **in-app banner / count** in the review queue (no outbound
   email). Can add an emailed daily summary later if needed.

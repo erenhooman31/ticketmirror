@@ -15,9 +15,9 @@ export TICKETMIRROR_ENV_FILE="${ENV_FILE}"
 mkdir -p "${ROOT_DIR}/deployment/backups"
 
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" build
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d postgres redis
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d postgres
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" run --rm web python manage.py migrate --noinput
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" run --rm web python manage.py collectstatic --noinput
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" run --rm web python manage.py create_initial_admin
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d web worker beat caddy
+docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d web poller caddy
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" ps

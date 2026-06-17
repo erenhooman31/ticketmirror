@@ -1,5 +1,5 @@
 from datetime import date, time
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
@@ -195,15 +195,13 @@ def test_ingestion_settings_roles_and_process_action(client, users):
     assert response.status_code == 403
 
     client.force_login(users["operator"])
-    task = Mock()
-    task.apply.return_value.get.return_value = 3
-    with patch("apps.core.views.process_pending_raw_emails", task):
+    with patch("apps.core.views.process_pending_raw_emails", return_value=3) as process:
         response = client.post(
             reverse("core:settings_ingestion"),
             {"action": "process_pending", "limit": "10"},
         )
     assert response.status_code == 302
-    task.apply.assert_called_once_with(kwargs={"limit": 10})
+    process.assert_called_once_with(limit=10)
 
 
 @pytest.mark.django_db

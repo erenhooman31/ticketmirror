@@ -202,6 +202,32 @@ def test_bookeo_without_ota_reference_still_creates_bookeo_booking():
 
 
 @pytest.mark.django_db
+def test_bookeo_without_ota_reference_merges_with_later_direct_ota_email():
+    create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="Bosphorus Cruise",
+        raw_product_name="2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+        raw_option_name="",
+        start_time=time(11, 0),
+        service_date=date(2026, 6, 17),
+    )
+    bookeo_payload = bookeo_message("gmail-bookeo-provisional")
+    bookeo_payload["body_text"] = bookeo_body_without_ota_reference()
+    process_gmail_message(bookeo_payload)
+
+    direct_raw = process_gmail_message(viator_same_booking_message("gmail-direct-ota"))
+    booking = Booking.objects.get()
+
+    assert direct_raw.parse_status == RawEmail.ParseStatus.PARSED
+    assert booking.provider.code == "viator"
+    assert booking.provider_booking_reference == "1411335703"
+    assert booking.provider_order_reference == "Bookeo 2557606167491444"
+    assert Booking.objects.count() == 1
+    assert booking.events.filter(new_values__cross_channel_identity_merge=True).exists()
+
+
+@pytest.mark.django_db
 def test_bookeo_cancellation_raw_email_updates_existing_booking():
     create_activity_setup(
         provider_code="viator",

@@ -9,8 +9,7 @@ ticketmirror is not the source of truth. It stores raw provider emails first, pa
 - Python 3.12
 - Django 5.x
 - PostgreSQL
-- Redis
-- Celery
+- Gmail polling management command
 - Server-rendered Django templates
 - pytest, ruff, black
 
@@ -103,10 +102,9 @@ python manage.py seed_bookeo_products
 
 ## Production Deployment
 
-Production deployment uses `docker-compose.prod.yml` with Gunicorn, Celery
-worker, Celery beat, PostgreSQL, Redis, and Caddy. Start from
-`.env.prod.example`, fill in real values on the server, and follow
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Production deployment uses `docker-compose.prod.yml` with Gunicorn, PostgreSQL,
+a dedicated Gmail poller service, and Caddy. Start from `.env.prod.example`,
+fill in real values on the server, and follow [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ```bash
 cp .env.prod.example .env.prod
@@ -133,9 +131,6 @@ Required production values:
 - `ALLOWED_HOSTS`: Comma-separated hostnames.
 - `CSRF_TRUSTED_ORIGINS`: Comma-separated trusted origins for HTTPS deployments.
 - `DATABASE_URL`: PostgreSQL connection URL.
-- `REDIS_URL`: Redis URL used by the application.
-- `CELERY_BROKER_URL`: Celery broker URL.
-- `CELERY_RESULT_BACKEND`: Celery result backend URL.
 
 Gmail integration placeholders:
 
@@ -143,15 +138,12 @@ Gmail integration placeholders:
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
-- `GMAIL_PUBSUB_TOPIC`
-- `GMAIL_WEBHOOK_AUDIENCE`
-- `GOOGLE_CLOUD_PROJECT`
 
 Gmail ingestion commands:
 
 ```bash
-python manage.py setup_gmail_watch
-python manage.py renew_gmail_watch
+python manage.py poll_gmail
+python manage.py poll_gmail --loop --interval 60
 python manage.py sync_recent_gmail --limit 100
 python manage.py process_pending_emails
 ```
@@ -161,7 +153,8 @@ Do not commit real Gmail credentials or provider secrets.
 ## Booking Model Notes
 
 - Raw emails are stored in `ingestion.RawEmail` before parsing.
-- Existing bookings are matched by provider and provider booking reference.
+- Existing bookings are matched first by underlying OTA identity across channels,
+  then by provider and provider booking reference.
 - Tours and activities are configured in Settings at `/settings/tours/`.
 - Capacity lives on `ActivityScheduleSlot`; people rules store booking-size defaults.
 - Provider payload data is stored separately from active internal fields.

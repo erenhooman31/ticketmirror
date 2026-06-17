@@ -29,20 +29,10 @@ class GmailConfig:
     client_id: str
     client_secret: str
     refresh_token: str
-    pubsub_topic: str
-    google_cloud_project: str
 
     @property
     def user_id(self) -> str:
         return self.mailbox or "me"
-
-    @property
-    def topic_name(self) -> str:
-        if self.pubsub_topic.startswith("projects/"):
-            return self.pubsub_topic
-        if self.google_cloud_project and self.pubsub_topic:
-            return f"projects/{self.google_cloud_project}/topics/{self.pubsub_topic}"
-        return self.pubsub_topic
 
 
 class GmailClient:
@@ -57,8 +47,6 @@ class GmailClient:
             client_id=settings.GMAIL_CLIENT_ID,
             client_secret=settings.GMAIL_CLIENT_SECRET,
             refresh_token=settings.GMAIL_REFRESH_TOKEN,
-            pubsub_topic=settings.GMAIL_PUBSUB_TOPIC,
-            google_cloud_project=settings.GOOGLE_CLOUD_PROJECT,
         )
         self._access_token = access_token
 
@@ -168,22 +156,6 @@ class GmailClient:
             if not page_token or not batch:
                 break
         return message_ids
-
-    def setup_watch(self) -> dict[str, Any]:
-        topic_name = self.config.topic_name
-        if not topic_name:
-            raise ImproperlyConfigured(
-                "GMAIL_PUBSUB_TOPIC is required for Gmail watch."
-            )
-        return self._request(
-            f"/users/{self.config.user_id}/watch",
-            method="POST",
-            body={
-                "topicName": topic_name,
-                "labelIds": ["INBOX"],
-                "labelFilterBehavior": "INCLUDE",
-            },
-        )
 
     def _request(
         self,

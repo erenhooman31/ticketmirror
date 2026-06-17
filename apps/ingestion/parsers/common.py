@@ -50,6 +50,62 @@ RU_MONTHS = {
     "декабрь": 12,
     "декабря": 12,
 }
+RU_MONTHS.update(
+    {
+        "января": 1,
+        "январь": 1,
+        "февраля": 2,
+        "февраль": 2,
+        "марта": 3,
+        "март": 3,
+        "апреля": 4,
+        "апрель": 4,
+        "мая": 5,
+        "май": 5,
+        "июня": 6,
+        "июнь": 6,
+        "июля": 7,
+        "июль": 7,
+        "августа": 8,
+        "август": 8,
+        "сентября": 9,
+        "сентябрь": 9,
+        "октября": 10,
+        "октябрь": 10,
+        "ноября": 11,
+        "ноябрь": 11,
+        "декабря": 12,
+        "декабрь": 12,
+    }
+)
+RU_MONTHS.update(
+    {
+        "\u044f\u043d\u0432\u0430\u0440\u044f": 1,
+        "\u044f\u043d\u0432\u0430\u0440\u044c": 1,
+        "\u0444\u0435\u0432\u0440\u0430\u043b\u044f": 2,
+        "\u0444\u0435\u0432\u0440\u0430\u043b\u044c": 2,
+        "\u043c\u0430\u0440\u0442\u0430": 3,
+        "\u043c\u0430\u0440\u0442": 3,
+        "\u0430\u043f\u0440\u0435\u043b\u044f": 4,
+        "\u0430\u043f\u0440\u0435\u043b\u044c": 4,
+        "\u043c\u0430\u044f": 5,
+        "\u043c\u0430\u0439": 5,
+        "\u0438\u044e\u043d\u044f": 6,
+        "\u0438\u044e\u043d\u044c": 6,
+        "\u0438\u044e\u043b\u044f": 7,
+        "\u0438\u044e\u043b\u044c": 7,
+        "\u0430\u0432\u0433\u0443\u0441\u0442\u0430": 8,
+        "\u0430\u0432\u0433\u0443\u0441\u0442": 8,
+        "\u0441\u0435\u043d\u0442\u044f\u0431\u0440\u044f": 9,
+        "\u0441\u0435\u043d\u0442\u044f\u0431\u0440\u044c": 9,
+        "\u043e\u043a\u0442\u044f\u0431\u0440\u044f": 10,
+        "\u043e\u043a\u0442\u044f\u0431\u0440\u044c": 10,
+        "\u043d\u043e\u044f\u0431\u0440\u044f": 11,
+        "\u043d\u043e\u044f\u0431\u0440\u044c": 11,
+        "\u0434\u0435\u043a\u0430\u0431\u0440\u044f": 12,
+        "\u0434\u0435\u043a\u0430\u0431\u0440\u044c": 12,
+    }
+)
 MONEY_RE = re.compile(
     r"(?P<currency>USD|EUR|GBP|TRY|\$|€|£)\s*(?P<amount>\d+(?:[,.]\d{2})?)"
     r"|(?P<amount_alt>\d+(?:[,.]\d{2})?)\s*(?P<currency_alt>USD|EUR|GBP|TRY|€|£)",
@@ -215,6 +271,34 @@ def parse_time_flexible(value: str | None) -> time | None:
     return time(hour=hour, minute=minute)
 
 
+_parse_date_flexible_legacy = parse_date_flexible
+
+
+def parse_date_flexible(value: str | None) -> date | None:
+    parsed = _parse_date_flexible_legacy(value)
+    if parsed:
+        return parsed
+    value = normalize_whitespace(value)
+    if not value:
+        return None
+    value = re.sub(r"\bв\b\s+\d{1,2}:\d{2}", "", value, flags=re.I)
+    match = re.search(
+        r"\b(\d{1,2})\s+([а-яё]+)(?:\s+(20\d{2}))?",
+        value,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    month = RU_MONTHS.get(match.group(2).lower())
+    if not month:
+        return None
+    year = int(match.group(3)) if match.group(3) else date.today().year
+    try:
+        return date(year, month, int(match.group(1)))
+    except ValueError:
+        return None
+
+
 def extract_email(text: str) -> str | None:
     match = EMAIL_RE.search(text)
     return match.group(0) if match else None
@@ -343,6 +427,50 @@ def status_for_event(event_type: str, body_text: str) -> str:
     return STATUS_PENDING
 
 
+_infer_event_type_legacy = infer_event_type
+
+
+def infer_event_type(subject: str, body_text: str) -> str:
+    haystack = f"{subject}\n{body_text}".lower()
+    if "отмен" in haystack:
+        return EVENT_CANCELLATION
+    if "измен" in haystack:
+        return EVENT_UPDATE
+    return _infer_event_type_legacy(subject, body_text)
+
+
+_status_for_event_legacy = status_for_event
+
+
+def status_for_event(event_type: str, body_text: str) -> str:
+    haystack = body_text.lower()
+    if "подтвержд" in haystack:
+        return STATUS_CONFIRMED
+    return _status_for_event_legacy(event_type, body_text)
+
+
+_infer_event_type_cyrillic_legacy = infer_event_type
+
+
+def infer_event_type(subject: str, body_text: str) -> str:
+    haystack = f"{subject}\n{body_text}".lower()
+    if "\u043e\u0442\u043c\u0435\u043d" in haystack:
+        return EVENT_CANCELLATION
+    if "\u0438\u0437\u043c\u0435\u043d" in haystack:
+        return EVENT_UPDATE
+    return _infer_event_type_cyrillic_legacy(subject, body_text)
+
+
+_status_for_event_cyrillic_legacy = status_for_event
+
+
+def status_for_event(event_type: str, body_text: str) -> str:
+    haystack = body_text.lower()
+    if "\u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434" in haystack:
+        return STATUS_CONFIRMED
+    return _status_for_event_cyrillic_legacy(event_type, body_text)
+
+
 def infer_slot_type(start_time: time | None, body_text: str) -> str:
     haystack = body_text.lower()
     if "private" in haystack:
@@ -374,6 +502,71 @@ def confidence_score(
     warnings = [f"{key}_missing" for key, passed in checks.items() if not passed]
     score = round(sum(checks.values()) / len(checks), 2)
     return score, warnings
+
+
+_labeled_value_legacy = labeled_value
+_ACTUAL_CYRILLIC_LABELS = [
+    "Экскурсия",
+    "Тур",
+    "Активность",
+    "Тип билета",
+    "Дата",
+    "Дата и время",
+    "Время",
+    "Время начала",
+    "Участников",
+    "Участники",
+    "Гостей",
+    "Билеты",
+    "Клиент",
+    "Имя",
+    "Телефон",
+    "Электронная почта",
+    "Язык",
+    "Место посадки",
+    "Место встречи",
+    "Комментарий туриста",
+    "Сообщение клиента",
+    "Стоимость",
+    "Оплата",
+]
+_ACTUAL_CYRILLIC_LABELS.extend(
+    [
+        "\u042d\u043a\u0441\u043a\u0443\u0440\u0441\u0438\u044f",
+        "\u0422\u0443\u0440",
+        "\u0410\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u044c",
+        "\u0422\u0438\u043f \u0431\u0438\u043b\u0435\u0442\u0430",
+        "\u0414\u0430\u0442\u0430",
+        "\u0414\u0430\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f",
+        "\u0412\u0440\u0435\u043c\u044f",
+        "\u0412\u0440\u0435\u043c\u044f \u043d\u0430\u0447\u0430\u043b\u0430",
+        "\u0423\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u043e\u0432",
+        "\u0423\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u0438",
+        "\u0413\u043e\u0441\u0442\u0435\u0439",
+        "\u0411\u0438\u043b\u0435\u0442\u044b",
+        "\u041a\u043b\u0438\u0435\u043d\u0442",
+        "\u0418\u043c\u044f",
+        "\u0422\u0435\u043b\u0435\u0444\u043e\u043d",
+        "\u042d\u043b\u0435\u043a\u0442\u0440\u043e\u043d\u043d\u0430\u044f "
+        "\u043f\u043e\u0447\u0442\u0430",
+        "\u042f\u0437\u044b\u043a",
+        "\u041c\u0435\u0441\u0442\u043e \u043f\u043e\u0441\u0430\u0434\u043a\u0438",
+        "\u041c\u0435\u0441\u0442\u043e \u0432\u0441\u0442\u0440\u0435\u0447\u0438",
+        "\u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 "
+        "\u0442\u0443\u0440\u0438\u0441\u0442\u0430",
+        "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 "
+        "\u043a\u043b\u0438\u0435\u043d\u0442\u0430",
+        "\u0421\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c",
+        "\u041e\u043f\u043b\u0430\u0442\u0430",
+    ]
+)
+
+
+def labeled_value(text: str, labels: list[str]) -> str:
+    value = _labeled_value_legacy(text, labels)
+    if value:
+        return value
+    return _labeled_value_legacy(text, [*labels, *_ACTUAL_CYRILLIC_LABELS])
 
 
 def parse_labeled_booking(

@@ -13,8 +13,8 @@ Implemented areas:
   sync state.
 - Deterministic parser framework with provider parsers and fixture-backed tests.
 - Gmail API ingestion scaffolding using environment-based OAuth placeholders,
-  Pub/Sub webhook handling, Celery retries, Gmail history tracking, MIME body
-  decoding, forwarded-email handling, and RawEmail normalization.
+  polling, Gmail history tracking, MIME body decoding, forwarded-email handling,
+  and RawEmail normalization.
 - Booking upsert service keyed by provider and provider booking reference.
 - Manual override behavior that prevents provider updates from silently
   overwriting active operational fields.
@@ -29,8 +29,8 @@ Implemented areas:
 - Admin polish with useful list displays, filters, search fields, read-only
   identity fields after creation, booking event inlines, alias inlines, and raw
   email body previews.
-- Production Docker Compose stack with Gunicorn, Celery worker, Celery beat,
-  PostgreSQL, Redis, and Caddy.
+- Production Docker Compose stack with Gunicorn, PostgreSQL, a Gmail poller,
+  and Caddy.
 - Deployment scripts for migrations, static collection, initial admin creation,
   PostgreSQL backup, PostgreSQL restore, and optional systemd management.
 - GitHub Actions CI and Dependabot configuration.
@@ -109,8 +109,7 @@ Short version:
    docker compose --env-file .env.prod -f docker-compose.prod.yml ps
    ```
 
-7. Configure Gmail OAuth, Pub/Sub, and watch registration when credentials are
-   available.
+7. Configure Gmail OAuth when credentials are available.
 
 The production stack is isolated in `docker-compose.prod.yml` and uses separate
 containers, volumes, env file, and backup directory.
@@ -122,7 +121,7 @@ containers, volumes, env file, and backup directory.
 - Parser registry and deterministic parser test coverage for anonymized fixture
   emails.
 - Raw-email-first ingestion flow and duplicate protection by Gmail message ID.
-- Gmail API client scaffolding and webhook/task flow with mocked test coverage.
+- Gmail API client scaffolding and polling flow with mocked test coverage.
 - Booking creation/update logic and manual override conflict handling.
 - Capacity calculations for fixed-time, full-day, half-day, and private-group
   variants.
@@ -138,10 +137,7 @@ containers, volumes, env file, and backup directory.
 - Production domain in `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, and `DOMAIN`.
 - Production PostgreSQL password and matching `DATABASE_URL`.
 - Optional initial admin env values, or manual superuser creation.
-- Gmail OAuth client ID, client secret, refresh token, mailbox, Pub/Sub topic,
-  webhook verification/audience value, and Google Cloud project ID.
-- Gmail Pub/Sub subscription configuration pointing at
-  `/ingestion/gmail/webhook/`.
+- Gmail OAuth client ID, client secret, refresh token, and mailbox.
 - Production backup retention and off-server backup copy process.
 
 ## Known Limitations
@@ -151,10 +147,7 @@ containers, volumes, env file, and backup directory.
 - Klook parser coverage may need refinement when real sample emails are added.
 - PDF attachment parsing is not required because current email samples are plain
   text.
-- Gmail webhook validation is intentionally minimal until the production
-  verification method is finalized.
-- Celery beat is present in production Compose, but periodic schedules should be
-  explicitly configured for the final operating cadence.
+- Gmail polling credentials must be provisioned before live ingestion.
 - Capacity rules assume the current product/variant model and should be revisited
   if products gain complex overlapping inventory pools.
 - Reports are CSV-first and server-rendered; there is no BI dashboard or charting
@@ -162,10 +155,8 @@ containers, volumes, env file, and backup directory.
 
 ## Next Recommended Improvements
 
-- Add production Pub/Sub webhook signature or token verification once the final
-  Google delivery path is configured.
-- Add Celery beat schedule configuration for Gmail watch renewal, daily
-  reconciliation, and pending raw email processing.
+- Add structured operational alerts for Gmail polling, reconciliation, and
+  pending raw email processing.
 - Add structured logging and application metrics for ingestion failures,
   capacity warnings, and parser review volume.
 - Add more anonymized real provider samples, especially for Klook and forwarded

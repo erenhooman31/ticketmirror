@@ -15,8 +15,7 @@ Do not build public customer pages. Do not build payment processing. Do not add 
 - Python 3.12
 - Django 5.x
 - PostgreSQL
-- Redis
-- Celery
+- Gmail polling management command
 - Docker Compose
 - Server-rendered Django templates
 - Django admin for emergency/developer console access only
@@ -29,7 +28,7 @@ Do not use React, Next.js, or a separate frontend app unless explicitly requeste
 
 ## App Layout
 
-- `config/`: Django settings, URL configuration, ASGI/WSGI, Celery app.
+- `config/`: Django settings, URL configuration, ASGI/WSGI.
 - `apps/accounts/`: user profile and role model for admin, operator, viewer.
 - `apps/bookings/`: providers, tours/activities, schedules, schedule slots, people rules, provider aliases, bookings, audit events, manual overrides, review queue.
 - `apps/ingestion/`: raw email storage, Gmail scaffolding, parser registry, provider parser modules, booking upsert services.
@@ -100,7 +99,7 @@ Do not leave formatting-only churn mixed with unrelated behavior changes unless 
 
 ## Security Rules
 
-- Never hardcode credentials, tokens, cookies, client secrets, Gmail credentials, database URLs, Redis URLs, or provider secrets.
+- Never hardcode credentials, tokens, cookies, client secrets, Gmail credentials, database URLs, or provider secrets.
 - Use environment variables and document new variables in `.env.example` and README/docs.
 - Do not commit `.env`, real emails, real Gmail payloads, production database dumps, or customer/traveler personal data.
 - Treat raw email bodies as sensitive operational data.
@@ -113,7 +112,7 @@ Do not leave formatting-only churn mixed with unrelated behavior changes unless 
 - PostgreSQL is the application database. SQLite is only acceptable for local tests.
 - Create migrations for every model change.
 - Do not use traveler name as a unique identifier.
-- Upsert bookings by `provider + provider_booking_reference` only.
+- Upsert bookings by underlying OTA identity first, then by `provider + provider_booking_reference`.
 - Keep original provider values and internal active values separate.
 - Store provider payloads and raw emails for traceability.
 - Manual edits must create audit records.
