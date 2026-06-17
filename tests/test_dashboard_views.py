@@ -1270,6 +1270,10 @@ def test_customers_directory_search_alpha_and_detail(client, users, booking_data
     assert "Total people:" in html
     assert "BR-1" in html
     assert "BR-2" in html
+    assert 'data-bs-target="#customer-modal-' in html
+    assert 'data-customer-booking-target="#customer-booking-modal-' in html
+    assert 'id="customer-booking-modal-' in html
+    assert 'data-href="' not in html
 
     alpha_response = client.get(reverse("core:customers"), {"letter": "B"})
     alpha_html = alpha_response.content.decode()

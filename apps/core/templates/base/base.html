@@ -204,12 +204,16 @@
       .tm-customer-alpha a.active { background: linear-gradient(#2d65a8, #184981); border-color: #163f70; color: #fff; }
       .tm-customer-count { color: #536273; font-size: .82rem; margin-left: auto; padding: .3rem 0; }
       .tm-customer-directory { display: grid; gap: .35rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .tm-customer-card { align-items: flex-start; background: #fff; border: 1px solid #dfe5ec; color: #1f2933; display: grid; gap: .45rem; grid-template-columns: 2.4rem minmax(0, 1fr); min-height: 4.3rem; padding: .45rem .5rem; text-decoration: none; }
+      .tm-customer-card { align-items: flex-start; background: #fff; border: 1px solid #dfe5ec; color: #1f2933; cursor: pointer; display: grid; font: inherit; gap: .45rem; grid-template-columns: 2.4rem minmax(0, 1fr); min-height: 4.3rem; padding: .45rem .5rem; text-align: left; text-decoration: none; width: 100%; }
       .tm-customer-card:hover, .tm-customer-card.active { background: #eef4ff; color: #1f2933; }
       .tm-customer-initials { color: #123e76; font-size: .86rem; font-weight: 750; text-align: center; }
       .tm-customer-main { display: grid; line-height: 1.18; min-width: 0; }
       .tm-customer-name { font-size: .88rem; font-weight: 650; }
       .tm-customer-email, .tm-customer-phone { color: #1f5590; font-size: .82rem; overflow-wrap: anywhere; }
+      .tm-bookeo-dialog.tm-customer-detail-modal .modal-dialog { max-width: 980px; }
+      .tm-customer-dialog-shell { min-height: 24rem; }
+      .tm-customer-booking-row { cursor: pointer; }
+      .tm-customer-booking-row:hover td, .tm-customer-booking-row:focus td { background: #eef4ff; }
       .tm-bookeo-dialog .modal-dialog { max-width: 760px; }
       .tm-bookeo-dialog .modal-content { border: 1px solid #6b7f98; border-radius: 3px; box-shadow: 0 14px 36px rgba(0,0,0,.38); }
       .tm-bookeo-dialog-header { background: linear-gradient(#284f8a, #173e75); border-bottom: 1px solid #0b315f; color: #fff; min-height: 2rem; padding: .3rem .55rem; }

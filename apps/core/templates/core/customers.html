@@ -22,80 +22,125 @@
 
     <section class="tm-customer-directory" aria-label="Customer directory">
       {% for customer in customer_rows %}
-        <a class="tm-customer-card {% if selected_customer.id == customer.id %}active{% endif %}" href="{% url 'core:customers' %}?customer={{ customer.id }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}{% if letter %}&amp;letter={{ letter }}{% endif %}">
+        <button class="tm-customer-card" type="button" data-bs-toggle="modal" data-bs-target="#{{ customer.modal_id }}">
           <span class="tm-customer-initials">{{ customer.initials }}</span>
           <span class="tm-customer-main">
             <span class="tm-customer-name">{{ customer.name|safe_display:"Missing customer" }}</span>
             <span class="tm-customer-email">{{ customer.email|safe_display:"Missing email" }}</span>
             <span class="tm-customer-phone">{{ customer.phone|safe_display:"Missing phone" }}</span>
           </span>
-        </a>
+        </button>
       {% empty %}
         <div class="tm-bookeo-empty">No customers found.</div>
       {% endfor %}
     </section>
 
-    {% if selected_customer %}
-      <section class="tm-bookeo-fieldset mt-3">
-        <h2>{{ selected_customer.name|safe_display:"Missing customer" }}</h2>
-        <table class="tm-bookeo-dialog-table mb-3">
-          <tbody>
-            <tr>
-              <th>Email:</th>
-              <td>
-                {% if selected_customer.email %}
-                  <a href="mailto:{{ selected_customer.email }}">{{ selected_customer.email }}</a>
-                {% endif %}
-              </td>
-            </tr>
-            <tr>
-              <th>Phone:</th>
-              <td>
-                {% if selected_customer.phone %}
-                  <a href="tel:{{ selected_customer.phone }}">{{ selected_customer.phone }}</a>
-                {% endif %}
-              </td>
-            </tr>
-            <tr><th>Language:</th><td>{{ selected_customer.language|safe_display:"Missing language" }}</td></tr>
-            <tr><th>Bookings:</th><td>{{ selected_customer.bookings|length }}</td></tr>
-            <tr><th>Total people:</th><td>{{ selected_customer.total_pax }}</td></tr>
-          </tbody>
-        </table>
+    {% for customer in customer_rows %}
+      <div class="modal fade tm-bookeo-dialog tm-customer-detail-modal" id="{{ customer.modal_id }}" tabindex="-1" aria-labelledby="{{ customer.modal_id }}-title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header tm-bookeo-dialog-header">
+              <h2 class="modal-title" id="{{ customer.modal_id }}-title">{{ customer.name|safe_display:"Missing customer" }}</h2>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="tm-bookeo-dialog-shell tm-customer-dialog-shell">
+              <div class="modal-body">
+                <table class="tm-bookeo-dialog-table mb-3">
+                  <tbody>
+                    <tr>
+                      <th>Email:</th>
+                      <td>
+                        {% if customer.email %}
+                          <a href="mailto:{{ customer.email }}">{{ customer.email }}</a>
+                        {% endif %}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Phone:</th>
+                      <td>
+                        {% if customer.phone %}
+                          <a href="tel:{{ customer.phone }}">{{ customer.phone }}</a>
+                        {% endif %}
+                      </td>
+                    </tr>
+                    <tr><th>Language:</th><td>{{ customer.language|safe_display:"Missing language" }}</td></tr>
+                    <tr><th>Bookings:</th><td>{{ customer.bookings|length }}</td></tr>
+                    <tr><th>Total people:</th><td>{{ customer.total_pax }}</td></tr>
+                  </tbody>
+                </table>
 
-        <h2>Bookings</h2>
-        <div class="table-responsive">
-          <table class="tm-bookeo-other-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Reference</th>
-                <th>Product</th>
-                <th>People</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for booking in selected_customer.bookings %}
-                <tr data-href="{% url 'bookings:detail' booking.id %}">
-                  <td>{% if booking.active_travel_date %}{{ booking.active_travel_date|date:"j/n/Y" }}{% else %}Missing date/time{% endif %}</td>
-                  <td>{{ booking.provider_booking_reference|safe_display:"Missing reference" }}</td>
-                  <td>
-                    {% if booking.raw_product_name %}
-                      {{ booking.raw_product_name|safe_display:"Missing tour/activity" }}
-                    {% elif booking.activity %}
-                      {{ booking.activity.name|safe_display:"Missing tour/activity" }}
-                    {% else %}
-                      Missing tour/activity
-                    {% endif %}
-                  </td>
-                  <td>{{ booking.active_traveler_count|default:"Missing participant count" }}</td>
-                  <td>{{ booking.get_status_display }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+                <h2>Bookings</h2>
+                <div class="table-responsive">
+                  <table class="tm-bookeo-other-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Reference</th>
+                        <th>Product</th>
+                        <th>People</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for card in customer.booking_cards %}
+                        {% with booking=card.booking %}
+                          <tr class="tm-customer-booking-row" role="button" tabindex="0" data-customer-booking-target="#{{ card.modal_id }}">
+                            <td>{% if booking.active_travel_date %}{{ booking.active_travel_date|date:"j/n/Y" }}{% else %}Missing date/time{% endif %}</td>
+                            <td>{{ booking.provider_booking_reference|safe_display:"Missing reference" }}</td>
+                            <td>
+                              {% if booking.raw_product_name %}
+                                {{ booking.raw_product_name|safe_display:"Missing tour/activity" }}
+                              {% elif booking.activity %}
+                                {{ booking.activity.name|safe_display:"Missing tour/activity" }}
+                              {% else %}
+                                Missing tour/activity
+                              {% endif %}
+                            </td>
+                            <td>{{ booking.active_traveler_count|default:"Missing participant count" }}</td>
+                            <td>{{ booking.get_status_display }}</td>
+                          </tr>
+                        {% endwith %}
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <aside class="tm-bookeo-dialog-rail">
+                <button class="btn btn-light" type="button" data-bs-dismiss="modal">Close</button>
+                <button class="btn btn-light" type="button" onclick="window.print()">Print</button>
+              </aside>
+            </div>
+          </div>
         </div>
-      </section>
-    {% endif %}
+      </div>
+    {% endfor %}
+
+    {% for customer in customer_rows %}
+      {% for card in customer.booking_cards %}
+        {% include "core/_booking_modal.html" with booking=card.booking modal_id=card.modal_id %}
+      {% endfor %}
+    {% endfor %}
   </div>
+
+  <script>
+    document.addEventListener("click", (event) => {
+      const trigger = event.target.closest("[data-customer-booking-target]");
+      if (!trigger) return;
+
+      const target = document.querySelector(trigger.dataset.customerBookingTarget);
+      if (!target || !window.bootstrap) return;
+
+      window.bootstrap.Modal.getOrCreateInstance(target).show();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+
+      const trigger = event.target.closest("[data-customer-booking-target]");
+      if (!trigger) return;
+
+      event.preventDefault();
+      trigger.click();
+    });
+  </script>
 {% endblock %}

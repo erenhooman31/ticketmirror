@@ -328,7 +328,6 @@ def search(request):
 def customers(request):
     query = request.GET.get("q", "").strip()
     letter = request.GET.get("letter", "").strip().upper()
-    selected_id = request.GET.get("customer")
     bookings = (
         Booking.objects.exclude(lead_traveler_name__isnull=True)
         .exclude(lead_traveler_name="")
@@ -341,7 +340,6 @@ def customers(request):
         bookings = bookings.filter(lead_traveler_name__istartswith=letter)
 
     customer_rows = _customer_rows(bookings)
-    selected_customer = _selected_customer(customer_rows, selected_id)
     return render(
         request,
         "core/customers.html",
@@ -350,7 +348,15 @@ def customers(request):
             "letter": letter,
             "letters": ["ALL", *[chr(code) for code in range(ord("A"), ord("Z") + 1)]],
             "customer_rows": customer_rows,
-            "selected_customer": selected_customer,
+            "booking_status_options": Booking.Status.choices,
+            "attendance_status_options": Booking.AttendanceStatus.choices,
+            "activity_options": TourActivity.objects.filter(active=True).order_by(
+                "name"
+            ),
+            "slot_options": ActivityScheduleSlot.objects.filter(active=True)
+            .select_related("schedule", "schedule__activity")
+            .order_by("schedule__activity__name", "start_time"),
+            "slot_type_options": ActivityScheduleSlot.SlotType.choices,
         },
     )
 
@@ -537,6 +543,7 @@ def _customer_rows(bookings):
             {
                 "key": key,
                 "id": booking.id,
+                "modal_id": f"customer-modal-{booking.id}",
                 "name": customer_label(booking),
                 "initials": _customer_initials(
                     customer_label(booking, fallback=""),
@@ -545,11 +552,18 @@ def _customer_rows(bookings):
                 "email": clean_text(booking.lead_traveler_email, "Missing email"),
                 "language": clean_text(booking.language, "Missing language"),
                 "bookings": [],
+                "booking_cards": [],
                 "last_booking": None,
                 "total_pax": 0,
             },
         )
         row["bookings"].append(booking)
+        row["booking_cards"].append(
+            {
+                "booking": booking,
+                "modal_id": f"customer-booking-modal-{booking.id}",
+            },
+        )
         row["total_pax"] += booking.active_traveler_count or 0
         if not row["last_booking"] or _booking_sort_date(booking) > _booking_sort_date(
             row["last_booking"]
@@ -575,16 +589,6 @@ def _customer_initials(name):
     if len(parts) == 1:
         return parts[0][:2].upper()
     return f"{parts[0][0]}{parts[-1][0]}".upper()
-
-
-def _selected_customer(customer_rows, selected_id):
-    if not customer_rows:
-        return None
-    if selected_id:
-        for row in customer_rows:
-            if str(row["id"]) == selected_id:
-                return row
-    return customer_rows[0]
 
 
 def _booking_sort_date(booking):
