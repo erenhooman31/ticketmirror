@@ -383,8 +383,8 @@ def extract_traveler_count(text: str) -> int | None:
         r"(\d+)\s*(?:traveler|traveller|participant|guest|ticket|person|people|pax)s?\b",
         r"(?:adult|adults)\s*[:#-]?\s*(\d+)",
         r"\b(?:adult|adults)\s+(\d+)\b",
-        r"(?:участников|участники|гостей|билетов|человек)\s*[:#-]?\s*(\d+)",
-        r"\b(\d+)\s*(?:pcs|шт|чел|человек)\b",
+        r"(?:участников|участники|кол-во|количество|туристов|гостей|билетов|человек)\s*[:#-]?\s*(\d+)",
+        r"\b(\d+)\s*(?:pcs|шт|чел|человек|человека|туриста|туристов)\b",
     ]
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -516,10 +516,17 @@ _ACTUAL_CYRILLIC_LABELS = [
     "Время начала",
     "Участников",
     "Участники",
+    "Кол-во",
+    "Количество",
+    "Туристов",
     "Гостей",
     "Билеты",
     "Клиент",
     "Имя",
+    "Турист",
+    "ФИО",
+    "Контактное лицо",
+    "Гость",
     "Телефон",
     "Электронная почта",
     "Язык",
@@ -542,10 +549,18 @@ _ACTUAL_CYRILLIC_LABELS.extend(
         "\u0412\u0440\u0435\u043c\u044f \u043d\u0430\u0447\u0430\u043b\u0430",
         "\u0423\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u043e\u0432",
         "\u0423\u0447\u0430\u0441\u0442\u043d\u0438\u043a\u0438",
+        "\u041a\u043e\u043b-\u0432\u043e",
+        "\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e",
+        "\u0422\u0443\u0440\u0438\u0441\u0442\u043e\u0432",
         "\u0413\u043e\u0441\u0442\u0435\u0439",
         "\u0411\u0438\u043b\u0435\u0442\u044b",
         "\u041a\u043b\u0438\u0435\u043d\u0442",
         "\u0418\u043c\u044f",
+        "\u0422\u0443\u0440\u0438\u0441\u0442",
+        "\u0424\u0418\u041e",
+        "\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u043d\u043e\u0435 "
+        "\u043b\u0438\u0446\u043e",
+        "\u0413\u043e\u0441\u0442\u044c",
         "\u0422\u0435\u043b\u0435\u0444\u043e\u043d",
         "\u042d\u043b\u0435\u043a\u0442\u0440\u043e\u043d\u043d\u0430\u044f "
         "\u043f\u043e\u0447\u0442\u0430",
@@ -673,6 +688,9 @@ def parse_labeled_booking(
             "Tickets",
             "Участников",
             "Участники",
+            "Кол-во",
+            "Количество",
+            "Туристов",
             "Гостей",
             "Билеты",
         ],
@@ -690,10 +708,16 @@ def parse_labeled_booking(
                 "Guest",
                 "Клиент",
                 "Имя",
+                "Турист",
+                "ФИО",
+                "Контактное лицо",
+                "Гость",
             ],
         )
         or None
     )
+    if lead_name and raw_product_name and lead_name == raw_product_name:
+        lead_name = None
     email = _lead_email(body_text, sender)
     phone = extract_phone(body_text)
     traveler_names = split_names(
@@ -798,7 +822,7 @@ def _labeled_traveler_count(text: str, labels: list[str]) -> int | None:
     preferred = re.search(
         r"(\d+)[^\w\d]*(?:persons|people|participants|guests|adults|pcs|"
         r"взросл(?:ый|ых|ые)?|дет(?:ей|и)?|реб[её]нок|младен(?:ец|цев)|"
-        r"чел|человек)\b",
+        r"чел|человек|турист(?:ов|а)?)\b",
         value,
         re.IGNORECASE,
     )
@@ -818,7 +842,11 @@ def _ticket_breakdown(text: str) -> dict:
         "student": r"students?",
     }
     for label, pattern in labels.items():
-        match = re.search(rf"\b(?:{pattern})\b\s*[:#-]?\s*(\d+)", text, re.IGNORECASE)
+        match = re.search(
+            rf"\b(?:{pattern})\b(?:\s*\([^)]*\))?\s*[:#-]?\s*(\d+)",
+            text,
+            re.IGNORECASE,
+        )
         if match:
             breakdown[label] = int(match.group(1))
             continue

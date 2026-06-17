@@ -27,7 +27,7 @@
             {% for booking in row.bookings %}
               <tr>
                 <td></td>
-                <td colspan="3">{{ booking.traveler }} - {{ booking.pax }} adult{% if booking.pax != 1 %}s{% endif %} - Booking number: {{ booking.reference }}</td>
+                <td colspan="3">{{ booking.traveler }} - {{ booking.pax_display }} - Booking number: {{ booking.reference }}</td>
               </tr>
             {% endfor %}
           {% empty %}

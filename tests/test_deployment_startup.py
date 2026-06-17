@@ -9,9 +9,20 @@ def test_coolify_startup_seeds_catalog_and_repairs_backlog_after_migrate():
     repair_index = compose.index(
         "python manage.py repair_parsed_booking_display_fields"
     )
+    reslot_index = compose.index("python manage.py reslot_bookings --quiet")
+    stale_review_index = compose.index(
+        "python manage.py resolve_stale_booking_reviews --quiet --limit 500"
+    )
     collectstatic_index = compose.index("python manage.py collectstatic --noinput")
 
-    assert migrate_index < seed_index < repair_index < collectstatic_index
+    assert (
+        migrate_index
+        < seed_index
+        < repair_index
+        < reslot_index
+        < stale_review_index
+        < collectstatic_index
+    )
 
 
 def test_removed_infra_references_do_not_return():

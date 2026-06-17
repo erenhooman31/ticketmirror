@@ -9,7 +9,7 @@ from django.utils import timezone
 from helpers import create_activity_setup
 
 from apps.accounts.models import UserProfile
-from apps.bookings.models import Booking, Provider, ReviewQueueItem
+from apps.bookings.models import Booking, BookingEvent, Provider, ReviewQueueItem
 from apps.ingestion.models import RawEmail
 from apps.ingestion.services import process_gmail_message, process_raw_email
 
@@ -77,6 +77,207 @@ def test_non_booking_noise_is_ignored_without_review_queue_item():
     assert result is None
     assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
     assert ReviewQueueItem.objects.filter(raw_email=raw_email).count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "subject",
+    [
+        "💬 Сообщение к заказу №6645992",
+        "Напоминание: заказ №6645992 завтра",
+        "Новый отзыв по заказу №6645992",
+    ],
+)
+def test_russian_provider_non_booking_notifications_are_ignored(subject):
+    raw_email = RawEmail.objects.create(
+        gmail_message_id=f"tripster-noise-{abs(hash(subject))}",
+        gmail_outer_sender="orders@experience.tripster.com",
+        subject=subject,
+        received_at=timezone.now(),
+        body_text="Это сервисное уведомление по уже существующему заказу.",
+    )
+
+    result = process_raw_email(raw_email.id)
+    raw_email.refresh_from_db()
+
+    assert result is None
+    assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
+    assert ReviewQueueItem.objects.filter(raw_email=raw_email).count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("subject", "sender", "body_text"),
+    [
+        (
+            "You have a new review on GetYourGuide - 259500 (Istanbul)",
+            "supplier@getyourguide.example",
+            "A customer left a review.",
+        ),
+        (
+            "Re: GYG32L5NAVZZ - Question about the activity",
+            "supplier@getyourguide.example",
+            "Question about the activity for booking code GYG32L5NAVZZ.",
+        ),
+        (
+            "GetYourGuide Ticket received - Ticket ID [#12345] - "
+            "Question about the activity",
+            "supplier@getyourguide.example",
+            "Support ticket body.",
+        ),
+        (
+            "GetYourGuide supplier digest",
+            "news@sup.getyourguide.com",
+            "Newsletter body.",
+        ),
+    ],
+)
+def test_getyourguide_service_notifications_are_ignored_before_reference_parsing(
+    subject,
+    sender,
+    body_text,
+):
+    raw_email = RawEmail.objects.create(
+        gmail_message_id=f"gyg-service-{abs(hash(subject))}",
+        gmail_outer_sender=sender,
+        subject=subject,
+        received_at=timezone.now(),
+        body_text=body_text,
+    )
+
+    result = process_raw_email(raw_email.id)
+    raw_email.refresh_from_db()
+
+    assert result is None
+    assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
+    assert "Ignored - not a booking" in raw_email.parse_error
+    assert Booking.objects.count() == 0
+    assert ReviewQueueItem.objects.filter(raw_email=raw_email).count() == 0
+
+
+@pytest.mark.django_db
+def test_tripster_order_without_customer_does_not_create_lead_missing_review():
+    call_command("seed_bookeo_products")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="tripster-no-customer",
+        gmail_outer_sender="orders@experience.tripster.com",
+        subject=(
+            "Новый заказ на 1 июля в 19:00 "
+            "«Морская прогулка по Босфору с аудиогидом» · №6645994 · 2 человека"
+        ),
+        received_at=timezone.now(),
+        body_text="\n".join(
+            [
+                "Новый заказ",
+                "Экскурсия: Морская прогулка по Босфору с аудиогидом",
+                "Дата: 1 июля 2026",
+                "Время: 19:00",
+            ]
+        ),
+    )
+
+    booking = process_raw_email(raw_email.id)
+    raw_email.refresh_from_db()
+
+    assert booking is not None
+    assert raw_email.parse_status == RawEmail.ParseStatus.PARSED
+    assert booking.lead_traveler_name is None
+    assert not ReviewQueueItem.objects.filter(
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_stale_review_sweep_resolves_obsolete_provider_review_idempotently():
+    provider = Provider.objects.create(name="Viator", code="viator")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="stale-provider-review",
+        gmail_outer_sender="bookings@viator.com",
+        subject="Viator booking BR-STALE confirmed",
+        received_at=timezone.now(),
+        body_text=fixture("viator_new.txt"),
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.PARSED,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="BR-STALE",
+        status=Booking.Status.CONFIRMED,
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.PROVIDER_NOT_DETECTED,
+        title="Provider not detected",
+    )
+
+    output = StringIO()
+    call_command("resolve_stale_booking_reviews", stdout=output)
+    review.refresh_from_db()
+
+    assert "scanned=1 resolved=1 unchanged=0 failed=0" in output.getvalue()
+    assert review.status == ReviewQueueItem.Status.RESOLVED
+
+    second_output = StringIO()
+    call_command("resolve_stale_booking_reviews", stdout=second_output)
+    assert "scanned=0 resolved=0 unchanged=0 failed=0" in second_output.getvalue()
+
+
+@pytest.mark.django_db
+def test_stale_review_sweep_reclassifies_non_booking_email_and_cancels_false_booking():
+    provider = Provider.objects.create(
+        name="GetYourGuide",
+        code="getyourguide",
+        parser_key="getyourguide",
+    )
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="stale-gyg-question",
+        gmail_thread_id="thread-stale-gyg-question",
+        gmail_outer_sender="supplier@getyourguide.example",
+        subject="Re: GYG32L5NAVZZ - Question about the activity",
+        received_at=timezone.now(),
+        body_text="Question about the activity for booking code GYG32L5NAVZZ.",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.PARSED,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="GYG32L5NAVZZ",
+        status=Booking.Status.CONFIRMED,
+        source_thread_id=raw_email.gmail_thread_id,
+        last_email_received_at=raw_email.received_at,
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
+        source=BookingEvent.Source.EMAIL,
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.LOW_CONFIDENCE_PARSE,
+        title="Low confidence parse",
+    )
+
+    output = StringIO()
+    call_command("resolve_stale_booking_reviews", stdout=output)
+    raw_email.refresh_from_db()
+    booking.refresh_from_db()
+    review.refresh_from_db()
+
+    assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
+    assert review.status == ReviewQueueItem.Status.RESOLVED
+    assert booking.status == Booking.Status.CANCELLED
+    assert "raw_ignored=1" in output.getvalue()
+    assert "raw_resolved_reviews=1" in output.getvalue()
+    assert "cancelled_bookings=1" in output.getvalue()
+    event = booking.events.filter(
+        event_type=BookingEvent.EventType.CONFLICT_DETECTED,
+        source=BookingEvent.Source.SYSTEM,
+    ).latest("id")
+    assert event.new_values["non_booking_reclassified"] is True
 
 
 @pytest.mark.django_db

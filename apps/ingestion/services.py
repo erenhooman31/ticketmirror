@@ -79,16 +79,20 @@ def process_gmail_message(message_data: dict) -> RawEmail:
 @transaction.atomic
 def process_raw_email(raw_email_id: int) -> Booking | None:
     raw_email = RawEmail.objects.select_for_update().get(id=raw_email_id)
+    ignore_reason = non_booking_ignore_reason(raw_email)
+    if ignore_reason:
+        _mark_raw_email_ignored(raw_email, ignore_reason)
+        return None
+
     provider_code, _confidence = detect_provider(
         raw_email.subject,
         raw_email.gmail_outer_sender,
         raw_email.body_text,
     )
     if not provider_code:
-        if _should_ignore_non_booking_email(raw_email):
-            raw_email.parse_status = RawEmail.ParseStatus.IGNORED
-            raw_email.parse_error = "Ignored non-booking email."
-            raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+        ignore_reason = non_booking_ignore_reason(raw_email)
+        if ignore_reason:
+            _mark_raw_email_ignored(raw_email, ignore_reason)
             return None
         raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
         raw_email.parse_error = "Provider could not be detected."
@@ -107,10 +111,9 @@ def process_raw_email(raw_email_id: int) -> Booking | None:
     raw_email.parser_version = PARSER_VERSION
     raw_email.save(update_fields=["provider_detected", "parser_version", "updated_at"])
 
-    if _should_ignore_non_booking_email(raw_email):
-        raw_email.parse_status = RawEmail.ParseStatus.IGNORED
-        raw_email.parse_error = "Ignored non-booking email."
-        raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+    ignore_reason = non_booking_ignore_reason(raw_email)
+    if ignore_reason:
+        _mark_raw_email_ignored(raw_email, ignore_reason)
         return None
 
     parser = get_parser(provider.parser_key or provider.code)
@@ -319,6 +322,8 @@ def _create_completeness_review_items(
     for failed, issue_type, title, details in checks:
         if not failed:
             continue
+        if _provider_omits_field(raw_email, issue_type):
+            continue
         _create_review_item(
             raw_email=raw_email,
             booking=booking,
@@ -328,6 +333,14 @@ def _create_completeness_review_items(
         )
         created = True
     return created
+
+
+def _provider_omits_field(raw_email: RawEmail, issue_type: str) -> bool:
+    provider_code = getattr(raw_email.provider_detected, "code", "")
+    return (
+        provider_code == "tripster"
+        and issue_type == ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING
+    )
 
 
 def _booking_time_missing(booking: Booking) -> bool:
@@ -611,21 +624,58 @@ def _provider_values_from_parsed(parsed) -> dict[str, Any]:
     }
 
 
+def _mark_raw_email_ignored(raw_email: RawEmail, reason: str) -> None:
+    raw_email.parse_status = RawEmail.ParseStatus.IGNORED
+    raw_email.parse_error = f"Ignored - not a booking: {reason}."
+    raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+
+
 def _should_ignore_non_booking_email(raw_email: RawEmail) -> bool:
+    return bool(non_booking_ignore_reason(raw_email))
+
+
+def non_booking_ignore_reason(raw_email: RawEmail) -> str:
     subject = raw_email.subject or ""
+    sender = raw_email.gmail_outer_sender or ""
     body_text = raw_email.body_text or ""
-    haystack = f"{subject}\n{body_text}".lower()
+    subject_lower = subject.casefold()
+    haystack = f"{subject}\n{body_text}".casefold()
+    sender_lower = sender.casefold()
+    if "news@sup.getyourguide.com" in sender_lower:
+        return "GetYourGuide newsletter sender"
+    if re.search(
+        r"you have a new review|new review on|question about the activity|"
+        r"ticket received|ticket id",
+        haystack,
+        re.IGNORECASE,
+    ) or subject_lower.startswith("reminder:"):
+        return "GetYourGuide service notification"
+    if _contains_any(
+        haystack,
+        [
+            "\N{SPEECH BALLOON} \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435",
+            (
+                "\u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 "
+                "\u043a \u0437\u0430\u043a\u0430\u0437\u0443"
+            ),
+            "\u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u0435",
+            "\u043e\u0442\u0437\u044b\u0432",
+        ],
+    ):
+        return "provider review/message notification"
+    if re.search(
+        r"\b(review|rate your|how was your|feedback|newsletter|digest|"
+        r"guest\s*list|guestlist|report|reminder|question about activity|"
+        r"inquiry|enquiry|promotion|marketing|survey|payout|invoice)\b",
+        subject_lower,
+        re.IGNORECASE,
+    ):
+        return "general non-booking notification"
+    if _unsubscribe_only_body(body_text):
+        return "unsubscribe-only message"
     if _has_booking_intent(haystack):
-        return False
-    return bool(
-        re.search(
-            r"\b(newsletter|guest\s*list|guestlist|report|reminder|"
-            r"question about activity|inquiry|enquiry|digest|promotion|"
-            r"marketing|survey|payout|invoice)\b",
-            haystack,
-            re.IGNORECASE,
-        )
-    )
+        return ""
+    return ""
 
 
 def _has_booking_intent(haystack: str) -> bool:
@@ -634,11 +684,16 @@ def _has_booking_intent(haystack: str) -> bool:
             r"\b(new booking|booking details|booking reference|booking ref|"
             r"booking number|booking request|booking canceled|booking cancelled|"
             r"booking changed|order id|order number|reference id|confirmed booking|"
-            r"cancellation)\b",
+            r"cancellation)\b|нов(?:ый|ая)\s+(?:заказ|бронь)|"
+            r"отмен(?:а|ён|ен|или|или\s+)?\s+заказ",
             haystack,
             re.IGNORECASE,
         )
     )
+
+
+def _contains_any(haystack: str, needles: list[str]) -> bool:
+    return any(needle.casefold() in haystack for needle in needles)
 
 
 def _skip_empty_provider_update(
@@ -665,6 +720,15 @@ def mark_raw_email_failed(raw_email: RawEmail, exc: Exception, *, title: str) ->
         title=title,
         details=raw_email.parse_error,
     )
+
+
+def _unsubscribe_only_body(body_text: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", body_text or "").strip().lower()
+    if not cleaned:
+        return False
+    if "unsubscribe" not in cleaned and "отпис" not in cleaned:
+        return False
+    return not _has_booking_intent(cleaned) and len(cleaned) < 500
 
 
 def _find_booking_for_parsed(

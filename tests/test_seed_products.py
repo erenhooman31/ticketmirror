@@ -29,7 +29,7 @@ def test_seed_bookeo_products_command_is_idempotent():
 
     assert TourActivity.objects.count() == 12
     assert ActivitySchedule.objects.count() == 34
-    assert ProviderAlias.objects.count() == 30
+    assert ProviderAlias.objects.count() == 32
 
 
 @pytest.mark.django_db
@@ -67,7 +67,7 @@ def test_seed_bookeo_products_sets_home_agenda_display_labels():
     assert viator.internal_display_name == "VIATOR 2H"
     assert viator.display_settings["show_home_agenda"] is True
     assert old_city.internal_display_name == "OLD CITY VIATOR"
-    assert old_city.display_settings["show_home_agenda"] is False
+    assert old_city.display_settings["show_home_agenda"] is True
 
 
 @pytest.mark.django_db
@@ -248,6 +248,22 @@ def test_seed_bookeo_products_aliases_real_incoming_product_strings():
         == "Istanbul Two Continents Tour By Bus And Bosphorus Cruise"
     )
 
+    tripster_audio = ProviderAlias.objects.get(
+        provider__code="tripster",
+        raw_product_name="Морская прогулка по Босфору с аудиогидом",
+    )
+    sputnik_big_istanbul = ProviderAlias.objects.get(
+        provider__code="sputnik8",
+        raw_product_name="Великолепный Стамбул в Европе и Азии",
+    )
+    assert tripster_audio.approved is True
+    assert tripster_audio.linked_activity.name == "GYG 2 Hours Bosphorus Tour SL-(2-3)"
+    assert sputnik_big_istanbul.approved is True
+    assert (
+        sputnik_big_istanbul.linked_activity.name
+        == "Istanbul Two Continents Tour By Bus And Bosphorus Cruise"
+    )
+
 
 @pytest.mark.django_db
 def test_match_product_alias_normalizes_whitespace_and_ignores_case():
@@ -265,6 +281,23 @@ def test_match_product_alias_normalizes_whitespace_and_ignores_case():
     assert (
         alias_match.alias.linked_activity.name
         == "2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR"
+    )
+
+
+@pytest.mark.django_db
+def test_match_product_alias_resolves_seeded_russian_products():
+    call_command("seed_bookeo_products")
+
+    parsed = ParsedBooking(
+        provider_code="tripster",
+        raw_product_name="  морская   прогулка по босфору с аудиогидом  ",
+    )
+
+    alias_match = match_product_alias(parsed)
+
+    assert alias_match.alias is not None
+    assert (
+        alias_match.alias.linked_activity.name == "GYG 2 Hours Bosphorus Tour SL-(2-3)"
     )
 
 

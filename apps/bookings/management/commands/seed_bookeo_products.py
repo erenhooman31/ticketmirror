@@ -189,7 +189,7 @@ BOOKEO_PRODUCTS = [
     {
         "name": "Istanbul Old City And Bosphorus Tour",
         "display_name": "OLD CITY VIATOR",
-        "show_home_agenda": False,
+        "show_home_agenda": True,
         "category": TourActivity.Category.LAND_AND_CRUISE,
         "provider": "viator",
         "duration": 240,
@@ -224,7 +224,7 @@ BOOKEO_PRODUCTS = [
     {
         "name": "Istanbul Old City And Bosphorus Tour - GYG",
         "display_name": "OLD CITY GYG",
-        "show_home_agenda": False,
+        "show_home_agenda": True,
         "category": TourActivity.Category.LAND_AND_CRUISE,
         "provider": "getyourguide",
         "duration": 240,
@@ -349,11 +349,31 @@ DIRECT_OTA_ALIASES = [
         "notes": "Confirmed from tests/fixtures/emails/real_tripster_new_ru.txt.",
     },
     {
+        "provider": "tripster",
+        "raw_product_name": "Морская прогулка по Босфору с аудиогидом",
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": (
+            "Audio-guide Bosphorus Russian title; provisional pending "
+            "Tripster body capture."
+        ),
+    },
+    {
         "provider": "sputnik8",
         "raw_product_name": "Морская прогулка по Босфору с аудиогидом",
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
         "slot_start_time": "19:00",
         "notes": "Confirmed from tests/fixtures/emails/real_sputnik8_new_ru.txt.",
+    },
+    {
+        "provider": "sputnik8",
+        "raw_product_name": "Великолепный Стамбул в Европе и Азии",
+        "activity_name": "Istanbul Two Continents Tour By Bus And Bosphorus Cruise",
+        "slot_start_time": "08:15",
+        "notes": (
+            "Russian Old City/continents title; provisional pending "
+            "Sputnik8 body capture."
+        ),
     },
 ]
 

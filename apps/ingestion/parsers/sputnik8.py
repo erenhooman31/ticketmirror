@@ -3,7 +3,7 @@ from dataclasses import replace
 from datetime import date, time
 
 from .base import ParsedBooking, ProviderEmailParser
-from .common import parse_labeled_booking
+from .common import confidence_score, parse_labeled_booking
 
 RU_MONTHS = {
     "января": 1,
@@ -69,10 +69,23 @@ class Sputnik8Parser(ProviderEmailParser):
                 "Guests",
                 "Участников",
                 "Участники",
+                "Кол-во",
+                "Количество",
+                "Туристов",
                 "Гостей",
                 "Билеты",
             ],
-            name_labels=["Customer", "Lead traveler", "Name", "Клиент", "Имя"],
+            name_labels=[
+                "Customer",
+                "Lead traveler",
+                "Name",
+                "Клиент",
+                "Имя",
+                "Турист",
+                "ФИО",
+                "Контактное лицо",
+                "Гость",
+            ],
             language_labels=["Language", "Язык"],
             meeting_labels=["Meeting point", "Meeting location", "Место встречи"],
             requirements_labels=[
@@ -84,7 +97,7 @@ class Sputnik8Parser(ProviderEmailParser):
         )
         if "заказ" not in subject.lower():
             return parsed
-        return replace(
+        parsed = replace(
             parsed,
             provider_booking_reference=parsed.provider_booking_reference
             or _reference(subject),
@@ -92,6 +105,18 @@ class Sputnik8Parser(ProviderEmailParser):
             travel_date=parsed.travel_date or _subject_date(subject, body_text),
             start_time=parsed.start_time or _subject_time(subject, body_text),
         )
+        confidence, warnings = confidence_score(
+            provider_found=True,
+            reference=parsed.provider_booking_reference,
+            travel_date=parsed.travel_date,
+            product_name=parsed.raw_product_name,
+            traveler_count=parsed.traveler_count,
+        )
+        if parsed.raw_fields.get("forwarded_from"):
+            warnings.append("forwarded_email")
+        if not parsed.provider_booking_reference:
+            warnings.append("needs_review")
+        return replace(parsed, confidence=confidence, warnings=warnings)
 
 
 def _reference(subject: str) -> str:

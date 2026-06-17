@@ -382,6 +382,30 @@ def test_parse_realistic_tripster_russian_new_booking():
     assert parsed.lead_traveler_email == "alexey.ivanov@example.test"
 
 
+def test_tripster_uses_subject_participant_count_when_body_omits_it():
+    subject = (
+        "Новый заказ на 1 июля в 08:30 "
+        "«Морская прогулка по Босфору с аудиогидом» · №6645993 · 11 человек"
+    )
+    body = """
+    Экскурсия: Морская прогулка по Босфору с аудиогидом
+    Дата: 1 июля 2026
+    Время: 08:30
+    """
+
+    parsed = parse_by_provider(
+        "tripster",
+        subject,
+        "orders@experience.tripster.example",
+        body,
+    )
+
+    assert parsed.provider_booking_reference == "6645993"
+    assert parsed.traveler_count == 11
+    assert parsed.ticket_breakdown == {"adult": 11}
+    assert "traveler_count_missing" not in parsed.warnings
+
+
 def test_parse_realistic_sputnik8_russian_new_booking():
     subject = (
         "Новая бронь на экскурсию "
@@ -400,6 +424,7 @@ def test_parse_realistic_sputnik8_russian_new_booking():
     assert parsed.travel_date.isoformat() == "2026-04-12"
     assert parsed.start_time.isoformat() == "19:00:00"
     assert parsed.traveler_count == 2
+    assert parsed.ticket_breakdown == {"adult": 2}
 
 
 def test_parse_tripster_russian_cancellation_is_not_new_booking():
@@ -636,3 +661,24 @@ def test_klook_graceful_failure_for_missing_required_fields():
     assert "traveler_count_missing" in parsed.warnings
     assert "needs_review" in parsed.warnings
     assert parsed.confidence < 1
+
+
+def test_klook_order_confirmed_subject_extracts_reference_product_date_customer():
+    subject = (
+        "Klook order confirmed - Bosphorus Sunset Cruise - "
+        "2026-06-28 18:30:00 - Riley Klook - CRG348822"
+    )
+
+    parsed = parse_by_provider(
+        "klook",
+        subject,
+        "noreply@klook.com",
+        "Klook order confirmed",
+    )
+
+    assert parsed.provider_booking_reference == "CRG348822"
+    assert parsed.raw_product_name == "Bosphorus Sunset Cruise"
+    assert parsed.travel_date.isoformat() == "2026-06-28"
+    assert parsed.start_time.isoformat() == "18:30:00"
+    assert parsed.lead_traveler_name == "Riley Klook"
+    assert "reference_missing" not in parsed.warnings

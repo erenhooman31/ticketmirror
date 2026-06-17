@@ -235,7 +235,7 @@ def test_home_agenda_print_page_renders_scoped_agenda(
     assert "City Tour" in html
     assert "2 booked" in html
     assert "3 available" in html
-    assert "Alex Sample - 2 adults - Booking number: BR-1" in html
+    assert "Sample, Alex - 2 participants - Booking number: BR-1" in html
 
 
 @pytest.mark.django_db
@@ -392,6 +392,17 @@ def test_dashboard_agenda_uses_home_display_name_and_visibility(
 
 @pytest.mark.django_db
 def test_dashboard_agenda_item_opens_slot_modal(client, users, booking_data):
+    booking_data["booking"].lead_traveler_name = "Alex Sample"
+    booking_data["booking"].ticket_breakdown = {"adult": 3, "child": 1}
+    booking_data["booking"].special_requirements = "Window seat"
+    booking_data["booking"].save(
+        update_fields=[
+            "lead_traveler_name",
+            "ticket_breakdown",
+            "special_requirements",
+            "updated_at",
+        ]
+    )
     client.force_login(users["viewer"])
     response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
     row = response.context["agenda_sections"][0]["rows"][0]
@@ -399,12 +410,44 @@ def test_dashboard_agenda_item_opens_slot_modal(client, users, booking_data):
 
     assert f'data-bs-target="#{row["modal_id"]}"' in html
     assert f'id="{row["modal_id"]}"' in html
+    assert "City Tour - Sunday, 21 June 2026 09:00" in html
+    assert "09:00 (default)" in html
+    assert "5 (default)" in html
+    assert "no (default)" in html
     assert "Bookings" in html
     assert "Access" in html
     assert "Notes" in html
-    assert "Alex Sample" in html
+    assert "Sample, Alex" in html
+    assert 'type="checkbox" aria-label="Select booking BR-1"' in html
+    assert "People: 3 adults, 1 child" in html
     assert "Booking number: BR-1" in html
+    assert "Notes: there are notes for this booking" in html
     assert "09:00 Fixed time" not in html
+
+
+@pytest.mark.django_db
+def test_admin_home_agenda_slot_modal_updates_slot_capacity(
+    client,
+    django_user_model,
+    booking_data,
+):
+    admin = django_user_model.objects.create_superuser(
+        username="admin",
+        password="password",
+    )
+    client.force_login(admin)
+    response = client.post(
+        reverse(
+            "core:update_home_slot_capacity",
+            args=["2026-06-21", booking_data["slot"].id],
+        ),
+        {"next": "/?date=2026-06-21&range=1", "capacity": "12"},
+    )
+    booking_data["slot"].refresh_from_db()
+
+    assert response.status_code == 302
+    assert response["Location"] == "/?date=2026-06-21&range=1"
+    assert booking_data["slot"].capacity == 12
 
 
 @pytest.mark.django_db
@@ -655,9 +698,9 @@ def test_dashboard_agenda_attendance_capacity_rules(client, users, booking_data)
     assert row["booked"] == 3
     assert row["available"] == 2
     assert "GELDI" in html
-    assert "No Show Guest" in html
+    assert "Guest, No Show" in html
     assert "Does not count toward active capacity" in html
-    assert "Later Guest" in html
+    assert "Guest, Later" in html
     assert "SONRA GELECEK" in html
 
 

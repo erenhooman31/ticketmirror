@@ -3,7 +3,7 @@ from dataclasses import replace
 from datetime import date, time
 
 from .base import ParsedBooking, ProviderEmailParser
-from .common import parse_labeled_booking
+from .common import confidence_score, parse_labeled_booking
 
 RU_MONTHS = {
     "января": 1,
@@ -54,10 +54,22 @@ class TripsterParser(ProviderEmailParser):
                 "Guests",
                 "Участников",
                 "Участники",
+                "Кол-во",
+                "Количество",
+                "Туристов",
                 "Гостей",
                 "Билеты",
             ],
-            name_labels=["Customer name", "Customer", "Клиент", "Имя"],
+            name_labels=[
+                "Customer name",
+                "Customer",
+                "Клиент",
+                "Имя",
+                "Турист",
+                "ФИО",
+                "Контактное лицо",
+                "Гость",
+            ],
             language_labels=["Language", "Язык"],
             meeting_labels=["Meeting point", "Meeting location", "Место встречи"],
             requirements_labels=[
@@ -69,14 +81,30 @@ class TripsterParser(ProviderEmailParser):
         )
         if "№" not in subject and "заказ" not in subject.lower():
             return parsed
-        return replace(
+        subject_count = _subject_traveler_count(subject)
+        parsed = replace(
             parsed,
             provider_booking_reference=parsed.provider_booking_reference
             or _russian_reference(subject),
             raw_product_name=parsed.raw_product_name or _quoted_product(subject),
             travel_date=parsed.travel_date or _russian_subject_date(subject, body_text),
             start_time=parsed.start_time or _russian_subject_time(subject),
+            traveler_count=parsed.traveler_count or subject_count,
+            ticket_breakdown=parsed.ticket_breakdown
+            or ({"adult": subject_count} if subject_count else {}),
         )
+        confidence, warnings = confidence_score(
+            provider_found=True,
+            reference=parsed.provider_booking_reference,
+            travel_date=parsed.travel_date,
+            product_name=parsed.raw_product_name,
+            traveler_count=parsed.traveler_count,
+        )
+        if parsed.raw_fields.get("forwarded_from"):
+            warnings.append("forwarded_email")
+        if not parsed.provider_booking_reference:
+            warnings.append("needs_review")
+        return replace(parsed, confidence=confidence, warnings=warnings)
 
 
 def _russian_reference(subject: str) -> str:
@@ -106,3 +134,8 @@ def _russian_subject_time(subject: str) -> time | None:
     if not match:
         return None
     return time(int(match.group(1)), int(match.group(2)))
+
+
+def _subject_traveler_count(subject: str) -> int | None:
+    match = re.search(r"\b(\d+)\s*челов(?:ек|ека)?\b", subject, re.I)
+    return int(match.group(1)) if match else None

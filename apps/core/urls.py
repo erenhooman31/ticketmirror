@@ -14,6 +14,7 @@ from .views import (
     settings_home,
     settings_ingestion,
     settings_users_roles,
+    update_home_slot_capacity,
 )
 
 app_name = "core"
@@ -36,6 +37,11 @@ urlpatterns = [
         "agenda/<str:service_date>/slots/<int:slot_id>/new-booking/",
         create_home_booking,
         name="create_home_booking",
+    ),
+    path(
+        "agenda/<str:service_date>/slots/<int:slot_id>/capacity/",
+        update_home_slot_capacity,
+        name="update_home_slot_capacity",
     ),
     path("credits/", credits, name="credits"),
     path("customers/", customers, name="customers"),

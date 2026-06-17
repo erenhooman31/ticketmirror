@@ -11,9 +11,9 @@ from apps.ingestion.parsers.common import EVENT_CANCELLATION, STATUS_CANCELLED
 from apps.ingestion.services import (
     _create_review_item,
     _get_or_create_provider,
-    _should_ignore_non_booking_email,
     mark_raw_email_failed,
     match_product_alias,
+    non_booking_ignore_reason,
     upsert_booking_from_parsed,
 )
 
@@ -112,19 +112,19 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def _repair_raw_email(self, raw_email):
+        ignore_reason = non_booking_ignore_reason(raw_email)
+        if ignore_reason:
+            raw_email.parse_status = RawEmail.ParseStatus.IGNORED
+            raw_email.parse_error = f"Ignored - not a booking: {ignore_reason}."
+            raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+            return "skipped"
+
         provider_code, _confidence = detect_provider(
             raw_email.subject,
             raw_email.gmail_outer_sender,
             raw_email.body_text,
         )
         if not provider_code:
-            if _should_ignore_non_booking_email(raw_email):
-                raw_email.parse_status = RawEmail.ParseStatus.IGNORED
-                raw_email.parse_error = "Ignored non-booking email."
-                raw_email.save(
-                    update_fields=["parse_status", "parse_error", "updated_at"]
-                )
-                return "skipped"
             raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
             raw_email.parse_error = "Provider could not be detected."
             raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])

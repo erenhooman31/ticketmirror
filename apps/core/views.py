@@ -18,6 +18,7 @@ from apps.bookings.display import (
     activity_label,
     clean_text,
     customer_label,
+    customer_last_first_label,
     datetime_label,
     product_label,
     provider_label,
@@ -26,7 +27,9 @@ from apps.bookings.display import (
     short_datetime_label,
     status_label,
     traveler_count_label,
+    typed_traveler_count_label,
 )
+from apps.bookings.forms import ChangeSeatsForm
 from apps.bookings.models import (
     ActivityScheduleSlot,
     Booking,
@@ -192,6 +195,26 @@ def create_home_booking(request, service_date, slot_id):
         messages.success(request, "Internal booking created.")
     except CapacityExceededError as exc:
         messages.error(request, str(exc))
+    return redirect(next_url)
+
+
+@login_required
+@require_POST
+def update_home_slot_capacity(request, service_date, slot_id):
+    if not is_admin(request.user):
+        return HttpResponseForbidden("You do not have permission to update seats.")
+    parsed_date = _parse_date(service_date)
+    if not parsed_date:
+        return HttpResponseForbidden("Invalid service date.")
+    slot = get_object_or_404(ActivityScheduleSlot, pk=slot_id, active=True)
+    form = ChangeSeatsForm(request.POST)
+    if form.is_valid():
+        slot.capacity = form.cleaned_data["capacity"]
+        slot.save(update_fields=["capacity", "updated_at"])
+        messages.success(request, "Seats updated.")
+    else:
+        messages.error(request, "Seats were not updated.")
+    next_url = request.POST.get("next") or _dashboard_url(parsed_date, 1)
     return redirect(next_url)
 
 
@@ -607,6 +630,9 @@ def _agenda_row(service_date, row):
     return {
         "time": _agenda_time_label(row),
         "title": _agenda_title(row),
+        "modal_title": _agenda_modal_title(service_date, row),
+        "time_default": _agenda_time_default(row),
+        "capacity_options": _capacity_options(row["capacity"]),
         "booked": active_booked,
         "blocked": blocked,
         "capacity": capacity,
@@ -635,6 +661,20 @@ def _agenda_title(row):
     return activity.internal_display_name or activity.name
 
 
+def _agenda_modal_title(service_date, row):
+    if row.get("is_unscheduled"):
+        return f"Unscheduled / unmapped - {_agenda_full_date_label(service_date)}"
+    activity = row["activity"]
+    return (
+        f"{activity.name} - {_agenda_full_date_label(service_date)} "
+        f"{_agenda_time_default(row)}"
+    )
+
+
+def _agenda_full_date_label(service_date):
+    return f"{service_date:%A}, {service_date.day} {service_date:%B %Y}"
+
+
 def _show_in_home_agenda(row):
     if row.get("is_unscheduled"):
         return True
@@ -656,6 +696,24 @@ def _agenda_time_label(row):
     if not start_time:
         return "Open"
     return f"{start_time.hour}:{start_time:%M}"
+
+
+def _agenda_time_default(row):
+    if row.get("is_unscheduled"):
+        return "Open"
+    slot = row["slot"]
+    exception = row.get("exception")
+    start_time = (
+        slot.start_time if slot else exception.start_time if exception else None
+    )
+    return start_time.strftime("%H:%M") if start_time else "Open"
+
+
+def _capacity_options(capacity):
+    if capacity is None:
+        return []
+    values = list(range(0, max(300, capacity) + 1))
+    return values
 
 
 def _agenda_status(*, capacity, available, booked, has_bookings, has_warning):
@@ -715,11 +773,12 @@ def _agenda_booking_card(booking):
     return {
         "booking": booking,
         "pax": pax,
-        "pax_display": traveler_count_label(booking),
+        "pax_display": typed_traveler_count_label(booking),
         "reference": booking.provider_booking_reference,
-        "traveler": customer_label(booking),
+        "traveler": customer_last_first_label(booking),
         "status": status_label(booking),
         "attendance": attendance if booking.attendance_status else "",
+        "has_notes": bool(booking.special_requirements or booking.customer_message),
         "warning": booking.status
         in {
             Booking.Status.PENDING_PROVIDER_ACCEPTANCE,

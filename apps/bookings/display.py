@@ -57,6 +57,18 @@ def customer_label(booking, fallback: str = "Missing customer") -> str:
     return clean_text(getattr(booking, "lead_traveler_name", ""), fallback)
 
 
+def customer_last_first_label(booking, fallback: str = "Missing customer") -> str:
+    name = customer_label(booking, fallback="")
+    if not name:
+        return fallback
+    if "," in name:
+        return name
+    parts = name.split()
+    if len(parts) < 2:
+        return name
+    return f"{parts[-1]}, {' '.join(parts[:-1])}"
+
+
 def activity_label(booking, fallback: str = "Missing tour/activity") -> str:
     if not booking:
         return fallback
@@ -142,6 +154,47 @@ def traveler_count_label(booking, fallback: str = "Missing participant count") -
     return f"{count} {label}"
 
 
+def typed_traveler_count_label(
+    booking,
+    fallback: str = "Missing participant count",
+) -> str:
+    if not booking:
+        return fallback
+    breakdown = getattr(booking, "ticket_breakdown", None) or {}
+    if isinstance(breakdown, Mapping):
+        parts = []
+        for ticket_type in [
+            "adult",
+            "adults",
+            "child",
+            "children",
+            "infant",
+            "infants",
+        ]:
+            count = _positive_int(breakdown.get(ticket_type))
+            if not count:
+                continue
+            parts.append(_ticket_count_label(ticket_type, count))
+        remaining = sorted(
+            set(breakdown)
+            - {
+                "adult",
+                "adults",
+                "child",
+                "children",
+                "infant",
+                "infants",
+            }
+        )
+        for ticket_type in remaining:
+            count = _positive_int(breakdown.get(ticket_type))
+            if count:
+                parts.append(_ticket_count_label(ticket_type, count))
+        if parts:
+            return ", ".join(parts)
+    return traveler_count_label(booking, fallback)
+
+
 def status_label(booking, fallback: str = "Needs review") -> str:
     if not booking:
         return fallback
@@ -192,3 +245,25 @@ def received_label(value) -> str:
         return ""
     local_value = timezone.localtime(value)
     return f"{local_value:%Y-%m-%d %H:%M}"
+
+
+def _positive_int(value) -> int:
+    try:
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _ticket_count_label(ticket_type: str, count: int) -> str:
+    normalized = ticket_type.replace("_", " ").strip().lower()
+    singular = {
+        "adults": "adult",
+        "children": "child",
+        "infants": "infant",
+    }.get(normalized, normalized.rstrip("s") or "participant")
+    plural = {
+        "adult": "adults",
+        "child": "children",
+        "infant": "infants",
+    }.get(singular, f"{singular}s")
+    return f"{count} {singular if count == 1 else plural}"
