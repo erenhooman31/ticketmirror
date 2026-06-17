@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from django.test import override_settings
 
+from apps.ingestion import translate
 from apps.ingestion.parsers.alle import AlleParser
 from apps.ingestion.translate import contains_cyrillic, to_english
 
@@ -27,10 +28,25 @@ def test_to_english_translation_failure_returns_original(monkeypatch, caplog):
     def fail(_text):
         raise RuntimeError("model missing")
 
+    translate.translation_failure_count = 0
     monkeypatch.setattr("apps.ingestion.translate._translate_text", fail)
 
     assert to_english("Новый заказ") == "Новый заказ"
+    assert translate.translation_failure_count == 1
     assert "Offline RU->EN translation failed" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "failure_count=1" in caplog.text
+
+
+def test_missing_translation_package_warning_logs_only_once(caplog):
+    translate._missing_translation_package_warning_logged = False
+
+    translate._warn_missing_translation_package("first")
+    translate._warn_missing_translation_package("second")
+
+    assert caplog.text.count("translation package unavailable") == 1
+    assert "reason=first" in caplog.text
+    assert "reason=second" not in caplog.text
 
 
 @override_settings(TRANSLATE_ENABLED=False)
