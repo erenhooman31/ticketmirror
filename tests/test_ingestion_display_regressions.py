@@ -225,6 +225,65 @@ def test_stale_review_sweep_resolves_obsolete_provider_review_idempotently():
 
 
 @pytest.mark.django_db
+def test_stale_review_sweep_resolves_orphan_reference_review_from_raw_email_event():
+    provider = Provider.objects.create(name="Klook", code="klook", parser_key="klook")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="stale-orphan-reference-review",
+        gmail_outer_sender="noreply@klook.com",
+        subject="Klook order confirmed - CRG348822",
+        received_at=timezone.now(),
+        body_text="Klook order confirmed",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.PARSED,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="CRG348822",
+        status=Booking.Status.CONFIRMED,
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_NEW_BOOKING,
+        source=BookingEvent.Source.EMAIL,
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=None,
+        issue_type=ReviewQueueItem.IssueType.REFERENCE_MISSING,
+        title="Reference missing",
+    )
+
+    call_command("resolve_stale_booking_reviews", stdout=StringIO())
+    review.refresh_from_db()
+
+    assert review.status == ReviewQueueItem.Status.RESOLVED
+
+
+@pytest.mark.django_db
+def test_stale_review_sweep_resolves_reference_review_for_ignored_raw_email():
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="ignored-stale-reference-review",
+        gmail_outer_sender="supplier@getyourguide.example",
+        subject="Re: GYG32L5NAVZZ - Question about the activity",
+        received_at=timezone.now(),
+        body_text="Question about the activity for booking code GYG32L5NAVZZ.",
+        parse_status=RawEmail.ParseStatus.IGNORED,
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=None,
+        issue_type=ReviewQueueItem.IssueType.REFERENCE_MISSING,
+        title="Reference missing",
+    )
+
+    call_command("resolve_stale_booking_reviews", stdout=StringIO())
+    review.refresh_from_db()
+
+    assert review.status == ReviewQueueItem.Status.RESOLVED
+
+
+@pytest.mark.django_db
 def test_stale_review_sweep_reclassifies_non_booking_email_and_cancels_false_booking():
     provider = Provider.objects.create(
         name="GetYourGuide",

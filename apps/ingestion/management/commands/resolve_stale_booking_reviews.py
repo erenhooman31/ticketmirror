@@ -71,10 +71,8 @@ class Command(BaseCommand):
             )
 
     def _raw_email_queryset(self, options):
-        queryset = (
-            RawEmail.objects.exclude(parse_status=RawEmail.ParseStatus.IGNORED)
-            .select_related("provider_detected")
-            .order_by("received_at", "id")
+        queryset = RawEmail.objects.select_related("provider_detected").order_by(
+            "received_at", "id"
         )
         limit = options.get("limit")
         if limit is not None:
@@ -171,12 +169,14 @@ class Command(BaseCommand):
         return True
 
     def _is_obsolete(self, review: ReviewQueueItem) -> bool:
-        booking = review.booking
+        booking = review.booking or self._booking_from_raw_email(review.raw_email)
         raw_email = review.raw_email
         issue_type = review.issue_type
         if issue_type == ReviewQueueItem.IssueType.PROVIDER_NOT_DETECTED:
             return bool(raw_email and raw_email.provider_detected_id)
         if issue_type == ReviewQueueItem.IssueType.REFERENCE_MISSING:
+            if raw_email and raw_email.parse_status == RawEmail.ParseStatus.IGNORED:
+                return True
             return bool(booking and booking.provider_booking_reference)
         if not booking:
             return False
@@ -206,6 +206,17 @@ class Command(BaseCommand):
                 booking,
             )
         return False
+
+    def _booking_from_raw_email(self, raw_email: RawEmail | None) -> Booking | None:
+        if not raw_email:
+            return None
+        event = (
+            BookingEvent.objects.filter(raw_email=raw_email, booking__isnull=False)
+            .select_related("booking", "booking__provider", "booking__activity")
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        return event.booking if event else None
 
 
 def _provider_omits_lead_name(raw_email, booking: Booking) -> bool:

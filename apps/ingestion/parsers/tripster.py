@@ -154,6 +154,20 @@ class TripsterParser(ProviderEmailParser):
 
 
 def _reference(subject: str, body_text: str) -> str:
+    actual_match = re.search(
+        r"(?:№|No\.)\s*(\d{6,})|booking\s*#(\d{6,})",
+        subject,
+        re.I,
+    )
+    if not actual_match:
+        actual_match = re.search(
+            r"(?:Order No\.|Заказ №|заказ)\s*(\d{6,})",
+            body_text,
+            re.I,
+        )
+    if actual_match:
+        return next(group for group in actual_match.groups() if group)
+
     match = re.search(r"(?:№|No\.)\s*(\d{6,})|booking\s*#(\d{6,})", subject, re.I)
     if not match:
         match = re.search(
@@ -165,7 +179,8 @@ def _reference(subject: str, body_text: str) -> str:
 
 
 def _clean_layout_text(value: str) -> str:
-    return re.sub(r"[\u200c\u2800\xa0]+", " ", value or "")
+    cleaned = re.sub(r"[\u200c\u2800\xa0]+", " ", value or "")
+    return re.sub(r"[ \t]+", " ", cleaned).strip()
 
 
 def _product(subject: str, body_text: str) -> str:
@@ -179,6 +194,16 @@ def _product(subject: str, body_text: str) -> str:
 
 def _service_date_time(subject: str, body_text: str) -> tuple[date | None, time | None]:
     candidates = [
+        _first_match(
+            r"(?:заказ на|на)\s+"
+            r"(\d{1,2}\s+[А-Яа-яЁё]+(?:\s+20\d{2})?)"
+            r"\s+в\s+(\d{1,2}:\d{2})",
+            body_text,
+        ),
+        _first_match(
+            r"(?:for|на)\s+([A-Za-zА-Яа-яЁё]+\s+\d{1,2}(?:,\s+20\d{2})?|\d{1,2}\s+[А-Яа-яЁё]+(?:\s+20\d{2})?)\s+(?:at|в)\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)",
+            subject,
+        ),
         _first_match(
             r"\*([A-Za-z]{3},\s+[A-Za-z]+\s+\d{1,2})\*\s+(\d{1,2}:\d{2})", body_text
         ),
@@ -213,6 +238,9 @@ def _service_date_time(subject: str, body_text: str) -> tuple[date | None, time 
 
 def _traveler_count(subject: str, body_text: str) -> int | None:
     patterns = [
+        r"\*(\d+)\*\s+\d+\s*(?:·|Â·|Ã‚Â·|-)?\s*(?:Standard|Стандарт\w*)",
+        r"\b(\d+)\s+\d+\s*(?:·|Â·|Ã‚Â·|-)\s*(?:Standard|Стандарт\w*)\b",
+        r"\b(\d+)\s*(?:человека|человек|чел\.?|adults?|people|travelers?)\b",
         r"\*(\d+)\*\s+\d+\s*(?:·|Â·|-)\s*Standard",
         r"\b(\d+)\s*(?:человека|человек|people)\b",
     ]
@@ -226,9 +254,22 @@ def _traveler_count(subject: str, body_text: str) -> int | None:
 
 def _lead_name(body_text: str) -> str | None:
     lines = [line.strip("* ") for line in body_text.splitlines() if line.strip()]
+    markers = {"traveler", "путешественник", "турист"}
     for index, line in enumerate(lines):
+        if line.lower() in markers and index:
+            return lines[index - 1]
         if line.lower() == "traveler" and index:
             return lines[index - 1]
+    name_word = r"[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё.'’-]+"
+    initial = r"[A-ZА-ЯЁ]\."
+    name_token = rf"(?:{name_word}|{initial})"
+    match = re.search(
+        rf"({name_token}(?:\s+{name_token}){{0,3}})\s+"
+        r"(?:Traveler|Путешественник|Турист)\b",
+        body_text,
+    )
+    if match:
+        return match.group(1).strip("* ")
     return None
 
 
@@ -240,6 +281,8 @@ def _cancellation_reason(body_text: str) -> str:
 
 
 def _is_cancellation(subject: str, body_text: str) -> bool:
+    if re.search(r"отмен", f"{subject}\n{body_text}", re.I):
+        return True
     return bool(
         re.search(r"\b(cancelled|canceled)\b|отмен", f"{subject}\n{body_text}", re.I)
     )

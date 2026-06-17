@@ -6,6 +6,7 @@ def test_coolify_startup_seeds_catalog_and_repairs_backlog_after_migrate():
 
     migrate_index = compose.index("python manage.py migrate --noinput")
     seed_index = compose.index("python manage.py seed_bookeo_products")
+    replay_index = compose.index("python manage.py replay_raw_emails --apply")
     repair_index = compose.index(
         "python manage.py repair_parsed_booking_display_fields"
     )
@@ -18,6 +19,7 @@ def test_coolify_startup_seeds_catalog_and_repairs_backlog_after_migrate():
     assert (
         migrate_index
         < seed_index
+        < replay_index
         < repair_index
         < reslot_index
         < stale_review_index

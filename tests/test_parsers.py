@@ -453,6 +453,61 @@ def test_parse_real_tripster_forwarded_new_order():
     assert parsed.ticket_breakdown == {"adult": 2}
 
 
+def test_parse_tripster_flattened_russian_positional_body():
+    subject = (
+        "\u041d\u043e\u0432\u044b\u0439 \u0437\u0430\u043a\u0430\u0437 "
+        "\u043d\u0430 17 \u0438\u044e\u043d\u044f 2026 "
+        "\u0432 14:00 "
+        "\u00ab\u041c\u043e\u0440\u0441\u043a\u0430\u044f "
+        "\u043f\u0440\u043e\u0433\u0443\u043b\u043a\u0430 "
+        "\u043f\u043e \u0411\u043e\u0441\u0444\u043e\u0440\u0443 "
+        "\u0441 \u0430\u0443\u0434\u0438\u043e\u0433\u0438\u0434\u043e\u043c"
+        "\u00bb \u00b7 \u21166686856"
+    )
+    body = (
+        "\u0417\u0430\u043a\u0430\u0437 "
+        "\u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441"
+        "\u043a\u0438 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436"
+        "\u0434\u0435\u043d. "
+        "\u041d\u043e\u0432\u044b\u0439 \u0437\u0430\u043a\u0430\u0437 "
+        "\u041d\u0430 17 \u0438\u044e\u043d\u044f \u0432 14:00 "
+        "\u00ab\u041c\u043e\u0440\u0441\u043a\u0430\u044f "
+        "\u043f\u0440\u043e\u0433\u0443\u043b\u043a\u0430 "
+        "\u043f\u043e \u0411\u043e\u0441\u0444\u043e\u0440\u0443 "
+        "\u0441 \u0430\u0443\u0434\u0438\u043e\u0433\u0438\u0434\u043e\u043c"
+        "\u00bb, \u21166686856. "
+        "\u0422\u0430\u0442\u044c\u044f\u043d\u0430 \u041a. "
+        "\u041f\u0443\u0442\u0435\u0448\u0435\u0441\u0442\u0432\u0435"
+        "\u043d\u043d\u0438\u043a 17 \u0438\u044e\u043d, "
+        "\u0441\u0440 14:00\u201416:00 "
+        "2 2 \u00b7 \u0421\u0442\u0430\u043d\u0434\u0430\u0440"
+        "\u0442\u043d\u044b\u0439"
+    )
+
+    parsed = parse_by_provider(
+        "tripster",
+        subject,
+        "orders@experience.tripster.com",
+        body,
+    )
+
+    assert parsed.provider_booking_reference == "6686856"
+    assert (
+        parsed.raw_product_name == "\u041c\u043e\u0440\u0441\u043a\u0430\u044f "
+        "\u043f\u0440\u043e\u0433\u0443\u043b\u043a\u0430 "
+        "\u043f\u043e \u0411\u043e\u0441\u0444\u043e\u0440\u0443 "
+        "\u0441 \u0430\u0443\u0434\u0438\u043e\u0433\u0438\u0434\u043e\u043c"
+    )
+    assert parsed.travel_date.isoformat() == "2026-06-17"
+    assert parsed.start_time.isoformat() == "14:00:00"
+    assert parsed.traveler_count == 2
+    assert (
+        parsed.lead_traveler_name
+        == "\u0422\u0430\u0442\u044c\u044f\u043d\u0430 \u041a."
+    )
+    assert parsed.ticket_breakdown == {"adult": 2}
+
+
 def test_parse_real_tripster_forwarded_cancellation_reason():
     parsed = parse_by_provider(
         "tripster",
