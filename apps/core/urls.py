@@ -14,6 +14,7 @@ from .views import (
     settings_home,
     settings_ingestion,
     settings_users_roles,
+    update_home_booking_attendance,
     update_home_slot_capacity,
 )
 
@@ -32,6 +33,11 @@ urlpatterns = [
         "bookings/<int:booking_id>/cancel/",
         cancel_home_booking,
         name="cancel_home_booking",
+    ),
+    path(
+        "bookings/<int:booking_id>/attendance/",
+        update_home_booking_attendance,
+        name="update_home_booking_attendance",
     ),
     path(
         "agenda/<str:service_date>/slots/<int:slot_id>/new-booking/",

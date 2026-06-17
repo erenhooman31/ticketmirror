@@ -14,7 +14,7 @@
         {% for message in dashboard_messages %}
           <a
             class="tm-message-row tm-message-{{ message.kind }}"
-            {% if message.href %}href="{{ message.href }}"{% else %}href="#"{% endif %}
+            {% if message.booking and message.modal_id %}href="#"{% elif message.href %}href="{{ message.href }}"{% else %}href="#"{% endif %}
             {% if message.booking and message.modal_id %}data-bs-toggle="modal" data-bs-target="#{{ message.modal_id }}"{% endif %}
           >
             <span class="tm-message-symbol"></span>
@@ -181,19 +181,36 @@
                         class="tm-agenda-booking {% if card.warning %}tm-agenda-booking-warning{% endif %}"
                         role="button"
                         tabindex="0"
-                        data-bs-toggle="modal"
-                        data-bs-target="#{{ card.modal_id }}"
+                        data-agenda-booking-target="#{{ card.modal_id }}"
                       >
-                        <span class="tm-agenda-booking-title"><input class="form-check-input me-2 tm-agenda-booking-check" type="checkbox" aria-label="Select booking {{ card.reference }}"> {{ card.traveler }}</span>
-                        <span>People: {{ card.pax_display }}</span>
-                        <span>Booking number: {{ card.reference }}</span>
-                        <span>Status: {{ card.status }}{% if card.attendance %} - {{ card.attendance }}{% endif %}</span>
-                        {% if card.has_notes %}
-                          <span>Notes: there are notes for this booking</span>
-                        {% endif %}
-                        {% if not card.counts_for_capacity %}
-                          <span>Does not count toward active capacity</span>
-                        {% endif %}
+                        <div class="tm-agenda-booking-title">
+                          <span>{{ card.traveler }}</span>
+                          <span class="dropdown tm-agenda-attendance-control" data-attendance-url="{% url 'core:update_home_booking_attendance' card.booking.id %}">
+                            <button class="tm-agenda-attendance-dot {{ card.attendance_class }}" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Attendance status for {{ card.reference }}"></button>
+                            <span class="dropdown-menu dropdown-menu-end tm-agenda-attendance-menu">
+                              <button class="dropdown-item" type="button" data-attendance-value="geldi"><span class="tm-attendance-swatch geldi"></span>GELDI</button>
+                              <button class="dropdown-item" type="button" data-attendance-value="gelmedi"><span class="tm-attendance-swatch gelmedi"></span>GELMEDI</button>
+                              <button class="dropdown-item" type="button" data-attendance-value="sonra_gelecek"><span class="tm-attendance-swatch sonra"></span>SONRA GELECEK</button>
+                              <button class="dropdown-item" type="button" data-attendance-value="">Clear</button>
+                            </span>
+                          </span>
+                        </div>
+                        <div class="tm-agenda-booking-fields">
+                          <span class="tm-agenda-booking-label">People:</span>
+                          <span class="tm-agenda-booking-value">{{ card.pax_display }}</span>
+                          <span class="tm-agenda-booking-label">Booking number:</span>
+                          <span class="tm-agenda-booking-value">{{ card.reference }}</span>
+                          <span class="tm-agenda-booking-label">Notes:</span>
+                          <span class="tm-agenda-booking-value">{% if card.has_notes %}there are notes for this booking{% else %}none{% endif %}</span>
+                          {% if card.attendance %}
+                            <span class="tm-agenda-booking-label">Attendance:</span>
+                            <span class="tm-agenda-booking-value">{{ card.attendance }}</span>
+                          {% endif %}
+                          {% if not card.counts_for_capacity %}
+                            <span class="tm-agenda-booking-label">Capacity:</span>
+                            <span class="tm-agenda-booking-value">Does not count toward active capacity</span>
+                          {% endif %}
+                        </div>
                       </div>
                     {% empty %}
                       <div class="tm-bookeo-empty">There are no bookings</div>
@@ -214,9 +231,21 @@
                   <button class="tm-action-button primary" type="button" disabled>Save</button>
                 {% endif %}
                 <button class="tm-action-button" type="button" data-bs-dismiss="modal">Cancel</button>
-                <button class="tm-action-button" type="button" disabled>New</button>
-                <button class="tm-action-button" type="button" disabled>Block</button>
+                {% if row.slot %}
+                  <button
+                    class="tm-action-button"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#new-booking-{{ section.date|date:'Ymd' }}-{{ row.slot.id }}"
+                  >New</button>
+                {% else %}
+                  <button class="tm-action-button" type="button" disabled aria-disabled="true">New</button>
+                {% endif %}
+                <button class="tm-action-button" type="button" disabled aria-disabled="true">Block</button>
+                <button class="tm-action-button" type="button" disabled aria-disabled="true">Wait</button>
                 <button class="tm-action-button" type="button" onclick="window.print()">Print</button>
+                <button class="tm-action-button" type="button" disabled aria-disabled="true">Email</button>
+                <button class="tm-action-button" type="button" disabled aria-disabled="true">Delete</button>
               </aside>
             </div>
             </form>
@@ -419,18 +448,49 @@
         }
       });
 
-      document.addEventListener(
-        "click",
-        (event) => {
-          if (event.target.closest(".tm-agenda-booking-check")) {
-            event.stopPropagation();
+      document.addEventListener("click", (event) => {
+        const attendanceItem = event.target.closest("[data-attendance-value]");
+        if (attendanceItem) {
+          event.preventDefault();
+          event.stopPropagation();
+          const control = attendanceItem.closest(".tm-agenda-attendance-control");
+          const csrf = document.querySelector("[name=csrfmiddlewaretoken]");
+          if (!control || !control.dataset.attendanceUrl || !csrf) {
+            return;
           }
-        },
-        true,
-      );
+          const body = new FormData();
+          body.append("attendance_status", attendanceItem.dataset.attendanceValue);
+          fetch(control.dataset.attendanceUrl, {
+            method: "POST",
+            headers: {
+              "X-CSRFToken": csrf.value,
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            body,
+          }).then((response) => {
+            if (response.ok) {
+              window.location.reload();
+            }
+          });
+          return;
+        }
+        if (event.target.closest(".tm-agenda-attendance-control")) {
+          return;
+        }
+        const trigger = event.target.closest('.tm-agenda-booking[role="button"]');
+        if (!trigger) {
+          return;
+        }
+        const targetSelector = trigger.dataset.agendaBookingTarget;
+        const target = targetSelector ? document.querySelector(targetSelector) : null;
+        if (!target || !window.bootstrap) {
+          return;
+        }
+        bootstrap.Modal.getOrCreateInstance(target).show();
+      });
 
       document.addEventListener("keydown", (event) => {
-        if (event.target.closest(".tm-agenda-booking-check")) {
+        if (event.target.closest(".tm-agenda-attendance-control")) {
           return;
         }
         const trigger = event.target.closest('.tm-agenda-booking[role="button"]');
@@ -438,7 +498,11 @@
           return;
         }
         event.preventDefault();
-        trigger.click();
+        const targetSelector = trigger.dataset.agendaBookingTarget;
+        const target = targetSelector ? document.querySelector(targetSelector) : null;
+        if (target && window.bootstrap) {
+          bootstrap.Modal.getOrCreateInstance(target).show();
+        }
       });
     })();
   </script>

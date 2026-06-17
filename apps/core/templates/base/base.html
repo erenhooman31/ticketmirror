@@ -104,10 +104,24 @@
       .tm-agenda-title { font-size: .86rem; text-transform: uppercase; }
       .tm-agenda-meta { color: #2c3948; font-size: .82rem; }
       .tm-agenda-plus { align-items: center; align-self: center; background: #3cb64a; border: 0; border-radius: 2px; color: #fff; display: inline-flex; flex: 0 0 auto; font-size: 1.15rem; font-weight: 800; height: 1.1rem; justify-content: center; line-height: 1; margin-left: auto; padding: 0; width: 1.1rem; }
-      .tm-agenda-booking { background: #fff; border: 1px solid #dfe5ec; color: #1f2933; cursor: pointer; display: grid; gap: .08rem; line-height: 1.16; margin-bottom: .35rem; padding: .45rem .55rem; text-align: left; text-decoration: none; width: 100%; }
-      .tm-agenda-booking:hover { background: #f8fbff; color: #1f2933; }
-      .tm-agenda-booking-title { color: #123e76; font-weight: 750; }
-      .tm-agenda-booking-warning { background: #fff7d8; border-color: #e7c45f; }
+      .tm-agenda-booking { background: #fff; border: 1px solid #d2d7df; color: #1f2933; cursor: pointer; display: block; line-height: 1.16; margin-bottom: .35rem; padding: 0; text-align: left; text-decoration: none; width: 100%; }
+      .tm-agenda-booking:hover { color: #1f2933; filter: brightness(.99); }
+      .tm-agenda-booking-title { align-items: center; background: #2b62a0; color: #fff; display: flex; font-size: .86rem; font-weight: 750; justify-content: space-between; min-height: 1.35rem; padding: .16rem .35rem; }
+      .tm-agenda-booking-warning .tm-agenda-booking-title { background: #9b7513; }
+      .tm-agenda-booking-fields { display: grid; font-size: .86rem; grid-template-columns: 8.2rem minmax(0, 1fr); padding: .22rem .35rem .32rem; row-gap: .18rem; }
+      .tm-agenda-booking-label { font-weight: 750; text-align: right; }
+      .tm-agenda-booking-value { padding-left: .35rem; }
+      .tm-agenda-attendance-control { position: relative; }
+      .tm-agenda-attendance-dot { background: #36e740; border: 1px solid #15ab1e; border-radius: 3px; display: block; height: .86rem; padding: 0; width: .86rem; }
+      .tm-agenda-attendance-dot::after { display: none; }
+      .tm-agenda-attendance-dot.gelmedi { background: #ff2b35; border-color: #c31620; }
+      .tm-agenda-attendance-dot.sonra { background: #31d8d7; border-color: #12a9a8; }
+      .tm-agenda-attendance-menu { border: 1px solid #737b86; border-radius: 2px; box-shadow: none; font-size: .82rem; min-width: 12rem; padding: .28rem 0; }
+      .tm-agenda-attendance-menu .dropdown-item { align-items: center; display: flex; gap: .35rem; padding: .08rem .45rem; }
+      .tm-attendance-swatch { display: inline-block; height: .55rem; width: .55rem; }
+      .tm-attendance-swatch.geldi { background: #36e740; }
+      .tm-attendance-swatch.gelmedi { background: #ff2b35; }
+      .tm-attendance-swatch.sonra { background: #31d8d7; }
       .tm-date-form { align-items: center; display: flex; gap: .25rem; margin-left: auto; }
       .tm-date-form input, .tm-date-form button { border: 1px solid #9ca9b8; border-radius: 3px; font-size: .8rem; padding: .22rem .35rem; }
       .tm-date-form button { background: linear-gradient(#fff, #dfe6ef); color: #102f55; font-weight: 650; }

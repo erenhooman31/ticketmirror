@@ -162,6 +162,35 @@ def cancel_home_booking(request, booking_id):
 
 @login_required
 @require_POST
+def update_home_booking_attendance(request, booking_id):
+    if not (
+        request.user.is_superuser
+        or getattr(request.user.profile, "can_edit_bookings", False)
+    ):
+        return HttpResponseForbidden("You do not have permission to update bookings.")
+    booking = get_object_or_404(Booking, pk=booking_id)
+    attendance_status = request.POST.get("attendance_status", "")
+    if attendance_status not in Booking.AttendanceStatus.values:
+        return JsonResponse(
+            {"ok": False, "error": "Unsupported attendance status."}, status=400
+        )
+    apply_manual_override(
+        booking=booking,
+        changes={"attendance_status": attendance_status},
+        user=request.user,
+        reason="Updated attendance from agenda popup.",
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "attendance_status": attendance_status,
+            "attendance_label": booking.get_attendance_status_display(),
+        }
+    )
+
+
+@login_required
+@require_POST
 def create_home_booking(request, service_date, slot_id):
     if not (
         request.user.is_superuser
@@ -774,6 +803,7 @@ def _agenda_booking_card(booking):
         "traveler": customer_last_first_label(booking),
         "status": status_label(booking),
         "attendance": attendance if booking.attendance_status else "",
+        "attendance_class": _agenda_attendance_class(booking),
         "has_notes": bool(booking.special_requirements or booking.customer_message),
         "warning": booking.status
         in {
@@ -784,6 +814,14 @@ def _agenda_booking_card(booking):
         "detail_url": detail_url,
         "product_mismatch_review": product_mismatch,
     }
+
+
+def _agenda_attendance_class(booking):
+    if booking.attendance_status == Booking.AttendanceStatus.GELMEDI:
+        return "gelmedi"
+    if booking.attendance_status == Booking.AttendanceStatus.SONRA_GELECEK:
+        return "sonra"
+    return "geldi"
 
 
 def _agenda_modal_id(service_date, row):

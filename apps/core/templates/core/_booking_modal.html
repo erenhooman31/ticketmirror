@@ -234,7 +234,6 @@
             <button class="tm-action-button" type="button" data-bs-toggle="modal" data-bs-target="#{{ modal_id }}-payment-error">Payment</button>
             <button class="tm-action-button" type="button" onclick="window.print()">Print</button>
             <button class="tm-action-button" type="button" data-bs-toggle="modal" data-bs-target="#{{ modal_id }}-delete-confirm">Delete</button>
-            <a class="tm-action-button" href="{% url 'bookings:detail' booking.id %}">Open full page</a>
             <div class="tm-send-email-box">
               <div class="tm-send-email-title">Send email:</div>
               <label><input type="checkbox" name="customerNotificationEnabled" checked> customer</label>
@@ -242,7 +241,6 @@
             </div>
           {% else %}
             <button class="tm-action-button primary" type="button" data-bs-dismiss="modal">Close</button>
-            <a class="tm-action-button" href="{% url 'bookings:detail' booking.id %}">Open full page</a>
           {% endif %}
         </aside>
       </div>

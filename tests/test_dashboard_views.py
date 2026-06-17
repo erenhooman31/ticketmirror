@@ -283,6 +283,11 @@ def test_dashboard_booking_modal_hides_raw_internal_sections(
         '<button class="tm-action-button" type="button" disabled>Delete</button>'
         not in html
     )
+    assert "Open full page" not in html
+    assert (
+        f'href="{reverse("bookings:detail", args=[booking_data["booking"].id])}"'
+        not in html
+    )
     for raw_label in [
         "Audit note",
         "Audit</button>",
@@ -412,15 +417,15 @@ def test_dashboard_agenda_item_opens_slot_modal(client, users, booking_data):
     assert f'data-bs-target="#{row["modal_id"]}"' in html
     assert f'id="{row["modal_id"]}"' in html
     booking_modal_id = row["bookings"][0]["modal_id"]
-    card_start = html.index('class="tm-agenda-booking')
-    card_end = html.index("</div>", card_start)
+    card_start = html.index('<div\n                        class="tm-agenda-booking')
+    card_end = html.index(f'id="{row["modal_id"]}-access"', card_start)
     card_html = html[card_start:card_end]
     assert row["bookings"][0]["detail_url"] == reverse(
         "bookings:detail",
         args=[booking_data["booking"].id],
     )
-    assert f'data-bs-target="#{booking_modal_id}"' in card_html
-    assert 'data-bs-toggle="modal"' in card_html
+    assert f'data-agenda-booking-target="#{booking_modal_id}"' in card_html
+    assert 'data-bs-toggle="modal"' not in card_html
     assert "href=" not in card_html
     assert f'id="{booking_modal_id}"' in html
     assert f'id="{booking_modal_id}-booking"' in html
@@ -433,11 +438,35 @@ def test_dashboard_agenda_item_opens_slot_modal(client, users, booking_data):
     assert "Bookings" in html
     assert "Access" in html
     assert "Notes" in html
+    assert ">New</button>" in html
+    assert ">Wait</button>" in html
+    assert ">Email</button>" in html
+    assert ">Delete</button>" in html
     assert "Sample, Alex" in html
-    assert 'type="checkbox" aria-label="Select booking BR-1"' in html
-    assert "People: 3 adults, 1 child" in html
-    assert "Booking number: BR-1" in html
-    assert "Notes: there are notes for this booking" in html
+    assert "tm-agenda-booking-title" in card_html
+    assert 'aria-label="Attendance status for BR-1"' in card_html
+    assert (
+        reverse(
+            "core:update_home_booking_attendance", args=[booking_data["booking"].id]
+        )
+        in card_html
+    )
+    assert "tm-agenda-attendance-menu" in card_html
+    assert 'data-attendance-value="geldi"' in card_html
+    assert 'data-attendance-value="gelmedi"' in card_html
+    assert 'data-attendance-value="sonra_gelecek"' in card_html
+    assert 'data-attendance-value=""' in card_html
+    assert "GELDI" in card_html
+    assert "GELMEDI" in card_html
+    assert "SONRA GELECEK" in card_html
+    assert ">Clear</button>" in card_html
+    assert 'type="checkbox" aria-label="Select booking BR-1"' not in html
+    assert ">People:</span>" in card_html
+    assert ">3 adults, 1 child</span>" in card_html
+    assert ">Booking number:</span>" in card_html
+    assert ">BR-1</span>" in card_html
+    assert ">Notes:</span>" in card_html
+    assert ">there are notes for this booking</span>" in card_html
     assert "09:00 Fixed time" not in html
 
 
@@ -467,6 +496,48 @@ def test_admin_home_agenda_slot_modal_updates_slot_capacity(
 
 
 @pytest.mark.django_db
+def test_home_agenda_attendance_menu_updates_existing_field(
+    client,
+    users,
+    booking_data,
+):
+    booking = booking_data["booking"]
+    client.force_login(users["operator"])
+
+    response = client.post(
+        reverse("core:update_home_booking_attendance", args=[booking.id]),
+        {"attendance_status": Booking.AttendanceStatus.GELMEDI},
+    )
+    booking.refresh_from_db()
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert booking.attendance_status == Booking.AttendanceStatus.GELMEDI
+    assert "attendance_status" in booking.manual_override_fields
+    assert BookingEvent.objects.filter(
+        booking=booking,
+        event_type=BookingEvent.EventType.MANUAL_EDIT,
+    ).exists()
+
+    refreshed = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    row = refreshed.context["agenda_sections"][0]["rows"][0]
+    refreshed_html = refreshed.content.decode()
+    assert row["booked"] == 0
+    assert row["available"] == 5
+    assert "Does not count toward active capacity" in refreshed_html
+    assert "tm-agenda-attendance-dot gelmedi" in refreshed_html
+
+    clear_response = client.post(
+        reverse("core:update_home_booking_attendance", args=[booking.id]),
+        {"attendance_status": Booking.AttendanceStatus.CLEAR},
+    )
+    booking.refresh_from_db()
+
+    assert clear_response.status_code == 200
+    assert booking.attendance_status == Booking.AttendanceStatus.CLEAR
+
+
+@pytest.mark.django_db
 def test_dashboard_agenda_plus_opens_new_booking_popup(
     client,
     users,
@@ -479,6 +550,7 @@ def test_dashboard_agenda_plus_opens_new_booking_popup(
 
     assert f'data-bs-target="#{row["modal_id"]}"' in html
     assert 'aria-label="New booking"' in html
+    assert f'data-bs-target="#new-booking-20260621-{booking_data["slot"].id}"' in html
     assert (
         reverse(
             "core:create_home_booking",
@@ -557,7 +629,9 @@ def test_dashboard_agenda_product_mismatch_booking_opens_modal_with_map_action(
     mismatch_card = next(
         card for card in unscheduled["bookings"] if card["reference"] == "BR-MISMATCH"
     )
-    card_start = html.index(f'data-bs-target="#{mismatch_card["modal_id"]}"')
+    card_start = html.index(
+        f'data-agenda-booking-target="#{mismatch_card["modal_id"]}"'
+    )
     card_start = html.rindex('class="tm-agenda-booking', 0, card_start)
     card_end = html.index("</div>", card_start)
     card_html = html[card_start:card_end]
@@ -566,7 +640,7 @@ def test_dashboard_agenda_product_mismatch_booking_opens_modal_with_map_action(
     assert all(card["reference"] != "BR-MISMATCH" for card in row["bookings"])
     assert mismatch_card["detail_url"] == reverse("bookings:detail", args=[mismatch.id])
     assert mismatch_card["product_mismatch_review"] is not None
-    assert 'data-bs-toggle="modal"' in card_html
+    assert "data-agenda-booking-target=" in card_html
     assert "href=" not in card_html
     assert f'id="{mismatch_card["modal_id"]}"' in html
     assert "Mismatch Guest" in html
