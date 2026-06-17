@@ -1,3 +1,4 @@
+import re
 from datetime import date, time
 
 import pytest
@@ -410,6 +411,21 @@ def test_dashboard_agenda_item_opens_slot_modal(client, users, booking_data):
 
     assert f'data-bs-target="#{row["modal_id"]}"' in html
     assert f'id="{row["modal_id"]}"' in html
+    booking_modal_id = row["bookings"][0]["modal_id"]
+    card_start = html.index('class="tm-agenda-booking')
+    card_end = html.index("</div>", card_start)
+    card_html = html[card_start:card_end]
+    assert row["bookings"][0]["detail_url"] == reverse(
+        "bookings:detail",
+        args=[booking_data["booking"].id],
+    )
+    assert f'data-bs-target="#{booking_modal_id}"' in card_html
+    assert 'data-bs-toggle="modal"' in card_html
+    assert "href=" not in card_html
+    assert f'id="{booking_modal_id}"' in html
+    assert f'id="{booking_modal_id}-booking"' in html
+    assert 'name="lead_traveler_name" value="Alex Sample"' in html
+    assert 'name="active_travel_date" value="2026-06-21"' in html
     assert "City Tour - Sunday, 21 June 2026 09:00" in html
     assert "09:00 (default)" in html
     assert "5 (default)" in html
@@ -514,7 +530,7 @@ def test_home_agenda_plus_save_creates_prefilled_booking(
 
 
 @pytest.mark.django_db
-def test_dashboard_agenda_excludes_product_mismatch_bookings(
+def test_dashboard_agenda_product_mismatch_booking_opens_modal_with_map_action(
     client,
     users,
     booking_data,
@@ -536,12 +552,51 @@ def test_dashboard_agenda_excludes_product_mismatch_bookings(
     client.force_login(users["viewer"])
     response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
     row = response.context["agenda_sections"][0]["rows"][0]
+    html = response.content.decode()
+    unscheduled = response.context["agenda_sections"][0]["rows"][-1]
+    mismatch_card = next(
+        card for card in unscheduled["bookings"] if card["reference"] == "BR-MISMATCH"
+    )
+    card_start = html.index(f'data-bs-target="#{mismatch_card["modal_id"]}"')
+    card_start = html.rindex('class="tm-agenda-booking', 0, card_start)
+    card_end = html.index("</div>", card_start)
+    card_html = html[card_start:card_end]
 
     assert row["booked"] == 2
     assert all(card["reference"] != "BR-MISMATCH" for card in row["bookings"])
-    unscheduled = response.context["agenda_sections"][0]["rows"][-1]
+    assert mismatch_card["detail_url"] == reverse("bookings:detail", args=[mismatch.id])
+    assert mismatch_card["product_mismatch_review"] is not None
+    assert 'data-bs-toggle="modal"' in card_html
+    assert "href=" not in card_html
+    assert f'id="{mismatch_card["modal_id"]}"' in html
+    assert "Mismatch Guest" in html
+    assert "Map product" in html
+    assert f"review_id={mismatch_card['product_mismatch_review'].id}" in html
     assert unscheduled["title"] == "Unscheduled / unmapped"
     assert any(card["reference"] == "BR-MISMATCH" for card in unscheduled["bookings"])
+
+
+@pytest.mark.django_db
+def test_dashboard_booking_modals_have_unique_ids_when_booking_is_message_and_agenda(
+    client,
+    users,
+    booking_data,
+):
+    BookingEvent.objects.create(
+        booking=booking_data["booking"],
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        source=BookingEvent.Source.EMAIL,
+        created_at=timezone.now(),
+    )
+
+    client.force_login(users["operator"])
+    response = client.get(reverse("core:dashboard"), {"date": "2026-06-21"})
+    html = response.content.decode()
+    ids = re.findall(r'\sid="([^"]+)"', html)
+
+    assert 'data-bs-target="#booking-modal-agenda-' in html
+    assert 'data-bs-target="#booking-modal-event-' in html
+    assert len(ids) == len(set(ids))
 
 
 @pytest.mark.django_db

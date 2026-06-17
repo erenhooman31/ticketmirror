@@ -765,13 +765,9 @@ def _agenda_booking_card(booking):
         status=ReviewQueueItem.Status.OPEN,
         issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
     ).first()
-    if product_mismatch:
-        detail_url = (
-            f"{reverse('settings_provider_aliases')}"
-            f"?review_id={product_mismatch.id}"
-        )
     return {
         "booking": booking,
+        "modal_id": f"booking-modal-agenda-{booking.id}",
         "pax": pax,
         "pax_display": typed_traveler_count_label(booking),
         "reference": booking.provider_booking_reference,
@@ -786,6 +782,7 @@ def _agenda_booking_card(booking):
         },
         "counts_for_capacity": booking.is_active_for_capacity,
         "detail_url": detail_url,
+        "product_mismatch_review": product_mismatch,
     }
 
 
