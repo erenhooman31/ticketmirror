@@ -102,3 +102,63 @@ def test_replay_raw_emails_include_parsed_is_explicit(monkeypatch):
 
     call_command("replay_raw_emails", "--apply", "--include-parsed")
     assert processed_ids == [raw_email.id]
+
+
+@pytest.mark.django_db
+def test_replay_raw_emails_can_target_cyrillic_backlog_without_provider(monkeypatch):
+    cyrillic = make_raw_email(
+        status=RawEmail.ParseStatus.PARSED,
+        message_id="cyrillic-parsed-1",
+        provider=None,
+        subject="\u041d\u043e\u0432\u044b\u0439 \u0437\u0430\u043a\u0430\u0437",
+    )
+    make_raw_email(
+        status=RawEmail.ParseStatus.PARSED,
+        message_id="english-parsed-1",
+        provider=None,
+        subject="New booking",
+    )
+    processed_ids = []
+
+    monkeypatch.setattr(
+        "apps.ingestion.management.commands.replay_raw_emails.process_raw_email",
+        lambda raw_email_id: processed_ids.append(raw_email_id),
+    )
+
+    call_command(
+        "replay_raw_emails",
+        "--apply",
+        "--include-parsed",
+        "--contains-cyrillic",
+    )
+
+    assert processed_ids == [cyrillic.id]
+
+
+@pytest.mark.django_db
+def test_replay_raw_emails_body_contains_filter(monkeypatch):
+    matching = make_raw_email(
+        status=RawEmail.ParseStatus.NEEDS_REVIEW,
+        message_id="body-match-1",
+    )
+    matching.body_text = "Booking body mentions Sputnik8"
+    matching.save(update_fields=["body_text"])
+    make_raw_email(
+        status=RawEmail.ParseStatus.NEEDS_REVIEW,
+        message_id="body-miss-1",
+    )
+    processed_ids = []
+
+    monkeypatch.setattr(
+        "apps.ingestion.management.commands.replay_raw_emails.process_raw_email",
+        lambda raw_email_id: processed_ids.append(raw_email_id),
+    )
+
+    call_command(
+        "replay_raw_emails",
+        "--apply",
+        "--body-contains",
+        "Sputnik8",
+    )
+
+    assert processed_ids == [matching.id]

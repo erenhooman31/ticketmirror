@@ -38,6 +38,9 @@ services:
       echo '--- replaying OTA raw email backlog ---' &&
       python manage.py replay_raw_emails --apply --include-parsed
       --provider klook --provider tripster --provider sputnik8 --provider alle &&
+      echo '--- replaying Cyrillic raw email backlog ---' &&
+      python manage.py replay_raw_emails --apply --include-parsed
+      --contains-cyrillic &&
       echo '--- repairing parsed booking display fields ---' &&
       python manage.py repair_parsed_booking_display_fields --quiet --limit 500 &&
       echo '--- re-slotting bookings ---' &&

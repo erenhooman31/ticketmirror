@@ -5,6 +5,8 @@ from django.utils.dateparse import parse_date
 from apps.ingestion.models import RawEmail
 from apps.ingestion.services import process_raw_email
 
+CYRILLIC_DB_REGEX = f"[{chr(0x0400)}-{chr(0x04FF)}]"
+
 DEFAULT_STATUSES = [
     RawEmail.ParseStatus.FAILED,
     RawEmail.ParseStatus.NEEDS_REVIEW,
@@ -52,6 +54,19 @@ class Command(BaseCommand):
             help=(
                 "Filter by outer or forwarded sender substring. Repeatable, "
                 "OR behavior."
+            ),
+        )
+        parser.add_argument(
+            "--body-contains",
+            action="append",
+            help="Filter by body substring. Repeatable, OR behavior.",
+        )
+        parser.add_argument(
+            "--contains-cyrillic",
+            action="store_true",
+            help=(
+                "Replay emails whose stored subject or body contains Cyrillic text. "
+                "Useful for backfilling rows parsed before translation was enabled."
             ),
         )
         parser.add_argument(
@@ -121,12 +136,18 @@ def _candidate_queryset(options):
         queryset = queryset.filter(provider_detected__code__in=options["provider"])
     if options["subject_contains"]:
         queryset = queryset.filter(_contains_q("subject", options["subject_contains"]))
+    if options["body_contains"]:
+        queryset = queryset.filter(_contains_q("body_text", options["body_contains"]))
     if options["sender_contains"]:
         sender_q = Q()
         for value in options["sender_contains"]:
             sender_q |= Q(gmail_outer_sender__icontains=value)
             sender_q |= Q(original_forwarded_sender__icontains=value)
         queryset = queryset.filter(sender_q)
+    if options["contains_cyrillic"]:
+        queryset = queryset.filter(
+            Q(subject__regex=CYRILLIC_DB_REGEX) | Q(body_text__regex=CYRILLIC_DB_REGEX)
+        )
     if options["date_from"]:
         queryset = queryset.filter(
             received_at__date__gte=_parse_date(options["date_from"])
