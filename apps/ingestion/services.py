@@ -26,7 +26,6 @@ from apps.ingestion.parsers import detect_provider, get_parser
 from apps.ingestion.parsers.common import (
     EVENT_CANCELLATION,
     STATUS_CANCELLED,
-    STATUS_MANUAL_REVIEW,
     extract_forwarded_headers,
 )
 from apps.ingestion.providers import provider_display_name
@@ -174,8 +173,6 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
 
     alias_match = match_product_alias(parsed_booking)
     provider_values = _provider_values_from_parsed(parsed_booking)
-    if parsed_booking.confidence < LOW_CONFIDENCE_THRESHOLD:
-        provider_values["status"] = STATUS_MANUAL_REVIEW
     if parsed_booking.event_type == EVENT_CANCELLATION:
         provider_values["status"] = STATUS_CANCELLED
 

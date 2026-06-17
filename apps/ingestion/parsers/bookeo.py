@@ -2,7 +2,6 @@ import re
 
 from .base import ParsedBooking, ProviderEmailParser
 from .common import (
-    STATUS_MANUAL_REVIEW,
     confidence_score,
     first_match,
     infer_event_type,
@@ -28,8 +27,14 @@ class BookeoParser(ProviderEmailParser):
     ) -> ParsedBooking:
         raw_product_name = labeled_value(body_text, ["Tour"])
         bookeo_reference = labeled_value(body_text, ["Booking number"])
-        provider_code = _underlying_provider(body_text, raw_product_name)
-        provider_reference = _underlying_reference(body_text)
+        underlying_provider = _underlying_provider(body_text, raw_product_name)
+        underlying_reference = _underlying_reference(body_text)
+        if underlying_reference:
+            provider_code = underlying_provider
+            provider_reference = underlying_reference
+        else:
+            provider_code = self.provider_code
+            provider_reference = bookeo_reference
         event_type = infer_event_type(subject, body_text)
         travel_date = parse_date_flexible(labeled_value(body_text, ["Date"]))
         start_time = parse_time_flexible(labeled_value(body_text, ["Time"]))
@@ -42,20 +47,18 @@ class BookeoParser(ProviderEmailParser):
             lead_name = traveler_names[0]
 
         confidence, warnings = confidence_score(
-            provider_found=provider_code != self.provider_code,
+            provider_found=bool(underlying_provider),
             reference=provider_reference,
             travel_date=travel_date,
             product_name=raw_product_name,
             traveler_count=traveler_count,
         )
-        if provider_code == self.provider_code:
+        if not underlying_provider:
             warnings.append("underlying_provider_missing")
-        if not provider_reference:
-            warnings.append("needs_review")
+        if not underlying_reference:
+            warnings.append("underlying_reference_missing")
 
         status = status_for_event(event_type, body_text)
-        if not provider_reference:
-            status = STATUS_MANUAL_REVIEW
 
         return ParsedBooking(
             provider_code=provider_code,
@@ -85,8 +88,8 @@ class BookeoParser(ProviderEmailParser):
                 "sender": sender,
                 "source_channel": "bookeo",
                 "bookeo_booking_number": bookeo_reference,
-                "underlying_provider": provider_code,
-                "underlying_reference": provider_reference,
+                "underlying_provider": underlying_provider,
+                "underlying_reference": underlying_reference,
             },
         )
 

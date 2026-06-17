@@ -11,51 +11,46 @@
   </div>
 
   <div class="tm-card">
-    <div class="table-responsive">
-      <table class="table table-hover tm-table mb-0">
+    <div class="tm-inbox-table-wrap">
+      <table class="table table-hover tm-table tm-inbox-table mb-0">
         <thead>
           <tr>
             <th>Received</th>
-            <th>Provider</th>
-            <th>Sender</th>
-            <th>Subject</th>
-            <th>Reference</th>
-            <th>Raw product</th>
-            <th>Matched product</th>
-            <th>Date/time</th>
-            <th class="text-end">Pax</th>
-            <th>Lead traveler</th>
+            <th>Email</th>
+            <th>Booking</th>
             <th>Status</th>
-            <th></th>
+            <th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for row in rows %}
             <tr>
-              <td>{{ row.received_label }}</td>
-              <td>{{ row.provider }}</td>
               <td>
-                {{ row.sender }}
+                <div class="tm-inbox-primary">{{ row.received_label }}</div>
+                <div class="tm-inbox-meta">{{ row.provider }}</div>
+              </td>
+              <td>
+                <a class="tm-inbox-subject" href="{% url 'bookings:raw_email_detail' row.raw_email.id %}">{{ row.subject }}</a>
+                <div class="tm-inbox-meta">{{ row.sender }}</div>
                 {% if row.forwarded_sender %}
-                  <div class="small tm-muted">fwd: {{ row.forwarded_sender }}</div>
+                  <div class="tm-inbox-meta">fwd: {{ row.forwarded_sender }}</div>
+                {% endif %}
+                {% if row.parse_error %}
+                  <div class="tm-inbox-error">{{ row.parse_error|truncatechars:120 }}</div>
                 {% endif %}
               </td>
               <td>
-                <a href="{% url 'bookings:raw_email_detail' row.raw_email.id %}">{{ row.subject }}</a>
-                {% if row.parse_error %}
-                  <div class="small text-danger">{{ row.parse_error|truncatechars:120 }}</div>
-                {% endif %}
+                <div class="tm-inbox-primary">{{ row.provider_reference }}</div>
+                <div class="tm-inbox-meta">Raw: {{ row.raw_product_title }}</div>
+                <div class="tm-inbox-meta">Matched: {{ row.matched_product }}</div>
+                <div class="tm-inbox-meta">When: {{ row.booking_datetime }}</div>
+                <div class="tm-inbox-meta">Pax: {{ row.traveler_count }}</div>
+                <div class="tm-inbox-meta">Lead: {{ row.lead_traveler }}</div>
               </td>
-              <td>{{ row.provider_reference }}</td>
-              <td>{{ row.raw_product_title }}</td>
-              <td>{{ row.matched_product }}</td>
-              <td>{{ row.booking_datetime }}</td>
-              <td class="text-end">{{ row.traveler_count }}</td>
-              <td>{{ row.lead_traveler }}</td>
               <td>
                 <span class="badge badge-status text-bg-{% if row.status == 'Complete' %}success{% elif row.status == 'Ignored' %}secondary{% elif row.status == 'Parse failed' or row.status == 'Product mismatch' %}danger{% else %}warning{% endif %}">{{ row.status }}</span>
                 {% if row.issues %}
-                  <div class="small tm-muted">
+                  <div class="tm-inbox-meta mt-1">
                     {% for issue in row.issues %}
                       {{ issue.get_issue_type_display }}{% if not forloop.last %}, {% endif %}
                     {% endfor %}
@@ -63,7 +58,7 @@
                 {% endif %}
               </td>
               <td class="text-end">
-                <div class="d-flex flex-wrap gap-1 justify-content-end">
+                <div class="tm-inbox-actions">
                   <a class="btn btn-sm btn-outline-primary" href="{{ row.action_url }}">{{ row.action_label }}</a>
                   {% if can_edit_queue %}
                     <form method="post" action="{% url 'inbox_email_action' row.raw_email.id %}">
@@ -79,7 +74,7 @@
               </td>
             </tr>
           {% empty %}
-            <tr><td colspan="12" class="text-center tm-muted py-4">No parsed emails yet.</td></tr>
+            <tr><td colspan="5" class="text-center tm-muted py-4">No parsed emails yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>

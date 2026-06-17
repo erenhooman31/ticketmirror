@@ -20,6 +20,22 @@
       .tm-muted { color: #697586; }
       .tm-table tr[data-href] { cursor: pointer; }
       .tm-table tr[data-href]:hover { background: #f0f5ff; }
+      .tm-inbox-table-wrap { overflow: visible; }
+      .tm-inbox-table { table-layout: fixed; width: 100%; }
+      .tm-inbox-table th, .tm-inbox-table td { overflow-wrap: anywhere; vertical-align: top; }
+      .tm-inbox-table th:nth-child(1) { width: 8.5rem; }
+      .tm-inbox-table th:nth-child(2) { width: 32%; }
+      .tm-inbox-table th:nth-child(3) { width: 34%; }
+      .tm-inbox-table th:nth-child(4) { width: 10.5rem; }
+      .tm-inbox-table th:nth-child(5) { width: 9rem; }
+      .tm-inbox-primary { color: #1f2933; font-size: .88rem; font-weight: 650; line-height: 1.25; }
+      .tm-inbox-subject { color: #1f5590; display: inline-block; font-size: .9rem; font-weight: 650; line-height: 1.25; text-decoration: none; }
+      .tm-inbox-subject:hover { text-decoration: underline; }
+      .tm-inbox-meta { color: #536273; font-size: .8rem; line-height: 1.25; margin-top: .12rem; }
+      .tm-inbox-error { color: #b42318; font-size: .8rem; line-height: 1.25; margin-top: .2rem; }
+      .tm-inbox-actions { align-items: flex-end; display: flex; flex-direction: column; gap: .25rem; }
+      .tm-inbox-actions form { margin: 0; }
+      .tm-inbox-actions .btn { white-space: nowrap; }
       .tm-kpi { font-size: 1.85rem; line-height: 1.1; font-weight: 650; }
       .tm-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #697586; }
       .tm-manual { border-left: 4px solid #b42318; padding-left: .5rem; }
@@ -230,6 +246,11 @@
         .tm-settings-shell { grid-template-columns: 1fr; }
         .tm-settings-actions { flex-direction: row; }
         .tm-customer-directory { grid-template-columns: 1fr; }
+        .tm-inbox-table thead { display: none; }
+        .tm-inbox-table, .tm-inbox-table tbody, .tm-inbox-table tr, .tm-inbox-table td { display: block; width: 100%; }
+        .tm-inbox-table tr { border-bottom: 1px solid #d9dee7; padding: .45rem .55rem; }
+        .tm-inbox-table td { border: 0; padding: .25rem 0; text-align: left !important; }
+        .tm-inbox-actions { align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
       }
     </style>
   </head>

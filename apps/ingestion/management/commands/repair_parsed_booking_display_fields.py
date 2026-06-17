@@ -120,11 +120,17 @@ class Command(BaseCommand):
 
         changed = self._fill_missing_booking_fields(booking, raw_email, parsed)
         self._ensure_missing_reviews(raw_email, booking)
+        resolved_reviews = self._resolve_obsolete_reviews(raw_email, booking)
         raw_email.parse_error = None
-        if changed:
+        has_open_review = self._has_open_review(raw_email, booking)
+        if (
+            changed
+            or resolved_reviews
+            or raw_email.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW
+        ):
             raw_email.parse_status = (
                 RawEmail.ParseStatus.NEEDS_REVIEW
-                if self._has_open_review(raw_email, booking)
+                if has_open_review
                 else RawEmail.ParseStatus.PARSED
             )
             raw_email.save(
@@ -135,10 +141,10 @@ class Command(BaseCommand):
                     "updated_at",
                 ]
             )
-            return "repaired"
+            return "sent_to_review" if has_open_review and not changed else "repaired"
 
         raw_email.save(update_fields=["provider_detected", "parse_error", "updated_at"])
-        if self._has_open_review(raw_email, booking):
+        if has_open_review:
             return "sent_to_review"
         return "skipped"
 
@@ -258,6 +264,40 @@ class Command(BaseCommand):
                     title=title,
                     details=details,
                 )
+
+    def _resolve_obsolete_reviews(self, raw_email, booking):
+        resolved_types = []
+        if booking.activity_id:
+            resolved_types.extend(
+                [
+                    ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
+                    ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+                ]
+            )
+        if booking.active_travel_date:
+            resolved_types.append(ReviewQueueItem.IssueType.DATE_MISSING)
+        if booking.active_start_time or booking.active_slot_type in {
+            "full_day",
+            "half_day",
+        }:
+            resolved_types.append(ReviewQueueItem.IssueType.TIME_MISSING)
+        if booking.active_traveler_count is not None:
+            resolved_types.append(ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING)
+        if booking.lead_traveler_name:
+            resolved_types.append(ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING)
+        if raw_email.provider_detected_id:
+            resolved_types.append(ReviewQueueItem.IssueType.PROVIDER_NOT_DETECTED)
+
+        if not resolved_types:
+            return 0
+        return ReviewQueueItem.objects.filter(
+            raw_email=raw_email,
+            booking=booking,
+            status=ReviewQueueItem.Status.OPEN,
+            issue_type__in=resolved_types,
+        ).update(
+            status=ReviewQueueItem.Status.RESOLVED, resolved_at=raw_email.updated_at
+        )
 
     def _has_open_review(self, raw_email, booking):
         return ReviewQueueItem.objects.filter(

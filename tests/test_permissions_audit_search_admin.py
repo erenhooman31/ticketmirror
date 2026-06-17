@@ -272,8 +272,17 @@ def test_inbox_lists_raw_email_review_state(client, users, booking_setup):
     assert "Inbox" in html
     assert "Viator booking BR-INBOX" in html
     assert "notifications@viator.com" in html
+    assert "Raw:" in html
+    assert "Matched:" in html
+    assert "When:" in html
+    assert "Pax:" in html
+    assert "Lead:" in html
     assert "Missing data" in html
     assert "Complete missing data" in html
+    assert html.count("<th>") == 4
+    assert html.count('<th class="text-end">') == 1
+    assert "<th>Sender</th>" not in html
+    assert "<th>Raw product</th>" not in html
 
 
 @pytest.mark.django_db

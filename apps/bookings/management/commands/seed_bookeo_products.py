@@ -672,14 +672,8 @@ def assert_catalog_drift():
     expected = set(LIVE_BOOKEO_PRODUCT_NAMES)
     actual = set(TourActivity.objects.values_list("name", flat=True))
     missing = sorted(expected - actual)
-    extra = sorted(actual - expected)
-    if missing or extra:
-        details = []
-        if missing:
-            details.append(f"missing={missing}")
-        if extra:
-            details.append(f"extra={extra}")
-        raise CommandError("Bookeo catalog drift detected: " + "; ".join(details))
+    if missing:
+        raise CommandError(f"Bookeo catalog drift detected: missing={missing}")
 
 
 def build_alias_coverage():

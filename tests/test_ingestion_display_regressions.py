@@ -267,3 +267,52 @@ def test_repair_command_fills_missing_booking_display_fields_idempotently():
     second_output = StringIO()
     call_command("repair_parsed_booking_display_fields", stdout=second_output)
     assert "scanned=1 repaired=0" in second_output.getvalue()
+
+
+@pytest.mark.django_db
+def test_repair_command_resolves_product_mismatch_after_alias_seed():
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="repair-product-mismatch-1",
+        gmail_thread_id="thread-repair-product",
+        gmail_outer_sender="bookings@viator.com",
+        subject="Viator booking BR-123456789 confirmed",
+        received_at=timezone.now(),
+        body_text=fixture("viator_new.txt"),
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    provider = Provider.objects.create(
+        name="Viator", code="viator", parser_key="viator"
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="BR-123456789",
+        status=Booking.Status.MANUAL_REVIEW,
+        raw_product_name="Evening Bosphorus Cruise",
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        title="Product title is not mapped",
+    )
+    setup = create_activity_setup(
+        provider_code="viator-seeded",
+        provider_name="Viator",
+        activity_name="Evening Bosphorus Cruise",
+        raw_product_name="Evening Bosphorus Cruise",
+        raw_option_name="Standard deck",
+        start_time=time(19, 30),
+    )
+    setup["alias"].provider = provider
+    setup["alias"].save(update_fields=["provider", "updated_at"])
+
+    output = StringIO()
+    call_command("repair_parsed_booking_display_fields", stdout=output)
+    booking.refresh_from_db()
+    raw_email.refresh_from_db()
+    review.refresh_from_db()
+
+    assert "scanned=1 repaired=1" in output.getvalue()
+    assert booking.activity == setup["activity"]
+    assert raw_email.parse_status == RawEmail.ParseStatus.PARSED
+    assert review.status == ReviewQueueItem.Status.RESOLVED

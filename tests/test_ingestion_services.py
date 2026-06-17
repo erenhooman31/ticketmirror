@@ -109,6 +109,13 @@ def bookeo_message(message_id="gmail-bookeo-1") -> dict:
     }
 
 
+def bookeo_body_without_ota_reference() -> str:
+    return fixture("bookeo_viator_new.txt").replace(
+        "Notes by Viator, please confirm at the pier. Booking reference: 1411335703",
+        "Notes by operator: no OTA reference supplied yet.",
+    )
+
+
 def viator_same_booking_message(message_id="gmail-viator-same-1") -> dict:
     return {
         "gmail_message_id": message_id,
@@ -168,6 +175,84 @@ def test_bookeo_and_direct_ota_messages_merge_on_underlying_reference():
     assert booking.provider_traveler_count == 3
     assert Booking.objects.count() == 1
     assert booking.events.count() == 2
+
+
+@pytest.mark.django_db
+def test_bookeo_without_ota_reference_still_creates_bookeo_booking():
+    create_activity_setup(
+        provider_code="bookeo",
+        provider_name="Bookeo",
+        activity_name="Bosphorus Cruise",
+        raw_product_name="2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+        raw_option_name="",
+        start_time=time(11, 0),
+        service_date=date(2026, 6, 17),
+    )
+    payload = bookeo_message("gmail-bookeo-no-ota")
+    payload["body_text"] = bookeo_body_without_ota_reference()
+
+    raw = process_gmail_message(payload)
+    booking = Booking.objects.get()
+
+    assert raw.parse_status == RawEmail.ParseStatus.PARSED
+    assert booking.provider.code == "bookeo"
+    assert booking.provider_booking_reference == "2557606167491444"
+    assert booking.provider_order_reference == "Bookeo 2557606167491444"
+    assert booking.status == Booking.Status.PENDING_PROVIDER_ACCEPTANCE
+
+
+@pytest.mark.django_db
+def test_bookeo_cancellation_raw_email_updates_existing_booking():
+    create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="Bosphorus Cruise",
+        raw_product_name="2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+        raw_option_name="",
+        start_time=time(11, 0),
+        service_date=date(2026, 6, 17),
+    )
+    process_gmail_message(bookeo_message("gmail-bookeo-cancel-base"))
+    cancel_payload = bookeo_message("gmail-bookeo-cancel")
+    cancel_payload["subject"] = "Booking canceled - Alex Bookeo"
+
+    process_gmail_message(cancel_payload)
+    booking = Booking.objects.get()
+
+    assert booking.status == Booking.Status.CANCELLED
+    assert booking.events.filter(
+        event_type=BookingEvent.EventType.EMAIL_CANCELLATION,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_bookeo_change_raw_email_updates_existing_booking_fields():
+    create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="Bosphorus Cruise",
+        raw_product_name="2 Hours Bosphorus Cruise Boat Tour in Istanbul VIATOR",
+        raw_option_name="",
+        start_time=time(11, 0),
+        service_date=date(2026, 6, 17),
+    )
+    process_gmail_message(bookeo_message("gmail-bookeo-change-base"))
+    change_payload = bookeo_message("gmail-bookeo-change")
+    change_payload["subject"] = "Booking changed - Alex Bookeo"
+    change_payload["body_text"] = fixture("bookeo_viator_new.txt").replace(
+        "Participants: 3 adults",
+        "Participants: 5 adults",
+    )
+
+    process_gmail_message(change_payload)
+    booking = Booking.objects.get()
+
+    assert booking.status == Booking.Status.MODIFIED
+    assert booking.provider_traveler_count == 5
+    assert booking.active_traveler_count == 5
+    assert booking.events.filter(
+        event_type=BookingEvent.EventType.EMAIL_UPDATE
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -322,7 +407,7 @@ def test_single_missing_field_does_not_force_manual_review_status(viator_alias):
         raw,
         parsed_booking(
             lead_traveler_name="",
-            confidence=0.8,
+            confidence=0.6,
             warnings=["lead_traveler_missing"],
         ),
     )
@@ -330,7 +415,7 @@ def test_single_missing_field_does_not_force_manual_review_status(viator_alias):
 
     assert booking.status == Booking.Status.CONFIRMED
     assert raw.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW
-    assert not ReviewQueueItem.objects.filter(
+    assert ReviewQueueItem.objects.filter(
         booking=booking,
         issue_type=ReviewQueueItem.IssueType.LOW_CONFIDENCE_PARSE,
     ).exists()

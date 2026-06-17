@@ -39,6 +39,10 @@ services:
       python manage.py check &&
       echo '--- running migrations ---' &&
       python manage.py migrate --noinput &&
+      echo '--- seeding Bookeo catalog ---' &&
+      python manage.py seed_bookeo_products &&
+      echo '--- repairing parsed booking display fields ---' &&
+      python manage.py repair_parsed_booking_display_fields &&
       echo '--- running collectstatic ---' &&
       python manage.py collectstatic --noinput &&
       echo '--- creating initial admin ---' &&

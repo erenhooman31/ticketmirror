@@ -1,6 +1,5 @@
 import pytest
 from django.core.management import call_command
-from django.core.management.base import CommandError
 
 from apps.bookings.management.commands.seed_bookeo_products import DIRECT_OTA_ALIASES
 from apps.bookings.models import (
@@ -270,7 +269,7 @@ def test_match_product_alias_normalizes_whitespace_and_ignores_case():
 
 
 @pytest.mark.django_db
-def test_seed_bookeo_products_fails_on_catalog_drift():
+def test_seed_bookeo_products_allows_operator_created_extra_activity():
     TourActivity.objects.create(
         name="Unexpected public checkout tour",
         internal_display_name="Unexpected",
@@ -278,8 +277,24 @@ def test_seed_bookeo_products_fails_on_catalog_drift():
         category=TourActivity.Category.OTHER,
     )
 
-    with pytest.raises(CommandError, match="Bookeo catalog drift detected"):
-        call_command("seed_bookeo_products")
+    call_command("seed_bookeo_products")
+
+    assert TourActivity.objects.filter(name="Unexpected public checkout tour").exists()
+    assert TourActivity.objects.count() == 13
+
+
+@pytest.mark.django_db
+def test_seed_bookeo_products_creates_catalog_expected_after_deploy_seed():
+    call_command("seed_bookeo_products")
+
+    seeded_names = set(TourActivity.objects.values_list("name", flat=True))
+    assert len(seeded_names) == 12
+    assert ProviderAlias.objects.filter(approved=True).count() >= 24
+    for product_name in seeded_names:
+        assert ProviderAlias.objects.filter(
+            linked_activity__name=product_name,
+            approved=True,
+        ).exists()
 
 
 @pytest.mark.django_db

@@ -70,6 +70,19 @@ PROVIDER_PATTERNS = {
     },
 }
 
+RELAXED_BODY_MARKERS = {
+    "bookeo": [r"Booking details", r"powered by Bookeo", r"Booking number\s*:"],
+    "getyourguide": [r"GetYourGuide", r"\bGYG[A-Z0-9-]+\b"],
+    "viator": [r"Viator", r"Tripadvisor"],
+    "tiqets": [r"Tiqets"],
+    "tripster": [r"Tripster", r"experience\.tripster"],
+    "sputnik8": [r"Sputnik8", r"Participants \(tickets\)"],
+    "klook": [r"Klook"],
+    "alle": [r"\bAlle\b"],
+    "travel-experience": [r"Travel Experience"],
+    "direct": [r"\bDIR-[A-Z0-9-]+\b"],
+}
+
 _registry = {}
 
 
@@ -100,6 +113,10 @@ def detect_provider(
         sender_matches = _matches_any(effective_sender, groups["sender"])
         subject_matches = _matches_any(effective_subject, groups["subject"])
         body_matches = _matches_any(body_text, groups["body"])
+        relaxed_body_matches = _matches_any(
+            body_text,
+            RELAXED_BODY_MARKERS.get(provider_code, groups["body"]),
+        )
         if sender_matches:
             score += 0.5
         if subject_matches:
@@ -110,7 +127,7 @@ def detect_provider(
             sender_matches=sender_matches,
             subject_matches=subject_matches,
             body_matches=body_matches,
-            provider_code=provider_code,
+            relaxed_body_matches=relaxed_body_matches,
         ):
             continue
         if score:
@@ -155,13 +172,11 @@ def _is_acceptable_candidate(
     sender_matches: bool,
     subject_matches: bool,
     body_matches: bool,
-    provider_code: str,
+    relaxed_body_matches: bool,
 ) -> bool:
     if sender_matches:
         return True
-    if provider_code == "bookeo":
-        return subject_matches and body_matches
-    return False
+    return subject_matches and body_matches and relaxed_body_matches
 
 
 for parser in (

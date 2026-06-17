@@ -51,11 +51,33 @@ def test_detect_provider_rejects_spoofed_body_from_unknown_sender():
     provider_code, confidence = detect_provider(
         subject="Viator booking BR-SPOOF confirmed",
         sender="attacker@example.net",
-        body_text="Viator\nBooking reference: BR-SPOOF\nTravelers: 2",
+        body_text="Booking reference: BR-SPOOF\nTravelers: 2",
     )
 
     assert provider_code is None
     assert confidence == 0
+
+
+def test_detect_provider_allows_forwarded_tiqets_without_recovered_sender():
+    provider_code, confidence = detect_provider(
+        subject="Fwd: Booking notification from Tiqets.com (order number: 1640917411)",
+        sender="owner@gmail.com",
+        body_text=fixture("real_tiqets_new.txt"),
+    )
+
+    assert provider_code == "tiqets"
+    assert confidence >= 0.5
+
+
+def test_detect_provider_allows_forwarded_getyourguide_without_recovered_sender():
+    provider_code, confidence = detect_provider(
+        subject="Fwd: Urgent: New booking received - S259500 - GYGZXCVB1234",
+        sender="owner@gmail.com",
+        body_text=fixture("real_getyourguide_new.txt"),
+    )
+
+    assert provider_code == "getyourguide"
+    assert confidence >= 0.5
 
 
 def test_extract_forwarded_headers():
@@ -136,6 +158,26 @@ def test_parse_bookeo_notification_uses_underlying_ota_identity():
         "Jordan Bookeo",
     ]
     assert parsed.confidence == 1
+
+
+def test_parse_bookeo_notification_falls_back_to_bookeo_booking_number():
+    body = fixture("bookeo_viator_new.txt").replace(
+        "Notes by Viator, please confirm at the pier. Booking reference: 1411335703",
+        "Notes by operator: no OTA reference supplied yet.",
+    )
+
+    parsed = parse_by_provider(
+        "bookeo",
+        "New booking - Alex Bookeo",
+        "noreply@bookeo.com",
+        body,
+    )
+
+    assert parsed.provider_code == "bookeo"
+    assert parsed.provider_booking_reference == "2557606167491444"
+    assert parsed.provider_order_reference == "Bookeo 2557606167491444"
+    assert parsed.status != STATUS_MANUAL_REVIEW
+    assert "underlying_reference_missing" in parsed.warnings
 
 
 def test_parse_realistic_getyourguide_new_booking():
