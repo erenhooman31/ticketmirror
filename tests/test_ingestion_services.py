@@ -111,6 +111,35 @@ def bookeo_message(message_id="gmail-bookeo-1") -> dict:
     }
 
 
+def forwarded_payload(
+    *,
+    message_id: str,
+    subject: str,
+    forwarded_from: str,
+    forwarded_subject: str,
+    body: str = "",
+) -> dict:
+    return {
+        "gmail_message_id": message_id,
+        "gmail_thread_id": f"thread-{message_id}",
+        "gmail_history_id": f"history-{message_id}",
+        "gmail_outer_sender": "owner@gmail.com",
+        "subject": f"Fwd: {subject}",
+        "received_at": timezone.now(),
+        "body_text": "\n".join(
+            [
+                "---------- Forwarded message ---------",
+                f"From: {forwarded_from}",
+                "Date: Wed, Jun 17, 2026 at 10:01 AM",
+                f"Subject: {forwarded_subject}",
+                "To: <ops@example.test>",
+                "",
+                body,
+            ]
+        ),
+    }
+
+
 def bookeo_body_without_ota_reference() -> str:
     return fixture("bookeo_viator_new.txt").replace(
         "Notes by Viator, please confirm at the pier. Booking reference: 1411335703",
@@ -460,6 +489,79 @@ def test_getyourguide_cancellation_first_converges_when_original_arrives_later()
             ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
         ],
     ).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("message_id", "subject", "forwarded_from", "forwarded_subject", "body"),
+    [
+        (
+            "ignore-gyg-review",
+            "Новый отзыв на вашу экскурсию (5/5)",
+            "Sputnik team <gid@sputnik8.com>",
+            "New review of your excursion (5/5)",
+            "Natalia I. left a review for your tour.",
+        ),
+        (
+            "ignore-sputnik-viewed",
+            "Вашей экскурсией интересовались",
+            "Oleg <message-1@example.messages.sputnik8.com>",
+            (
+                "Your excursion was viewed by: "
+                "'Bosphorus boat trip with an audio guide', order 5353542"
+            ),
+            "Hello, Aziz!",
+        ),
+        (
+            "ignore-sputnik-message",
+            "Вам пришло сообщение",
+            "Pantoni <message-2@messages.sputnik8.com>",
+            (
+                "You have received a message: "
+                "'Bosphorus boat trip with an audio guide', order 5349622"
+            ),
+            "Please answer the tourist.",
+        ),
+        (
+            "ignore-tripster-reminder",
+            "Напоминание об экскурсии 19 июня",
+            "Tripster <support@tripster.ru>",
+            "Reminder about the excursion on June 19",
+            (
+                "Tour reminder. Unfortunately, there are no registered or paid "
+                "participants."
+            ),
+        ),
+        (
+            "ignore-sputnik-updated-info",
+            "Заказ №5351794, турист обновил информацию",
+            "Sputnik team <gid@sputnik8.com>",
+            "Заказ №5351794, турист обновил информацию",
+            "Здравствуйте! Турист обновил данные по подтвержденному заказу.",
+        ),
+    ],
+)
+def test_process_raw_email_ignores_real_non_booking_notifications(
+    message_id,
+    subject,
+    forwarded_from,
+    forwarded_subject,
+    body,
+):
+    raw = process_gmail_message(
+        forwarded_payload(
+            message_id=message_id,
+            subject=subject,
+            forwarded_from=forwarded_from,
+            forwarded_subject=forwarded_subject,
+            body=body,
+        )
+    )
+
+    assert raw.parse_status == RawEmail.ParseStatus.IGNORED
+    assert raw.parse_error.startswith("Ignored - not a booking")
+    assert Booking.objects.count() == 0
+    assert ReviewQueueItem.objects.count() == 0
 
 
 @pytest.mark.django_db

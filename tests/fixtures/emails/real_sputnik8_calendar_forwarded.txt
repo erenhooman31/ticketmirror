@@ -1,0 +1,29 @@
+---------- Forwarded message ---------
+From: Sputnik team <gid@sputnik8.com>
+Date: Mon, Apr 13, 2026 at 4:43 PM
+Subject: New reservation for the excursion 'Bosphorus boat trip with an
+audio guide' for April 13 at 7:00 PM (Monday), order 5353542
+To: <info@sealandtrip.com>
+
+Hello Aziz!
+
+Hooray! Your excursion Bosphorus Boat Cruise with Audio Guide
+has been booked!
+*Your confirmation is required!*
+
+Order No. 5353542
+Date and time: April 13th at 19:00 (Monday)
+You will be met by: Oleg Videnin
+Participants (tickets): Adults (7+): 2 pcs.
+Phone: +79208380744
+Email: olegvidenin@gmail.com Please <olegvidenin@gmail.com>write an email
+to Oleg Videnin
+
+BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260413T190000
+DTEND:20260413T210000
+SUMMARY:Oleg Videnin [2] / Морская прогулка по Босфору с аудиогидом
+END:VEVENT
+END:VCALENDAR

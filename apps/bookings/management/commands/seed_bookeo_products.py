@@ -333,6 +333,24 @@ DIRECT_OTA_ALIASES = [
         "notes": "Confirmed from tests/fixtures/emails/real_getyourguide_new.txt.",
     },
     {
+        "provider": "getyourguide",
+        "raw_product_name": (
+            "Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide"
+        ),
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": "Confirmed from real GetYourGuide cancellation sample.",
+    },
+    {
+        "provider": "klook",
+        "raw_product_name": (
+            "Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide"
+        ),
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": "Confirmed from real Klook confirmation/cancellation samples.",
+    },
+    {
         "provider": "tiqets",
         "raw_product_name": (
             "Istanbul: Guided Bosphorus Sightseeing Cruise + Audio Guide"
@@ -374,6 +392,34 @@ DIRECT_OTA_ALIASES = [
             "Russian Old City/continents title; provisional pending "
             "Sputnik8 body capture."
         ),
+    },
+    {
+        "provider": "tripster",
+        "raw_product_name": "Bosphorus boat trip with audio guide",
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": "Confirmed from real Tripster English forwarded subject.",
+    },
+    {
+        "provider": "tripster",
+        "raw_product_name": "Bosphorus Boat Cruise with Audio Guide",
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": "Confirmed from real Tripster English order body.",
+    },
+    {
+        "provider": "sputnik8",
+        "raw_product_name": "Bosphorus Boat Cruise with Audio Guide",
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": "Confirmed from real Sputnik8 reservation body.",
+    },
+    {
+        "provider": "sputnik8",
+        "raw_product_name": "Bosphorus boat trip with an audio guide",
+        "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
+        "slot_start_time": "19:00",
+        "notes": "Confirmed from real Sputnik8 forwarded subject.",
     },
 ]
 

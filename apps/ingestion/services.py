@@ -27,6 +27,8 @@ from apps.ingestion.parsers import detect_provider, get_parser
 from apps.ingestion.parsers.common import (
     EVENT_CANCELLATION,
     STATUS_CANCELLED,
+    decode_body_text,
+    effective_message,
     extract_forwarded_headers,
 )
 from apps.ingestion.providers import provider_display_name
@@ -338,7 +340,7 @@ def _create_completeness_review_items(
 def _provider_omits_field(raw_email: RawEmail, issue_type: str) -> bool:
     provider_code = getattr(raw_email.provider_detected, "code", "")
     return (
-        provider_code == "tripster"
+        provider_code in {"tripster", "sputnik8"}
         and issue_type == ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING
     )
 
@@ -637,15 +639,26 @@ def _should_ignore_non_booking_email(raw_email: RawEmail) -> bool:
 def non_booking_ignore_reason(raw_email: RawEmail) -> str:
     subject = raw_email.subject or ""
     sender = raw_email.gmail_outer_sender or ""
-    body_text = raw_email.body_text or ""
-    subject_lower = subject.casefold()
-    haystack = f"{subject}\n{body_text}".casefold()
-    sender_lower = sender.casefold()
+    body_text = decode_body_text(raw_email.body_text or "")
+    effective_subject, effective_sender, _forwarded = effective_message(
+        subject=subject,
+        sender=sender,
+        body_text=body_text,
+    )
+    subject_lower = effective_subject.casefold()
+    haystack = (
+        f"{subject}\n{effective_subject}\n{effective_sender}\n{body_text}".casefold()
+    )
+    sender_lower = effective_sender.casefold()
     if "news@sup.getyourguide.com" in sender_lower:
         return "GetYourGuide newsletter sender"
+    if "message@reply.getyourguide.com" in sender_lower:
+        return "GetYourGuide reply/message sender"
+    if "@messages.sputnik8.com" in sender_lower:
+        return "Sputnik8 message/interest sender"
     if re.search(
-        r"you have a new review|new review on|question about the activity|"
-        r"ticket received|ticket id",
+        r"you have a new review|new review(?:\s+of|\s+on)?|новый отзыв|"
+        r"question about the activity|ticket received|ticket id",
         haystack,
         re.IGNORECASE,
     ) or subject_lower.startswith("reminder:"):
@@ -658,8 +671,17 @@ def non_booking_ignore_reason(raw_email: RawEmail) -> str:
                 "\u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 "
                 "\u043a \u0437\u0430\u043a\u0430\u0437\u0443"
             ),
+            (
+                "\u0432\u0430\u043c \u043f\u0440\u0438\u0448\u043b\u043e "
+                "\u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435"
+            ),
             "\u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u0435",
             "\u043e\u0442\u0437\u044b\u0432",
+            (
+                "\u0442\u0443\u0440\u0438\u0441\u0442 "
+                "\u043e\u0431\u043d\u043e\u0432\u0438\u043b "
+                "\u0438\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u044e"
+            ),
         ],
     ):
         return "provider review/message notification"
@@ -669,6 +691,18 @@ def non_booking_ignore_reason(raw_email: RawEmail) -> str:
         r"inquiry|enquiry|promotion|marketing|survey|payout|invoice)\b",
         subject_lower,
         re.IGNORECASE,
+    ):
+        return "general non-booking notification"
+    if re.search(
+        r"\b(was viewed by|viewed by|interested|pre-booking|"
+        r"you have received a message|updated information|"
+        r"no participants|new group tour bookings)\b",
+        haystack,
+        re.IGNORECASE,
+    ):
+        return "general non-booking notification"
+    if re.search(
+        r"интересовал(?:ись|ся)|обновил информацию|нет участников", haystack, re.I
     ):
         return "general non-booking notification"
     if _unsubscribe_only_body(body_text):

@@ -1,3 +1,6 @@
+import base64
+import binascii
+import quopri
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -131,6 +134,46 @@ def normalize_whitespace(value: str | None) -> str:
     if not value:
         return ""
     return re.sub(r"\s+", " ", value).strip()
+
+
+def decode_body_text(value: str | None) -> str:
+    if not value:
+        return ""
+    if "\ufffd" in value:
+        value = value.replace("\ufffd", "")
+    decoded = _maybe_decode_base64(value)
+    if decoded != value:
+        return decoded
+    return _maybe_decode_quoted_printable(value)
+
+
+def strip_forwarded_header_block(body_text: str) -> str:
+    lines = decode_body_text(body_text).splitlines()
+    output = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if "forwarded message" not in line.lower():
+            output.append(line)
+            index += 1
+            continue
+        output.append(line)
+        index += 1
+        while index < len(lines):
+            stripped = lines[index].strip()
+            if not stripped:
+                index += 1
+                break
+            if _looks_forwarded_header_line(stripped):
+                index += 1
+                while index < len(lines):
+                    next_stripped = lines[index].strip()
+                    if not next_stripped or _looks_forwarded_header_line(next_stripped):
+                        break
+                    index += 1
+                continue
+            break
+    return "\n".join(output)
 
 
 def labeled_value(text: str, labels: list[str]) -> str:
@@ -332,12 +375,14 @@ def extract_phone(text: str) -> str | None:
 
 
 def extract_forwarded_headers(body_text: str) -> ForwardedHeaders:
-    lines = body_text.splitlines()
+    lines = decode_body_text(body_text).splitlines()
     sender = subject = sent_date = None
     in_forwarded_block = False
-    for index, line in enumerate(lines):
-        stripped = line.strip()
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
         if not stripped:
+            index += 1
             continue
         lowered = stripped.lower()
         if (
@@ -346,22 +391,30 @@ def extract_forwarded_headers(body_text: str) -> ForwardedHeaders:
             or "begin forwarded message" in lowered
         ):
             in_forwarded_block = True
+            index += 1
             continue
-        if lowered.startswith("from:"):
+        if lowered.startswith(("from:", "subject:", "date:", "sent:")):
             nearby = "\n".join(lines[max(0, index - 2) : index + 6]).lower()
             if (
                 not in_forwarded_block
                 and "forwarded" not in nearby
                 and "original message" not in nearby
             ):
+                index += 1
                 continue
-            sender = _address_header_value(stripped)
-        elif lowered.startswith("subject:") and (sender or in_forwarded_block):
-            subject = _plain_header_value(stripped)
-        elif lowered.startswith(("date:", "sent:")) and (sender or in_forwarded_block):
-            sent_date = _plain_header_value(stripped)
-        if sender and subject and sent_date:
-            break
+            header = _unfold_header(lines, index)
+            header_lower = header.lower()
+            if header_lower.startswith("from:"):
+                sender = _address_header_value(header)
+            elif header_lower.startswith("subject:"):
+                subject = _plain_header_value(header)
+            elif header_lower.startswith(("date:", "sent:")):
+                sent_date = _plain_header_value(header)
+            index = _next_header_index(lines, index)
+            if sender and subject and sent_date:
+                break
+            continue
+        index += 1
     return ForwardedHeaders(sender=sender, subject=subject, date=sent_date)
 
 
@@ -607,11 +660,14 @@ def parse_labeled_booking(
     requirements_labels: list[str] | None = None,
     message_labels: list[str] | None = None,
 ) -> ParsedBooking:
+    body_text = decode_body_text(body_text)
+    forwarded_body_text = body_text
     effective_subject, effective_sender, forwarded = effective_message(
         subject=subject,
         sender=sender,
-        body_text=body_text,
+        body_text=forwarded_body_text,
     )
+    body_text = strip_forwarded_header_block(forwarded_body_text)
     event_type = infer_event_type(effective_subject, body_text)
     status = status_for_event(event_type, body_text)
     reference = first_match(
@@ -920,3 +976,113 @@ def _lead_email(body_text: str, sender: str) -> str | None:
 def _normalize_currency(currency: str) -> str:
     mapping = {"$": "USD", "€": "EUR", "£": "GBP"}
     return mapping.get(currency.upper(), currency.upper())
+
+
+def _maybe_decode_quoted_printable(value: str) -> str:
+    if not re.search(r"=(?:[0-9A-Fa-f]{2}|\r?\n)", value):
+        return value
+    decoded = quopri.decodestring(value.encode("utf-8", errors="surrogatepass"))
+    try:
+        text = decoded.decode("utf-8")
+    except UnicodeDecodeError:
+        text = decoded.decode("latin-1", errors="replace")
+    return text if _decoded_text_looks_better(value, text) else value
+
+
+def _maybe_decode_base64(value: str) -> str:
+    compact = re.sub(r"\s+", "", value)
+    if len(compact) < 24:
+        return value
+    if not re.fullmatch(r"[A-Za-z0-9+/=_-]+", compact):
+        return value
+    try:
+        decoded = base64.urlsafe_b64decode(compact + "=" * (-len(compact) % 4))
+    except (binascii.Error, ValueError):
+        return value
+    try:
+        text = decoded.decode("utf-8")
+    except UnicodeDecodeError:
+        return value
+    return text if _decoded_text_looks_better(value, text) else value
+
+
+def _decoded_text_looks_better(original: str, decoded: str) -> bool:
+    if not decoded.strip() or "\x00" in decoded:
+        return False
+    decoded_score = sum(char.isalpha() or char.isspace() for char in decoded)
+    original_score = sum(char.isalpha() or char.isspace() for char in original)
+    return decoded_score >= max(5, original_score)
+
+
+def _looks_forwarded_header_line(value: str) -> bool:
+    return bool(re.match(r"^(from|date|sent|subject|to|cc|bcc):", value, re.I))
+
+
+def _unfold_header(lines: list[str], start: int) -> str:
+    parts = [lines[start].strip()]
+    index = start + 1
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if not stripped or _looks_forwarded_header_line(stripped):
+            break
+        parts.append(stripped)
+        index += 1
+    return " ".join(parts)
+
+
+def _next_header_index(lines: list[str], start: int) -> int:
+    index = start + 1
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if not stripped or _looks_forwarded_header_line(stripped):
+            break
+        index += 1
+    return index
+
+
+_parse_date_flexible_unicode_legacy = parse_date_flexible
+
+
+def parse_date_flexible(value: str | None) -> date | None:
+    parsed = _parse_date_flexible_unicode_legacy(value)
+    if parsed:
+        return parsed
+    value = normalize_whitespace(value)
+    if not value:
+        return None
+    normalized = re.sub(r"(20\d{2}),\s*", r"\1 ", value)
+    if normalized != value:
+        parsed = _parse_date_flexible_unicode_legacy(normalized)
+        if parsed:
+            return parsed
+        value = normalized
+    match = re.search(
+        r"\b(\d{1,2})\s+([A-Za-z\u0410-\u042f\u0430-\u044f\u0401\u0451]+)"
+        r"(?:\s+(20\d{2}))?",
+        value,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    month = RU_MONTHS.get(match.group(2).lower())
+    if not month:
+        return None
+    year = int(match.group(3)) if match.group(3) else date.today().year
+    try:
+        return date(year, month, int(match.group(1)))
+    except ValueError:
+        return None
+
+
+_infer_event_type_booking_lifecycle_legacy = infer_event_type
+
+
+def infer_event_type(subject: str, body_text: str) -> str:
+    haystack = f"{subject}\n{body_text}".lower()
+    if re.search(r"\b(cancelled|canceled|cancellation)\b|отмен", haystack, re.I):
+        return EVENT_CANCELLATION
+    if re.search(r"\b(update|modified|changed|amended)\b|измен", haystack, re.I):
+        return EVENT_UPDATE
+    if re.search(r"\b(request|pending|acceptance required)\b", haystack, re.I):
+        return EVENT_REQUEST
+    return EVENT_NEW_BOOKING

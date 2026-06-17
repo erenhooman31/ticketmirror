@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+ARG INSTALL_TRANSLATION_MODELS=true
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
@@ -15,6 +17,10 @@ RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
 COPY . .
+
+RUN if [ "$INSTALL_TRANSLATION_MODELS" = "true" ]; then \
+        python manage.py install_translation_models --from-code ru --to-code en; \
+    fi
 
 EXPOSE 8000
 

@@ -11,6 +11,7 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, []),
     CSRF_TRUSTED_ORIGINS=(list, []),
     DJANGO_SECURE_SSL_REDIRECT=(bool, False),
+    TRANSLATE_ENABLED=(bool, True),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -108,6 +109,7 @@ GMAIL_CLIENT_SECRET = env("GMAIL_CLIENT_SECRET", default="")
 GMAIL_REFRESH_TOKEN = env("GMAIL_REFRESH_TOKEN", default="")
 GMAIL_INBOX_LABEL = env("GMAIL_INBOX_LABEL", default="INBOX")
 GMAIL_MAILBOX = env("GMAIL_MAILBOX", default="")
+TRANSLATE_ENABLED = env.bool("TRANSLATE_ENABLED", default=not running_tests)
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = env("DJANGO_SECURE_SSL_REDIRECT")

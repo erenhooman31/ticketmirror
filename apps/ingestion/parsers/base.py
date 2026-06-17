@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, time
 
 
@@ -73,11 +73,35 @@ class ProviderEmailParser:
     provider_code: str
 
     def parse(self, raw_email) -> ParsedBooking:
-        return self.parse_content(
-            subject=raw_email.subject,
+        from apps.ingestion.translate import contains_cyrillic, to_english
+
+        original_subject = raw_email.subject
+        original_body = raw_email.body_text
+        translated_subject = to_english(original_subject)
+        translated_body = to_english(original_body)
+        parsed = self.parse_content(
+            subject=translated_subject,
             sender=getattr(raw_email, "original_forwarded_sender", None)
             or raw_email.gmail_outer_sender,
-            body_text=raw_email.body_text,
+            body_text=translated_body,
+        )
+        if translated_subject == original_subject and translated_body == original_body:
+            return parsed
+
+        return replace(
+            parsed,
+            raw_fields={
+                **parsed.raw_fields,
+                "translation_applied": True,
+                "translation_source_language": (
+                    "ru"
+                    if contains_cyrillic(f"{original_subject}\n{original_body}")
+                    else ""
+                ),
+                "translated_subject": translated_subject,
+                "translated_body": translated_body,
+                "original_subject": original_subject,
+            },
         )
 
     def parse_content(

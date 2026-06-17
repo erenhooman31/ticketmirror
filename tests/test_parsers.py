@@ -159,6 +159,17 @@ def test_extract_forwarded_headers():
     assert headers.date == "Wed, 17 Jun 2026 at 10:01"
 
 
+def test_extract_forwarded_headers_unfolds_gmail_wrapped_headers():
+    headers = extract_forwarded_headers(fixture("real_sputnik8_calendar_forwarded.txt"))
+
+    assert headers.sender == "gid@sputnik8.com"
+    assert (
+        headers.subject == "New reservation for the excursion "
+        "'Bosphorus boat trip with an audio guide' for April 13 at 7:00 PM "
+        "(Monday), order 5353542"
+    )
+
+
 @pytest.mark.parametrize("provider_code", sorted(PROVIDER_EVENT_SAMPLES))
 @pytest.mark.parametrize(
     ("subject_prefix", "expected_event", "expected_status"),
@@ -302,6 +313,46 @@ def test_parse_realistic_getyourguide_new_booking():
     assert parsed.language == "English"
 
 
+def test_parse_real_getyourguide_yacht_forwarded_booking():
+    parsed = parse_by_provider(
+        "getyourguide",
+        "Fwd: Urgent: New booking received - S259500 - GYGKBGARYBZ5",
+        "owner@gmail.com",
+        fixture("real_getyourguide_yacht_forwarded.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "GYGKBGARYBZ5"
+    assert parsed.event_type == "email_new_booking"
+    assert parsed.status == "confirmed"
+    assert parsed.raw_product_name == "Istanbul: Luxury Yacht on Bosphorus"
+    assert parsed.travel_date.isoformat() == "2026-06-15"
+    assert parsed.start_time.isoformat() == "16:00:00"
+    assert parsed.traveler_count == 6
+    assert parsed.lead_traveler_name == "Yohan Muluka"
+    assert parsed.language == "French"
+    assert "travel_date_missing" not in parsed.warnings
+
+
+def test_parse_real_getyourguide_forwarded_cancellation():
+    parsed = parse_by_provider(
+        "getyourguide",
+        "Fwd: A booking has been canceled - S259500 - GYGZGZZX7RW7",
+        "owner@gmail.com",
+        fixture("real_getyourguide_cancel_forwarded.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "GYGZGZZX7RW7"
+    assert parsed.event_type == EVENT_CANCELLATION
+    assert parsed.status == STATUS_CANCELLED
+    assert (
+        parsed.raw_product_name
+        == "Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide"
+    )
+    assert parsed.travel_date.isoformat() == "2026-06-21"
+    assert parsed.start_time.isoformat() == "20:00:00"
+    assert parsed.lead_traveler_name == "NAN ZHANG"
+
+
 def test_parse_realistic_tiqets_new_booking():
     parsed = parse_by_provider(
         "tiqets",
@@ -382,6 +433,46 @@ def test_parse_realistic_tripster_russian_new_booking():
     assert parsed.lead_traveler_email == "alexey.ivanov@example.test"
 
 
+def test_parse_real_tripster_forwarded_new_order():
+    parsed = parse_by_provider(
+        "tripster",
+        (
+            'Fwd: Новый заказ на 17 июня в 14:00 "Морская прогулка по Босфору '
+            'с аудиогидом" · №6686856'
+        ),
+        "owner@gmail.com",
+        fixture("real_tripster_new_forwarded.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "6686856"
+    assert parsed.raw_product_name == "Bosphorus boat trip with audio guide"
+    assert parsed.travel_date.isoformat() == "2026-06-17"
+    assert parsed.start_time.isoformat() == "14:00:00"
+    assert parsed.traveler_count == 2
+    assert parsed.lead_traveler_name == "Tatyana K."
+    assert parsed.ticket_breakdown == {"adult": 2}
+
+
+def test_parse_real_tripster_forwarded_cancellation_reason():
+    parsed = parse_by_provider(
+        "tripster",
+        (
+            "Fwd: Отменен заказ на 16 июня 2026 в 19:00 «Морская прогулка "
+            "по Босфору с аудиогидом» · №6683974"
+        ),
+        "owner@gmail.com",
+        fixture("real_tripster_cancel_forwarded.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "6683974"
+    assert parsed.event_type == EVENT_CANCELLATION
+    assert parsed.status == STATUS_CANCELLED
+    assert parsed.raw_product_name == "Морская прогулка по Босфору с аудиогидом"
+    assert parsed.travel_date.isoformat() == "2026-06-16"
+    assert parsed.start_time.isoformat() == "19:00:00"
+    assert parsed.raw_fields["cancellation_reason"] == "организатор не выходит на связь"
+
+
 def test_tripster_uses_subject_participant_count_when_body_omits_it():
     subject = (
         "Новый заказ на 1 июля в 08:30 "
@@ -425,6 +516,27 @@ def test_parse_realistic_sputnik8_russian_new_booking():
     assert parsed.start_time.isoformat() == "19:00:00"
     assert parsed.traveler_count == 2
     assert parsed.ticket_breakdown == {"adult": 2}
+
+
+def test_parse_real_sputnik8_forwarded_calendar_without_customer_false_positive():
+    parsed = parse_by_provider(
+        "sputnik8",
+        (
+            "Fwd: Новая бронь на экскурсию 'Морская прогулка по Босфору "
+            "с аудиогидом' на 13 апреля в 19:00 (понедельник), заказ 5353542"
+        ),
+        "owner@gmail.com",
+        fixture("real_sputnik8_calendar_forwarded.txt"),
+    )
+
+    assert parsed.provider_booking_reference == "5353542"
+    assert parsed.raw_product_name == "Морская прогулка по Босфору с аудиогидом"
+    assert parsed.travel_date.isoformat() == "2026-04-13"
+    assert parsed.start_time.isoformat() == "19:00:00"
+    assert parsed.traveler_count == 2
+    assert parsed.lead_traveler_name is None
+    assert parsed.lead_traveler_email is None
+    assert parsed.lead_traveler_phone is None
 
 
 def test_parse_tripster_russian_cancellation_is_not_new_booking():

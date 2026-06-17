@@ -255,7 +255,7 @@ def _collect_message_parts(
 ) -> None:
     mime_type = part.get("mimeType", "")
     data = part.get("body", {}).get("data")
-    if data and mime_type == "text/plain":
+    if data and mime_type in {"text/plain", "text/calendar"}:
         plain_parts.append(_decode_body_data(data))
     elif data and mime_type == "text/html":
         html_parts.append(_decode_body_data(data))

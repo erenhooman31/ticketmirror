@@ -29,7 +29,7 @@ def test_seed_bookeo_products_command_is_idempotent():
 
     assert TourActivity.objects.count() == 12
     assert ActivitySchedule.objects.count() == 34
-    assert ProviderAlias.objects.count() == 32
+    assert ProviderAlias.objects.count() == 38
 
 
 @pytest.mark.django_db
@@ -263,6 +263,24 @@ def test_seed_bookeo_products_aliases_real_incoming_product_strings():
         sputnik_big_istanbul.linked_activity.name
         == "Istanbul Two Continents Tour By Bus And Bosphorus Cruise"
     )
+
+    for provider_code, raw_product_name in [
+        (
+            "klook",
+            "Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide",
+        ),
+        ("tripster", "Bosphorus boat trip with audio guide"),
+        ("tripster", "Bosphorus Boat Cruise with Audio Guide"),
+        ("sputnik8", "Bosphorus Boat Cruise with Audio Guide"),
+        ("sputnik8", "Bosphorus boat trip with an audio guide"),
+    ]:
+        alias = ProviderAlias.objects.get(
+            provider__code=provider_code,
+            raw_product_name=raw_product_name,
+        )
+        assert alias.approved is True
+        assert alias.needs_manual_confirmation is False
+        assert alias.linked_activity.name == "GYG 2 Hours Bosphorus Tour SL-(2-3)"
 
 
 @pytest.mark.django_db
