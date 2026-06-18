@@ -794,6 +794,8 @@ def non_booking_ignore_reason(raw_email: RawEmail) -> str:
     subject = raw_email.subject or ""
     sender = raw_email.gmail_outer_sender or ""
     body_text = decode_body_text(raw_email.body_text or "")
+    original_subject = getattr(raw_email, "_original_subject", subject) or ""
+    original_body = getattr(raw_email, "_original_body", body_text) or ""
     effective_subject, effective_sender, _forwarded = effective_message(
         subject=subject,
         sender=sender,
@@ -801,7 +803,8 @@ def non_booking_ignore_reason(raw_email: RawEmail) -> str:
     )
     subject_lower = effective_subject.casefold()
     haystack = (
-        f"{subject}\n{effective_subject}\n{effective_sender}\n{body_text}".casefold()
+        f"{subject}\n{original_subject}\n{effective_subject}\n"
+        f"{effective_sender}\n{body_text}\n{original_body}".casefold()
     )
     sender_lower = effective_sender.casefold()
     if "news@sup.getyourguide.com" in sender_lower:
@@ -836,6 +839,12 @@ def non_booking_ignore_reason(raw_email: RawEmail) -> str:
                 "\u043e\u0431\u043d\u043e\u0432\u0438\u043b "
                 "\u0438\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u044e"
             ),
+            "message to order",
+            "message for order",
+            "message about order",
+            "message to booking",
+            "message for booking",
+            "message about booking",
         ],
     ):
         return "provider review/message notification"

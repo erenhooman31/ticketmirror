@@ -838,6 +838,12 @@ def review_queue(request):
         _inbox_row(raw_email, issues_by_raw_email.get(raw_email.id, []))
         for raw_email in raw_emails
     ]
+    rows = [
+        row
+        for row in rows
+        if row["raw_email"].parse_status != RawEmail.ParseStatus.IGNORED
+        or row["issues"]
+    ]
     return render(
         request,
         "bookings/review_queue.html",

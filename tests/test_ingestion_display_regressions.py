@@ -111,6 +111,57 @@ def test_russian_provider_non_booking_notifications_are_ignored(subject):
 
 
 @pytest.mark.django_db
+def test_translated_tripster_message_notification_still_uses_original_text(monkeypatch):
+    def fake_to_english(value):
+        if "Сообщение к заказу" in value:
+            return "Translated service notification without known keywords"
+        if "Сообщение туриста" in value:
+            return "Translated body without known keywords"
+        return value
+
+    monkeypatch.setattr("apps.ingestion.services.to_english", fake_to_english)
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="translated-tripster-message",
+        gmail_outer_sender="support@tripster.ru",
+        subject=(
+            "💬 Сообщение к заказу на 19 июня 2026 "
+            "«Босфорское путешествие на яхте с остановкой в Бебеке — "
+            "в Стамбуле» · №6692715"
+        ),
+        received_at=timezone.now(),
+        body_text="Сообщение туриста по заказу №6692715",
+    )
+
+    result = process_raw_email(raw_email.id)
+    raw_email.refresh_from_db()
+
+    assert result is None
+    assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
+    assert ReviewQueueItem.objects.filter(raw_email=raw_email).count() == 0
+
+
+@pytest.mark.django_db
+def test_translated_english_tripster_message_notification_is_ignored():
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="english-tripster-message",
+        gmail_outer_sender="support@tripster.ru",
+        subject=(
+            "Message to order on June 19 2026 "
+            '"Bosphorus voyage on a yacht with a stop in Bebek" No.6692715'
+        ),
+        received_at=timezone.now(),
+        body_text="Message about order No.6692715",
+    )
+
+    result = process_raw_email(raw_email.id)
+    raw_email.refresh_from_db()
+
+    assert result is None
+    assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
+    assert ReviewQueueItem.objects.filter(raw_email=raw_email).count() == 0
+
+
+@pytest.mark.django_db
 def test_reprocess_tripster_message_notification_closes_old_review_items():
     provider = Provider.objects.create(
         name="Tripster",
@@ -668,6 +719,29 @@ def test_inbox_does_not_show_raw_product_as_matched_product(client, users):
     assert response.status_code == 200
     assert "Raw: Bosphorus voyage on a yacht with a stop in Bebek" in html
     assert "Matched: Missing mapped product" in html
+
+
+@pytest.mark.django_db
+def test_inbox_hides_ignored_raw_emails_without_open_issues(client, users):
+    RawEmail.objects.create(
+        gmail_message_id="ignored-tripster-message-inbox",
+        gmail_outer_sender="support@tripster.ru",
+        subject=(
+            "💬 Сообщение к заказу на 19 июня 2026 "
+            "«Босфорское путешествие на яхте с остановкой в Бебеке — "
+            "в Стамбуле» · №6692715"
+        ),
+        received_at=timezone.now(),
+        body_text="Сообщение туриста по заказу №6692715",
+        parse_status=RawEmail.ParseStatus.IGNORED,
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("inbox"))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Сообщение к заказу" not in html
 
 
 @pytest.mark.django_db
