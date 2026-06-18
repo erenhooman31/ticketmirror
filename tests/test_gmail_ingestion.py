@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import Mock, patch
@@ -236,6 +237,48 @@ def test_poll_gmail_advances_cursor_after_raw_store():
     assert RawEmail.objects.filter(gmail_message_id="msg-1").exists()
     assert state.latest_history_id == "105"
     assert result.stored == 1
+
+
+@pytest.mark.django_db
+def test_poll_gmail_skips_missing_message_and_advances_cursor(caplog):
+    GmailSyncState.objects.create(
+        mailbox_email="bookings@example.com",
+        latest_history_id="100",
+    )
+    client = Mock()
+    client.list_history.return_value = {
+        "history_id": "108",
+        "message_ids": ["msg-1", "missing-msg", "msg-2"],
+    }
+    client.fetch_message.side_effect = [
+        normalized_message("msg-1", "104"),
+        HTTPError(
+            url="https://gmail.example/messages/missing-msg",
+            code=404,
+            msg="not found",
+            hdrs=None,
+            fp=BytesIO(),
+        ),
+        normalized_message("msg-2", "107"),
+    ]
+    caplog.set_level(logging.WARNING, logger="apps.ingestion.polling")
+
+    with patch("apps.ingestion.polling.process_raw_email") as process_raw:
+        result = poll_gmail_once(client=client, mailbox="bookings@example.com")
+
+    state = GmailSyncState.objects.get(mailbox_email="bookings@example.com")
+    assert result.fetched == 3
+    assert result.stored == 2
+    assert result.skipped == 1
+    assert result.processed == 2
+    assert result.latest_history_id == "108"
+    assert state.latest_history_id == "108"
+    assert state.last_error is None
+    assert process_raw.call_count == 2
+    assert RawEmail.objects.filter(gmail_message_id="msg-1").exists()
+    assert RawEmail.objects.filter(gmail_message_id="msg-2").exists()
+    assert not RawEmail.objects.filter(gmail_message_id="missing-msg").exists()
+    assert "Skipping Gmail message missing-msg" in caplog.text
 
 
 @pytest.mark.django_db

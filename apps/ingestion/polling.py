@@ -33,6 +33,7 @@ class PollResult:
     processed: int = 0
     deduped: int = 0
     failed: int = 0
+    skipped: int = 0
     latest_history_id: str | None = None
     fallback_used: bool = False
     lock_skipped: bool = False
@@ -45,6 +46,7 @@ class PollResult:
             "processed": self.processed,
             "deduped": self.deduped,
             "failed": self.failed,
+            "skipped": self.skipped,
             "latest_history_id": self.latest_history_id,
             "fallback_used": self.fallback_used,
             "lock_skipped": self.lock_skipped,
@@ -67,7 +69,7 @@ def poll_gmail_once(
 
     client = client or GmailClient()
     fallback_used = False
-    fetched = stored = processed = deduped = failed = 0
+    fetched = stored = processed = deduped = failed = skipped = 0
     latest_history_id = None
     try:
         state = GmailSyncState.objects.get(mailbox_email=mailbox)
@@ -100,26 +102,36 @@ def poll_gmail_once(
                 )
                 continue
 
-            payload = client.fetch_message(message_id)
-            raw_email = store_raw_email(payload)
-            raw_email.refresh_from_db()
-            stored += 1
-            latest_history_id = _newer_history_id(
-                latest_history_id,
-                raw_email.gmail_history_id,
-            )
-            if process:
-                try:
-                    process_raw_email(raw_email.id)
-                    processed += 1
-                except Exception as exc:
-                    logger.exception("Failed to process RawEmail %s", raw_email.id)
-                    mark_raw_email_failed(
-                        raw_email,
-                        exc,
-                        title="Gmail poller processing failed",
-                    )
-                    failed += 1
+            try:
+                payload = client.fetch_message(message_id)
+                raw_email = store_raw_email(payload)
+                raw_email.refresh_from_db()
+                stored += 1
+                latest_history_id = _newer_history_id(
+                    latest_history_id,
+                    raw_email.gmail_history_id,
+                )
+                if process:
+                    try:
+                        process_raw_email(raw_email.id)
+                        processed += 1
+                    except Exception as exc:
+                        logger.exception("Failed to process RawEmail %s", raw_email.id)
+                        mark_raw_email_failed(
+                            raw_email,
+                            exc,
+                            title="Gmail poller processing failed",
+                        )
+                        failed += 1
+            except HTTPError as exc:
+                if exc.code != 404:
+                    raise
+                logger.warning(
+                    "Skipping Gmail message %s because messages.get returned 404.",
+                    message_id,
+                )
+                skipped += 1
+                continue
 
         state.latest_history_id = latest_history_id or state.latest_history_id
         state.last_successful_sync = timezone.now()
@@ -139,6 +151,7 @@ def poll_gmail_once(
             processed=processed,
             deduped=deduped,
             failed=failed,
+            skipped=skipped,
             latest_history_id=state.latest_history_id,
             fallback_used=fallback_used,
         )
