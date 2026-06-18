@@ -18,6 +18,7 @@ from apps.ingestion.services import (
     _create_review_item,
     _get_or_create_provider,
     mark_raw_email_failed,
+    mark_raw_email_ignored,
     match_product_alias,
     non_booking_ignore_reason,
     translated_raw_email_view,
@@ -122,9 +123,7 @@ class Command(BaseCommand):
         parser_email = translated_raw_email_view(raw_email)
         ignore_reason = non_booking_ignore_reason(parser_email)
         if ignore_reason:
-            raw_email.parse_status = RawEmail.ParseStatus.IGNORED
-            raw_email.parse_error = f"Ignored - not a booking: {ignore_reason}."
-            raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+            mark_raw_email_ignored(raw_email, ignore_reason)
             return "skipped"
 
         provider_code, _confidence = detect_provider(

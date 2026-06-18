@@ -83,6 +83,11 @@ def test_non_booking_noise_is_ignored_without_review_queue_item():
 @pytest.mark.parametrize(
     "subject",
     [
+        (
+            "💬 Сообщение к заказу на 19 июня 2026 "
+            "«Босфорское путешествие на яхте с остановкой в Бебеке — "
+            "в Стамбуле» · №6692715"
+        ),
         "💬 Сообщение к заказу №6645992",
         "Напоминание: заказ №6645992 завтра",
         "Новый отзыв по заказу №6645992",
@@ -103,6 +108,78 @@ def test_russian_provider_non_booking_notifications_are_ignored(subject):
     assert result is None
     assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
     assert ReviewQueueItem.objects.filter(raw_email=raw_email).count() == 0
+
+
+@pytest.mark.django_db
+def test_reprocess_tripster_message_notification_closes_old_review_items():
+    provider = Provider.objects.create(
+        name="Tripster",
+        code="tripster",
+        parser_key="tripster",
+    )
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="tripster-message-old-reviews",
+        gmail_thread_id="thread-tripster-message-old-reviews",
+        gmail_outer_sender="support@tripster.ru",
+        subject=(
+            "💬 Сообщение к заказу на 19 июня 2026 "
+            "«Босфорское путешествие на яхте с остановкой в Бебеке — "
+            "в Стамбуле» · №6692715"
+        ),
+        received_at=timezone.now(),
+        body_text="Сообщение туриста по заказу №6692715",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715",
+        status=Booking.Status.CONFIRMED,
+        raw_product_name="Bosphorus voyage on a yacht with a stop in Bebek",
+        provider_travel_date=date(2026, 6, 19),
+        provider_start_time=time(11, 30),
+        provider_traveler_count=5,
+        source_thread_id=raw_email.gmail_thread_id,
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        source=BookingEvent.Source.EMAIL,
+    )
+    reviews = [
+        ReviewQueueItem.objects.create(
+            raw_email=raw_email,
+            booking=booking,
+            issue_type=issue_type,
+            title=title,
+        )
+        for issue_type, title in [
+            (ReviewQueueItem.IssueType.DATE_MISSING, "Booking date missing"),
+            (ReviewQueueItem.IssueType.TIME_MISSING, "Booking time missing"),
+            (
+                ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
+                "Traveler count missing",
+            ),
+            (ReviewQueueItem.IssueType.PRODUCT_MISMATCH, "Product title is not mapped"),
+        ]
+    ]
+
+    result = process_raw_email(raw_email.id)
+    raw_email.refresh_from_db()
+    booking.refresh_from_db()
+
+    assert result is None
+    assert raw_email.parse_status == RawEmail.ParseStatus.IGNORED
+    assert booking.status == Booking.Status.CANCELLED
+    for review in reviews:
+        review.refresh_from_db()
+        assert review.status == ReviewQueueItem.Status.RESOLVED
+    event = booking.events.filter(
+        event_type=BookingEvent.EventType.CONFLICT_DETECTED,
+        source=BookingEvent.Source.SYSTEM,
+    ).latest("id")
+    assert event.new_values["non_booking_reclassified"] is True
 
 
 @pytest.mark.django_db

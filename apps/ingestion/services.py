@@ -716,9 +716,74 @@ def _provider_values_from_parsed(parsed) -> dict[str, Any]:
 
 
 def _mark_raw_email_ignored(raw_email: RawEmail, reason: str) -> None:
+    mark_raw_email_ignored(raw_email, reason)
+
+
+def mark_raw_email_ignored(raw_email: RawEmail, reason: str) -> None:
     raw_email.parse_status = RawEmail.ParseStatus.IGNORED
     raw_email.parse_error = f"Ignored - not a booking: {reason}."
     raw_email.save(update_fields=["parse_status", "parse_error", "updated_at"])
+    _resolve_reviews_for_ignored_raw_email(raw_email)
+    _cancel_false_bookings_for_ignored_raw_email(raw_email, reason)
+
+
+def _resolve_reviews_for_ignored_raw_email(raw_email: RawEmail) -> int:
+    return ReviewQueueItem.objects.filter(
+        raw_email=raw_email,
+        status=ReviewQueueItem.Status.OPEN,
+    ).update(status=ReviewQueueItem.Status.RESOLVED, resolved_at=timezone.now())
+
+
+def _cancel_false_bookings_for_ignored_raw_email(
+    raw_email: RawEmail,
+    reason: str,
+) -> int:
+    cancelled = 0
+    booking_ids = (
+        BookingEvent.objects.filter(raw_email=raw_email, booking__isnull=False)
+        .values_list("booking_id", flat=True)
+        .distinct()
+    )
+    for booking in Booking.objects.select_for_update().filter(id__in=booking_ids):
+        if not _safe_to_cancel_ignored_raw_email_booking(booking, raw_email):
+            continue
+        old_status = booking.status
+        booking.status = Booking.Status.CANCELLED
+        booking.save(update_fields=["status", "updated_at"])
+        _create_booking_event(
+            booking=booking,
+            raw_email=raw_email,
+            event_type=BookingEvent.EventType.CONFLICT_DETECTED,
+            old_values={"status": old_status},
+            new_values={
+                "status": Booking.Status.CANCELLED,
+                "non_booking_reclassified": True,
+                "reason": reason,
+            },
+        )
+        cancelled += 1
+    return cancelled
+
+
+def _safe_to_cancel_ignored_raw_email_booking(
+    booking: Booking,
+    raw_email: RawEmail,
+) -> bool:
+    if booking.status in {
+        Booking.Status.CANCELLED,
+        Booking.Status.REJECTED,
+        Booking.Status.DUPLICATE_IGNORED,
+    }:
+        return False
+    if booking.events.exclude(raw_email=raw_email).exists():
+        return False
+    if (
+        raw_email.gmail_thread_id
+        and booking.source_thread_id
+        and booking.source_thread_id != raw_email.gmail_thread_id
+    ):
+        return False
+    return True
 
 
 def _should_ignore_non_booking_email(raw_email: RawEmail) -> bool:
