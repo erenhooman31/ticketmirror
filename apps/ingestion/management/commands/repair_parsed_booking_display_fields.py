@@ -4,7 +4,13 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from apps.bookings.models import Booking, BookingEvent, ReviewQueueItem
-from apps.bookings.services import is_manually_overridden, resolve_schedule_slot_details
+from apps.bookings.services import (
+    booking_has_parsed_time,
+    booking_has_parsed_travel_date,
+    booking_has_parsed_traveler_count,
+    is_manually_overridden,
+    resolve_schedule_slot_details,
+)
 from apps.ingestion.models import RawEmail
 from apps.ingestion.parsers import detect_provider, get_parser
 from apps.ingestion.parsers.common import EVENT_CANCELLATION, STATUS_CANCELLED
@@ -382,14 +388,11 @@ class Command(BaseCommand):
                     ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
                 ]
             )
-        if booking.active_travel_date:
+        if booking_has_parsed_travel_date(booking):
             resolved_types.append(ReviewQueueItem.IssueType.DATE_MISSING)
-        if booking.active_start_time or booking.active_slot_type in {
-            "full_day",
-            "half_day",
-        }:
+        if booking_has_parsed_time(booking):
             resolved_types.append(ReviewQueueItem.IssueType.TIME_MISSING)
-        if booking.active_traveler_count is not None:
+        if booking_has_parsed_traveler_count(booking):
             resolved_types.append(ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING)
         if booking.lead_traveler_name:
             resolved_types.append(ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING)

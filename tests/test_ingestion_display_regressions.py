@@ -320,6 +320,56 @@ def test_stale_review_sweep_resolves_reference_review_for_ignored_raw_email():
 
 
 @pytest.mark.django_db
+def test_stale_review_sweep_resolves_missing_reviews_from_provider_fields():
+    provider = Provider.objects.create(name="Tripster", code="tripster")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="provider-only-missing-reviews",
+        gmail_outer_sender="support@tripster.ru",
+        subject="Tripster booking 6692715",
+        received_at=timezone.now(),
+        body_text="Synthetic body",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715",
+        status=Booking.Status.CONFIRMED,
+        provider_travel_date=date(2026, 6, 19),
+        provider_start_time=time(11, 30),
+        provider_traveler_count=5,
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        source=BookingEvent.Source.EMAIL,
+    )
+    reviews = [
+        ReviewQueueItem.objects.create(
+            raw_email=raw_email,
+            booking=booking,
+            issue_type=issue_type,
+            title=title,
+        )
+        for issue_type, title in [
+            (ReviewQueueItem.IssueType.DATE_MISSING, "Booking date missing"),
+            (ReviewQueueItem.IssueType.TIME_MISSING, "Booking time missing"),
+            (
+                ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
+                "Traveler count missing",
+            ),
+        ]
+    ]
+
+    call_command("resolve_stale_booking_reviews", stdout=StringIO())
+
+    for review in reviews:
+        review.refresh_from_db()
+        assert review.status == ReviewQueueItem.Status.RESOLVED
+
+
+@pytest.mark.django_db
 def test_stale_review_sweep_reclassifies_non_booking_email_and_cancels_false_booking():
     provider = Provider.objects.create(
         name="GetYourGuide",
@@ -373,6 +423,66 @@ def test_stale_review_sweep_reclassifies_non_booking_email_and_cancels_false_boo
         source=BookingEvent.Source.SYSTEM,
     ).latest("id")
     assert event.new_values["non_booking_reclassified"] is True
+
+
+@pytest.mark.django_db
+def test_reprocess_resolves_missing_reviews_when_manual_active_fields_stay_blank():
+    setup = create_activity_setup(
+        provider_code="viator",
+        provider_name="Viator",
+        activity_name="Evening Bosphorus Cruise",
+        raw_product_name="Evening Bosphorus Cruise",
+        raw_option_name="Standard deck",
+        start_time=time(19, 30),
+    )
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="manual-active-provider-fields",
+        gmail_outer_sender="bookings@viator.com",
+        subject="Viator booking BR-123456789 confirmed",
+        received_at=timezone.now(),
+        body_text=fixture("viator_new.txt"),
+        provider_detected=setup["provider"],
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=setup["provider"],
+        provider_booking_reference="BR-123456789",
+        status=Booking.Status.CONFIRMED,
+        manual_override_fields=[
+            "active_travel_date",
+            "active_start_time",
+            "active_traveler_count",
+        ],
+    )
+    reviews = [
+        ReviewQueueItem.objects.create(
+            raw_email=raw_email,
+            booking=booking,
+            issue_type=issue_type,
+            title=title,
+        )
+        for issue_type, title in [
+            (ReviewQueueItem.IssueType.DATE_MISSING, "Booking date missing"),
+            (ReviewQueueItem.IssueType.TIME_MISSING, "Booking time missing"),
+            (
+                ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING,
+                "Traveler count missing",
+            ),
+        ]
+    ]
+
+    process_raw_email(raw_email.id)
+    booking.refresh_from_db()
+
+    assert booking.active_travel_date is None
+    assert booking.active_start_time is None
+    assert booking.active_traveler_count is None
+    assert booking.provider_travel_date == date(2026, 6, 21)
+    assert booking.provider_start_time == time(19, 30)
+    assert booking.provider_traveler_count == 2
+    for review in reviews:
+        review.refresh_from_db()
+        assert review.status == ReviewQueueItem.Status.RESOLVED
 
 
 @pytest.mark.django_db
@@ -441,6 +551,46 @@ def test_inbox_renders_partial_imports_without_raw_structures(client, users):
     assert "Missing date/time" in html
     assert "Missing participant count" in html
     assert_no_raw_structures(html)
+
+
+@pytest.mark.django_db
+def test_inbox_does_not_show_raw_product_as_matched_product(client, users):
+    provider = Provider.objects.create(name="Tripster", code="tripster")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="unmapped-product-inbox",
+        gmail_outer_sender="support@tripster.ru",
+        subject="Tripster booking 6692715",
+        received_at=timezone.now(),
+        body_text="Synthetic body",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715",
+        status=Booking.Status.CONFIRMED,
+        raw_product_name="Bosphorus voyage on a yacht with a stop in Bebek",
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        source=BookingEvent.Source.EMAIL,
+    )
+    ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        title="Product title is not mapped",
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("inbox"))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Raw: Bosphorus voyage on a yacht with a stop in Bebek" in html
+    assert "Matched: Missing mapped product" in html
 
 
 @pytest.mark.django_db

@@ -17,6 +17,9 @@ from apps.bookings.models import (
 )
 from apps.bookings.services import (
     active_updates_from_provider_values,
+    booking_has_parsed_time,
+    booking_has_parsed_travel_date,
+    booking_has_parsed_traveler_count,
     diff_field_values,
     is_manually_overridden,
     provider_update_conflicts,
@@ -351,17 +354,14 @@ def _resolve_obsolete_review_items(*, raw_email: RawEmail, booking: Booking) -> 
     if booking.activity_id:
         resolve(ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING)
         resolve(ReviewQueueItem.IssueType.PRODUCT_MISMATCH)
-    if booking.active_travel_date:
+    if booking_has_parsed_travel_date(booking):
         resolve(ReviewQueueItem.IssueType.DATE_MISSING)
-    if booking.active_start_time or booking.active_slot_type in {
-        "full_day",
-        "half_day",
-    }:
+    if booking_has_parsed_time(booking):
         resolve(
             ReviewQueueItem.IssueType.TIME_MISSING,
             exclude_title="Schedule slot needs confirmation",
         )
-    if booking.active_traveler_count is not None:
+    if booking_has_parsed_traveler_count(booking):
         resolve(ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING)
     if booking.lead_traveler_name or _provider_omits_field(
         raw_email,

@@ -925,7 +925,11 @@ def _inbox_row(raw_email, issues):
             if booking
             else "Missing tour/activity"
         ),
-        "matched_product": activity_label(booking),
+        "matched_product": (
+            activity_label(booking)
+            if booking and booking.activity_id
+            else "Missing mapped product"
+        ),
         "booking_date": booking.active_travel_date if booking else None,
         "booking_time": booking.active_start_time if booking else None,
         "booking_datetime": short_datetime_label(booking),

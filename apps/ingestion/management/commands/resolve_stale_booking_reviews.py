@@ -3,6 +3,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.bookings.models import Booking, BookingEvent, ReviewQueueItem
+from apps.bookings.services import (
+    booking_has_parsed_time,
+    booking_has_parsed_travel_date,
+    booking_has_parsed_traveler_count,
+)
 from apps.ingestion.models import RawEmail
 from apps.ingestion.services import non_booking_ignore_reason, translated_raw_email_view
 
@@ -186,20 +191,13 @@ class Command(BaseCommand):
         }:
             return bool(booking.activity_id)
         if issue_type == ReviewQueueItem.IssueType.DATE_MISSING:
-            return bool(booking.active_travel_date)
+            return booking_has_parsed_travel_date(booking)
         if issue_type == ReviewQueueItem.IssueType.TIME_MISSING:
             if review.title == "Schedule slot needs confirmation":
                 return False
-            return bool(
-                booking.active_start_time
-                or booking.active_slot_type
-                in {
-                    "full_day",
-                    "half_day",
-                }
-            )
+            return booking_has_parsed_time(booking)
         if issue_type == ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING:
-            return booking.active_traveler_count is not None
+            return booking_has_parsed_traveler_count(booking)
         if issue_type == ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING:
             return bool(booking.lead_traveler_name) or _provider_omits_lead_name(
                 raw_email,

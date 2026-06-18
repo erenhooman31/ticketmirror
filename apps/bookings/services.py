@@ -272,6 +272,29 @@ def is_manually_overridden(booking: Booking, field_name: str) -> bool:
     return field_name in set(booking.manual_override_fields or [])
 
 
+def booking_has_parsed_travel_date(booking: Booking) -> bool:
+    return bool(booking.active_travel_date or booking.provider_travel_date)
+
+
+def booking_has_parsed_time(booking: Booking) -> bool:
+    slot_types = {
+        booking.active_slot_type,
+        booking.provider_slot_type,
+    }
+    return bool(
+        booking.active_start_time
+        or booking.provider_start_time
+        or slot_types.intersection({"full_day", "half_day"})
+    )
+
+
+def booking_has_parsed_traveler_count(booking: Booking) -> bool:
+    return (
+        booking.active_traveler_count is not None
+        or booking.provider_traveler_count is not None
+    )
+
+
 def active_field_for_provider_field(field_name: str) -> str | None:
     return PROVIDER_TO_ACTIVE_FIELD_MAP.get(field_name)
 
