@@ -414,6 +414,46 @@ def test_parse_real_getyourguide_yacht_forwarded_booking():
     assert "travel_date_missing" not in parsed.warnings
 
 
+def test_parse_inline_getyourguide_booking_detail_change():
+    body = (
+        "96 Hi SUPPLY PARTNER LTD We would like to inform you that the following "
+        "booking has changed. Istanbul: Bosphorus Sightseeing Cruise Tour with "
+        "Audio Guide 2-Hour Bosphorus Sightseeing Cruise - Afternoon & Evening "
+        "Booking reference GYGMX4N7YY8Z Date New June 24, 2026 at 7:00 PM "
+        "June 23, 2026 at 7:00 PM Number of participants 3 Language Spanish "
+        "> Contact customer Become a Supply Partner | FAQ | Contact us "
+        "GetYourGuide Deutschland GmbH, Sonnenburger Strasse 73, 10437 Berlin, "
+        "Germany. VAT ID No. DE276456081. For more information, please view "
+        "our Privacy Policy."
+    )
+
+    parsed = parse_by_provider(
+        "getyourguide",
+        "Booking detail change: - S259500 - GYGMX4N7YY8Z",
+        "do-not-reply@notification.getyourguide.com",
+        body,
+    )
+
+    assert parsed.provider_booking_reference == "GYGMX4N7YY8Z"
+    assert parsed.event_type == EVENT_UPDATE
+    assert parsed.status == STATUS_MODIFIED
+    assert (
+        parsed.raw_product_name
+        == "Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide"
+    )
+    assert (
+        parsed.raw_option_name
+        == "2-Hour Bosphorus Sightseeing Cruise - Afternoon & Evening"
+    )
+    assert parsed.travel_date.isoformat() == "2026-06-24"
+    assert parsed.start_time.isoformat() == "19:00:00"
+    assert parsed.traveler_count == 3
+    assert parsed.language == "Spanish"
+    assert parsed.lead_traveler_phone is None
+    assert parsed.confidence == 1
+    assert parsed.warnings == []
+
+
 def test_parse_real_getyourguide_forwarded_cancellation():
     parsed = parse_by_provider(
         "getyourguide",

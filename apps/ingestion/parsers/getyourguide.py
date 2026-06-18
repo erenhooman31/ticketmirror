@@ -8,6 +8,7 @@ from .common import (
     STATUS_CANCELLED,
     STATUS_CONFIRMED,
     confidence_score,
+    normalize_whitespace,
     parse_date_flexible,
     parse_labeled_booking,
     parse_time_flexible,
@@ -57,9 +58,20 @@ class GetYourGuideParser(ProviderEmailParser):
             start_time_labels=["Date", "Time", "Start time"],
         )
         content_text = strip_forwarded_header_block(body_text)
-        service_value = _service_date_value(content_text)
-        product = _product_from_image_block(content_text) or _tour_value(content_text)
-        traveler_count = _participants_count(content_text) or parsed.traveler_count
+        inline_values = _inline_booking_detail_change_values(content_text)
+        service_value = inline_values.get("date") or _service_date_value(content_text)
+        product = (
+            parsed.raw_product_name
+            or inline_values.get("product")
+            or _product_from_image_block(content_text)
+            or _tour_value(content_text)
+        )
+        option = parsed.raw_option_name or inline_values.get("option")
+        traveler_count = (
+            inline_values.get("traveler_count")
+            or _participants_count(content_text)
+            or parsed.traveler_count
+        )
         lead_name = parsed.lead_traveler_name or _customer_name(content_text)
         subject_reference = _reference_from_subject(subject)
         event_type = parsed.event_type
@@ -71,9 +83,15 @@ class GetYourGuideParser(ProviderEmailParser):
             event_type = EVENT_NEW_BOOKING
             status = STATUS_CONFIRMED
         reference = parsed.provider_booking_reference or subject_reference
-        travel_date = parse_date_flexible(service_value) or parsed.travel_date
+        travel_date = (
+            parse_date_flexible(_date_text(service_value))
+            or parse_date_flexible(service_value)
+            or parsed.travel_date
+        )
         start_time = parse_time_flexible(service_value) or parsed.start_time
-        raw_product_name = parsed.raw_product_name or product
+        raw_product_name = product
+        language = parsed.language or inline_values.get("language")
+        lead_phone = _lead_phone(parsed.lead_traveler_phone, content_text)
         confidence, warnings = confidence_score(
             provider_found=True,
             reference=reference,
@@ -89,13 +107,74 @@ class GetYourGuideParser(ProviderEmailParser):
             event_type=event_type,
             status=status,
             raw_product_name=raw_product_name,
+            raw_option_name=option,
             travel_date=travel_date,
             start_time=start_time,
             traveler_count=traveler_count,
             lead_traveler_name=lead_name,
+            lead_traveler_phone=lead_phone,
+            language=language,
             confidence=confidence,
             warnings=warnings,
         )
+
+
+def _inline_booking_detail_change_values(body_text: str) -> dict:
+    text = normalize_whitespace(body_text)
+    if "booking has changed" not in text.lower():
+        return {}
+    values = {}
+    product_match = re.search(
+        r"following booking has changed\.\s+(.+?)\s+Booking reference\s+GYG[A-Z0-9-]+",
+        text,
+        re.I,
+    )
+    if product_match:
+        values.update(_split_inline_product_option(product_match.group(1)))
+    date_match = re.search(
+        r"\bDate\s+(?:New\s+)?"
+        r"([A-Z][a-z]+ \d{1,2}, 20\d{2} at \d{1,2}:\d{2}\s*(?:AM|PM))",
+        text,
+        re.I,
+    )
+    if date_match:
+        values["date"] = date_match.group(1)
+    participants_match = re.search(r"\bNumber of participants\s+(\d+)\b", text, re.I)
+    if participants_match:
+        values["traveler_count"] = int(participants_match.group(1))
+    language_match = re.search(
+        r"\bLanguage\s+(.+?)\s+(?:>\s*)?Contact customer\b",
+        text,
+        re.I,
+    )
+    if language_match:
+        values["language"] = normalize_whitespace(language_match.group(1))
+    return values
+
+
+def _split_inline_product_option(value: str) -> dict[str, str]:
+    value = normalize_whitespace(value)
+    option_match = re.search(
+        r"\b(\d+\s*[- ]?\s*(?:hour|minute)s?\b.*)$",
+        value,
+        re.I,
+    )
+    if not option_match:
+        return {"product": value}
+    option = normalize_whitespace(option_match.group(1))
+    product = normalize_whitespace(value[: option_match.start()])
+    return {"product": product or value, "option": option}
+
+
+def _date_text(value: str) -> str:
+    return normalize_whitespace(
+        re.sub(
+            r"\s+at\s+\d{1,2}:\d{2}\s*(?:AM|PM)\b",
+            "",
+            value or "",
+            flags=re.I,
+        )
+    )
 
 
 def _product_from_image_block(body_text: str) -> str:
@@ -137,6 +216,18 @@ def _participants_count(body_text: str) -> int | None:
     match = re.search(r"\((\d+)\*?\s*Persons?\)", body_text, re.I)
     if match:
         return int(match.group(1))
+    return None
+
+
+def _lead_phone(value: str | None, body_text: str) -> str | None:
+    if not value:
+        return None
+    if re.search(
+        r"\b(?:phone|mobile|tel|telephone)\b\s*[:#-]?\s*\+?\d",
+        body_text,
+        re.I,
+    ):
+        return value
     return None
 
 
