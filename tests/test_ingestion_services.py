@@ -9,11 +9,14 @@ from helpers import create_activity_setup
 
 from apps.bookings.display import product_label
 from apps.bookings.models import (
+    ActivitySchedule,
     ActivityScheduleSlot,
     Booking,
     BookingEvent,
     Provider,
+    ProviderAlias,
     ReviewQueueItem,
+    TourActivity,
 )
 from apps.bookings.services import get_daily_capacity_summary
 from apps.ingestion.models import RawEmail
@@ -660,6 +663,66 @@ def test_missing_provider_alias_creates_review_item(viator_provider):
     assert ReviewQueueItem.objects.filter(
         booking=booking,
         issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_mapped_update_resolves_stale_product_reviews_for_booking(viator_provider):
+    first_raw = raw_email(message_id="stale-product-review-first")
+    booking = upsert_booking_from_parsed(
+        first_raw,
+        parsed_booking(event_type=EVENT_NEW_BOOKING),
+    )
+    stale_review = ReviewQueueItem.objects.get(
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+    )
+    activity = TourActivity.objects.create(
+        name="Evening Bosphorus Cruise",
+        internal_display_name="Evening Bosphorus Cruise",
+        active=True,
+    )
+    schedule = ActivitySchedule.objects.create(
+        activity=activity,
+        schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+        name="Current schedule",
+        active=True,
+        priority=100,
+    )
+    slot = ActivityScheduleSlot.objects.create(
+        schedule=schedule,
+        start_time=time(19, 30),
+        end_time=time(22, 0),
+        duration_minutes=150,
+        slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        capacity=80,
+        active=True,
+    )
+    ProviderAlias.objects.create(
+        provider=viator_provider,
+        raw_product_name="Evening Bosphorus Cruise",
+        raw_option_name="Standard deck",
+        provider_product_code="",
+        provider_option_code="",
+        linked_activity=activity,
+        linked_schedule=schedule,
+        linked_slot=slot,
+        approved=True,
+    )
+
+    second_raw = raw_email(message_id="stale-product-review-second")
+    updated = upsert_booking_from_parsed(second_raw, parsed_booking())
+    stale_review.refresh_from_db()
+    rows = get_daily_capacity_summary(date(2026, 6, 21))
+    slotted_row = next(row for row in rows if row["slot"] == slot)
+
+    assert updated.id == booking.id
+    assert stale_review.status == ReviewQueueItem.Status.RESOLVED
+    assert slotted_row["active_pax"] == 2
+    assert not ReviewQueueItem.objects.filter(
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        status=ReviewQueueItem.Status.OPEN,
     ).exists()
 
 

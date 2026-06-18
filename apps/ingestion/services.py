@@ -314,6 +314,7 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
         raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
 
     _resolve_obsolete_review_items(raw_email=raw_email, booking=booking)
+    _resolve_obsolete_booking_review_items(booking=booking)
 
     raw_email.save(
         update_fields=[
@@ -340,6 +341,35 @@ def _resolve_obsolete_review_items(*, raw_email: RawEmail, booking: Booking) -> 
             issue_type=review.issue_type,
             title=review.title,
             raw_email=raw_email,
+            review_booking=review.booking,
+            current_booking=booking,
+        ):
+            continue
+        resolved += ReviewQueueItem.objects.filter(id=review.id).update(
+            status=ReviewQueueItem.Status.RESOLVED,
+            resolved_at=resolved_at,
+        )
+
+    return resolved
+
+
+def _resolve_obsolete_booking_review_items(*, booking: Booking) -> int:
+    queryset = ReviewQueueItem.objects.select_related(
+        "raw_email",
+        "raw_email__provider_detected",
+        "booking",
+    ).filter(
+        booking=booking,
+        status=ReviewQueueItem.Status.OPEN,
+    )
+    resolved_at = timezone.now()
+    resolved = 0
+
+    for review in queryset:
+        if not review_issue_is_obsolete_for_context(
+            issue_type=review.issue_type,
+            title=review.title,
+            raw_email=review.raw_email,
             review_booking=review.booking,
             current_booking=booking,
         ):
