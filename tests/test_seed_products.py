@@ -3,6 +3,7 @@ from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from apps.bookings.management.commands.merge_stale_audio_guide_activity import (
     CANONICAL_ACTIVITY_NAME,
@@ -11,6 +12,7 @@ from apps.bookings.management.commands.merge_stale_audio_guide_activity import (
 from apps.bookings.management.commands.seed_bookeo_products import (
     DIRECT_OTA_ALIASES,
     LIVE_BOOKEO_PRODUCT_NAMES,
+    assert_catalog_drift,
 )
 from apps.bookings.models import (
     ActivitySchedule,
@@ -244,7 +246,7 @@ def test_seed_bookeo_products_aliases_real_incoming_product_strings():
     assert direct_alias.approved is True
     assert direct_alias.needs_manual_confirmation is False
     assert direct_alias.linked_activity.name == "GYG 2 Hours Bosphorus Tour SL-(2-3)"
-    assert direct_alias.linked_slot.start_time.strftime("%H:%M") == "19:00"
+    assert direct_alias.linked_slot is None
 
     tripster_alias = ProviderAlias.objects.get(
         provider__code="tripster",
@@ -269,6 +271,7 @@ def test_seed_bookeo_products_aliases_real_incoming_product_strings():
     )
     assert tripster_audio.approved is True
     assert tripster_audio.linked_activity.name == "GYG 2 Hours Bosphorus Tour SL-(2-3)"
+    assert tripster_audio.linked_slot is None
     assert sputnik_big_istanbul.approved is True
     assert (
         sputnik_big_istanbul.linked_activity.name
@@ -292,6 +295,7 @@ def test_seed_bookeo_products_aliases_real_incoming_product_strings():
         assert alias.approved is True
         assert alias.needs_manual_confirmation is False
         assert alias.linked_activity.name == "GYG 2 Hours Bosphorus Tour SL-(2-3)"
+        assert alias.linked_slot is None
 
 
 @pytest.mark.django_db
@@ -434,6 +438,24 @@ def test_merge_stale_audio_guide_activity_moves_bookings_and_removes_stale_catal
     assert set(TourActivity.objects.values_list("name", flat=True)) == set(
         LIVE_BOOKEO_PRODUCT_NAMES
     )
+
+
+@pytest.mark.django_db
+def test_seed_bookeo_products_rejects_duplicate_approved_raw_product_mappings():
+    call_command("seed_bookeo_products")
+    provider = Provider.objects.get(code="getyourguide")
+    other_activity = TourActivity.objects.get(name="gyg yacht")
+
+    ProviderAlias.objects.create(
+        provider=provider,
+        raw_product_name="Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide",
+        raw_option_name="Legacy duplicate",
+        linked_activity=other_activity,
+        approved=True,
+    )
+
+    with pytest.raises(CommandError, match="one raw product to multiple activities"):
+        assert_catalog_drift()
 
 
 @pytest.mark.django_db

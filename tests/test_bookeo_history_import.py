@@ -4,12 +4,12 @@ import pytest
 from django.core.management import call_command
 
 from apps.bookings.models import Booking, BookingEvent, Provider, ReviewQueueItem
-from apps.ingestion.management.commands.import_bookeo_history import _bookeo_api_key
 from apps.ingestion.bookeo_import import (
     BookeoHistoryImporter,
     JsonCheckpointStore,
     import_bookeo_booking,
 )
+from apps.ingestion.management.commands.import_bookeo_history import _bookeo_api_key
 
 
 @pytest.fixture

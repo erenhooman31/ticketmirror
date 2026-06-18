@@ -884,3 +884,32 @@ def test_seeded_alias_uses_parsed_time_to_select_matching_slot():
 
     assert booking.schedule_slot.start_time == time(19, 0)
     assert booking.active_start_time == time(19, 0)
+
+
+@pytest.mark.django_db
+def test_seeded_audio_guide_alias_uses_parsed_time_for_1400_slot():
+    call_command("seed_bookeo_products")
+    raw = raw_email(provider_code="klook", message_id="audio-guide-slot-time")
+
+    booking = upsert_booking_from_parsed(
+        raw,
+        ParsedBooking(
+            provider_code="klook",
+            provider_booking_reference="KL-AUDIO-1400",
+            event_type=EVENT_NEW_BOOKING,
+            status=STATUS_CONFIRMED,
+            raw_product_name=(
+                "Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide"
+            ),
+            travel_date=date(2026, 6, 21),
+            start_time=time(14, 0),
+            slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+            traveler_count=2,
+            lead_traveler_name="Alex Sample",
+            confidence=1,
+        ),
+    )
+
+    assert booking.activity.name == "GYG 2 Hours Bosphorus Tour SL-(2-3)"
+    assert booking.schedule_slot.start_time == time(14, 0)
+    assert booking.active_start_time == time(14, 0)

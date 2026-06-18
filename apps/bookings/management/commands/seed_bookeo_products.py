@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Count
 
 from apps.bookings.models import (
     ActivityPeopleRule,
@@ -338,7 +339,7 @@ DIRECT_OTA_ALIASES = [
             "Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide"
         ),
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": "Confirmed from real GetYourGuide cancellation sample.",
     },
     {
@@ -347,7 +348,7 @@ DIRECT_OTA_ALIASES = [
             "Istanbul: Bosphorus Sightseeing Cruise Tour with Audio Guide"
         ),
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": "Confirmed from real Klook confirmation/cancellation samples.",
     },
     {
@@ -356,7 +357,7 @@ DIRECT_OTA_ALIASES = [
             "Istanbul: Guided Bosphorus Sightseeing Cruise + Audio Guide"
         ),
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": "Confirmed from tests/fixtures/emails/real_tiqets_new.txt.",
     },
     {
@@ -370,7 +371,7 @@ DIRECT_OTA_ALIASES = [
         "provider": "tripster",
         "raw_product_name": "Морская прогулка по Босфору с аудиогидом",
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": (
             "Audio-guide Bosphorus Russian title; provisional pending "
             "Tripster body capture."
@@ -380,7 +381,7 @@ DIRECT_OTA_ALIASES = [
         "provider": "sputnik8",
         "raw_product_name": "Морская прогулка по Босфору с аудиогидом",
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": "Confirmed from tests/fixtures/emails/real_sputnik8_new_ru.txt.",
     },
     {
@@ -397,28 +398,28 @@ DIRECT_OTA_ALIASES = [
         "provider": "tripster",
         "raw_product_name": "Bosphorus boat trip with audio guide",
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": "Confirmed from real Tripster English forwarded subject.",
     },
     {
         "provider": "tripster",
         "raw_product_name": "Bosphorus Boat Cruise with Audio Guide",
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": "Confirmed from real Tripster English order body.",
     },
     {
         "provider": "sputnik8",
         "raw_product_name": "Bosphorus Boat Cruise with Audio Guide",
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": "Confirmed from real Sputnik8 reservation body.",
     },
     {
         "provider": "sputnik8",
         "raw_product_name": "Bosphorus boat trip with an audio guide",
         "activity_name": "GYG 2 Hours Bosphorus Tour SL-(2-3)",
-        "slot_start_time": "19:00",
+        "slot_start_time": None,
         "notes": "Confirmed from real Sputnik8 forwarded subject.",
     },
 ]
@@ -740,6 +741,22 @@ def assert_catalog_drift():
     missing = sorted(expected - actual)
     if missing:
         raise CommandError(f"Bookeo catalog drift detected: missing={missing}")
+    duplicate_aliases = list(
+        ProviderAlias.objects.filter(approved=True)
+        .values("provider__code", "raw_product_name")
+        .annotate(activity_count=Count("linked_activity", distinct=True))
+        .filter(activity_count__gt=1)
+        .order_by("provider__code", "raw_product_name")
+    )
+    if duplicate_aliases:
+        details = [
+            f"{item['provider__code']}: {item['raw_product_name']}"
+            for item in duplicate_aliases
+        ]
+        raise CommandError(
+            "Approved provider aliases map one raw product to multiple activities: "
+            f"{details}"
+        )
 
 
 def build_alias_coverage():
