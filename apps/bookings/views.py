@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.db import IntegrityError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -768,15 +769,35 @@ def provider_aliases(request):
         old_values = {}
         if request.POST.get("alias_id"):
             alias = get_object_or_404(ProviderAlias, id=request.POST["alias_id"])
-            old_values = _alias_audit_values(alias)
-            form = ProviderAliasForm(request.POST, instance=alias)
         else:
-            form = ProviderAliasForm(request.POST)
+            alias = _provider_alias_from_post(request.POST)
+        if alias:
+            old_values = _alias_audit_values(alias)
+        form = ProviderAliasForm(request.POST, instance=alias)
         if form.is_valid():
-            alias = form.save()
-            _record_alias_change(alias=alias, user=request.user, old_values=old_values)
-            messages.success(request, "Provider alias saved.")
-            return redirect("settings_provider_aliases")
+            try:
+                alias = form.save()
+            except IntegrityError:
+                form.add_error(
+                    None,
+                    "An alias already exists for this provider product. "
+                    "Refresh the page and update the existing mapping.",
+                )
+            else:
+                _record_alias_change(
+                    alias=alias,
+                    user=request.user,
+                    old_values=old_values,
+                )
+                if review_item and review_item.raw_email_id:
+                    process_raw_email(review_item.raw_email_id)
+                    messages.success(
+                        request,
+                        "Provider alias saved and the source email was reprocessed.",
+                    )
+                    return redirect("inbox")
+                messages.success(request, "Provider alias saved.")
+                return redirect("settings_provider_aliases")
         messages.error(request, "Alias was not saved. Check the highlighted fields.")
     else:
         initial = {}
@@ -1003,11 +1024,16 @@ def _inbox_status(raw_email, booking, issues):
 
 
 def _inbox_action_url(raw_email, booking, issues):
-    if any(
-        issue.issue_type == ReviewQueueItem.IssueType.PRODUCT_MISMATCH
-        for issue in issues
-    ):
-        return f"{reverse('settings_provider_aliases')}?review_id={issues[0].id}"
+    product_mismatch = next(
+        (
+            issue
+            for issue in issues
+            if issue.issue_type == ReviewQueueItem.IssueType.PRODUCT_MISMATCH
+        ),
+        None,
+    )
+    if product_mismatch:
+        return f"{reverse('settings_provider_aliases')}?review_id={product_mismatch.id}"
     if booking:
         return reverse("bookings:edit", args=[booking.id])
     return reverse("bookings:raw_email_detail", args=[raw_email.id])
@@ -2270,6 +2296,20 @@ def _alias_audit_values(alias):
         "approved": alias.approved,
         "needs_manual_confirmation": alias.needs_manual_confirmation,
     }
+
+
+def _provider_alias_from_post(post_data):
+    provider_id = post_data.get("provider")
+    raw_product_name = (post_data.get("raw_product_name") or "").strip()
+    if not provider_id or not raw_product_name:
+        return None
+    return ProviderAlias.objects.filter(
+        provider_id=provider_id,
+        raw_product_name=raw_product_name,
+        raw_option_name=(post_data.get("raw_option_name") or "").strip(),
+        provider_product_code=(post_data.get("provider_product_code") or "").strip(),
+        provider_option_code=(post_data.get("provider_option_code") or "").strip(),
+    ).first()
 
 
 def _alias_initial_from_review(review_item):

@@ -16,6 +16,11 @@
       <form method="post" class="tm-card p-3">
         {% csrf_token %}
         <h2 class="h6">{% if review_item %}Create from review item{% else %}Create alias{% endif %}</h2>
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger">
+            {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+          </div>
+        {% endif %}
         {% for field in form %}
           <div class="mb-3 {% if field.field.widget.input_type == 'checkbox' %}form-check{% endif %}">
             {% if field.field.widget.input_type == 'checkbox' %}

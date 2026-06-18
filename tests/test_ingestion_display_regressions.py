@@ -762,6 +762,49 @@ def test_inbox_does_not_show_raw_product_as_matched_product(client, users):
 
 
 @pytest.mark.django_db
+def test_inbox_map_product_action_uses_product_mismatch_review_id(client, users):
+    provider = Provider.objects.create(name="Tripster", code="tripster")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="multi-issue-product-map",
+        gmail_outer_sender="support@tripster.ru",
+        subject="Tripster booking 6692715",
+        received_at=timezone.now(),
+        body_text="Synthetic body",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715",
+        status=Booking.Status.MANUAL_REVIEW,
+        raw_product_name="Bosphorus voyage on a yacht with a stop in Bebek",
+    )
+    product_review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        status=ReviewQueueItem.Status.OPEN,
+        title="Product title is not mapped",
+    )
+    ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.DATE_MISSING,
+        status=ReviewQueueItem.Status.OPEN,
+        title="Booking date missing",
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("inbox"))
+
+    assert response.status_code == 200
+    assert response.context["rows"][0]["action_label"] == "Map product"
+    assert response.context["rows"][0]["action_url"] == (
+        f"{reverse('settings_provider_aliases')}?review_id={product_review.id}"
+    )
+
+
+@pytest.mark.django_db
 def test_inbox_hides_ignored_raw_emails_without_open_issues(client, users):
     RawEmail.objects.create(
         gmail_message_id="ignored-tripster-message-inbox",

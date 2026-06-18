@@ -2,6 +2,7 @@ from datetime import date, time
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from helpers import create_activity_setup
 
 from apps.accounts.models import UserProfile
@@ -9,10 +10,13 @@ from apps.bookings.models import (
     ActivitySchedule,
     ActivityScheduleException,
     ActivityScheduleSlot,
+    Booking,
     ProviderAlias,
+    ReviewQueueItem,
     TourActivity,
 )
 from apps.bookings.services import get_daily_capacity_summary
+from apps.ingestion.models import RawEmail
 
 
 @pytest.fixture
@@ -228,6 +232,78 @@ def test_activity_detail_creates_provider_alias(client, users):
     alias = ProviderAlias.objects.get(raw_product_name="Raw Alias Tour")
     assert alias.linked_activity == activity
     assert alias.linked_slot == setup["slot"]
+
+
+@pytest.mark.django_db
+def test_provider_alias_review_mapping_updates_existing_alias_and_reprocesses_email(
+    client,
+    users,
+    monkeypatch,
+):
+    setup = create_activity_setup(activity_name="Mapped Alias Tour", alias=False)
+    raw_product_name = "Supplier Raw Alias Tour"
+    alias = ProviderAlias.objects.create(
+        provider=setup["provider"],
+        raw_product_name=raw_product_name,
+        raw_option_name="",
+        provider_product_code="",
+        provider_option_code="",
+        linked_activity=setup["activity"],
+        approved=False,
+    )
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="alias-review-map-1",
+        gmail_outer_sender="supplier@example.test",
+        subject="Booking needs product mapping",
+        received_at=timezone.now(),
+        body_text="Synthetic booking body.",
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=setup["provider"],
+        provider_booking_reference="MAP-1",
+        status=Booking.Status.MANUAL_REVIEW,
+        raw_product_name=raw_product_name,
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+        status=ReviewQueueItem.Status.OPEN,
+        title="Product title is not mapped",
+    )
+    reprocessed = []
+    monkeypatch.setattr(
+        "apps.bookings.views.process_raw_email",
+        lambda raw_email_id: reprocessed.append(raw_email_id),
+    )
+
+    client.force_login(users["admin"])
+    response = client.post(
+        f"{reverse('settings_provider_aliases')}?review_id={review.id}",
+        {
+            "provider": str(setup["provider"].id),
+            "raw_product_name": raw_product_name,
+            "raw_option_name": "",
+            "provider_product_code": "",
+            "provider_option_code": "",
+            "linked_activity": str(setup["activity"].id),
+            "linked_schedule": str(setup["schedule"].id),
+            "linked_slot": str(setup["slot"].id),
+            "approved": "on",
+            "needs_manual_confirmation": "",
+            "notes": "Mapped from review.",
+        },
+    )
+
+    alias.refresh_from_db()
+    assert response.status_code == 302
+    assert response["Location"] == reverse("inbox")
+    assert ProviderAlias.objects.count() == 1
+    assert alias.approved is True
+    assert alias.linked_schedule == setup["schedule"]
+    assert alias.linked_slot == setup["slot"]
+    assert reprocessed == [raw_email.id]
 
 
 @pytest.mark.django_db
