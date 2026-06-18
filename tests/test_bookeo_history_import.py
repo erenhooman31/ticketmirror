@@ -4,6 +4,7 @@ import pytest
 from django.core.management import call_command
 
 from apps.bookings.models import Booking, BookingEvent, Provider, ReviewQueueItem
+from apps.ingestion.management.commands.import_bookeo_history import _bookeo_api_key
 from apps.ingestion.bookeo_import import (
     BookeoHistoryImporter,
     JsonCheckpointStore,
@@ -42,6 +43,13 @@ def bookeo_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def test_bookeo_api_key_prefers_business_authorized_env(monkeypatch):
+    monkeypatch.setenv("BOOKEO_API_KEY", "developer-key")
+    monkeypatch.setenv("BBOKEO_AUTHORIZED_API", "business-authorized-key")
+
+    assert _bookeo_api_key() == "business-authorized-key"
 
 
 @pytest.mark.django_db

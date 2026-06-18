@@ -1,6 +1,9 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      args:
+        INSTALL_TRANSLATION_MODELS: ${INSTALL_TRANSLATION_MODELS:-false}
     command: python manage.py runserver 0.0.0.0:8000
     env_file:
       - .env
@@ -12,7 +15,10 @@ services:
       - postgres
 
   poller:
-    build: .
+    build:
+      context: .
+      args:
+        INSTALL_TRANSLATION_MODELS: ${INSTALL_TRANSLATION_MODELS:-false}
     command: python manage.py poll_gmail --loop --interval 60
     env_file:
       - .env

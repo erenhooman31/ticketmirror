@@ -58,11 +58,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        api_key = os.environ.get("BOOKEO_API_KEY", "").strip()
+        api_key = _bookeo_api_key()
         secret_key = os.environ.get("BOOKEO_SECRET_KEY", "").strip()
         if not api_key or not secret_key:
             raise CommandError(
-                "BOOKEO_API_KEY and BOOKEO_SECRET_KEY must be set before importing."
+                "BBOKEO_AUTHORIZED_API or BOOKEO_API_KEY, plus "
+                "BOOKEO_SECRET_KEY, must be set before importing."
             )
         date_from = options["date_from"]
         date_to = options["date_to"]
@@ -106,3 +107,11 @@ def _parse_date(value: str) -> date:
         return date.fromisoformat(value)
     except ValueError as exc:
         raise CommandError(f"Invalid date {value!r}; expected YYYY-MM-DD.") from exc
+
+
+def _bookeo_api_key() -> str:
+    return (
+        os.environ.get("BBOKEO_AUTHORIZED_API", "").strip()
+        or os.environ.get("BOOKEO_AUTHORIZED_API", "").strip()
+        or os.environ.get("BOOKEO_API_KEY", "").strip()
+    )

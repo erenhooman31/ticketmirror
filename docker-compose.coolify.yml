@@ -22,11 +22,14 @@ x-app-env: &app-env
   GMAIL_CLIENT_ID: ${GMAIL_CLIENT_ID:-}
   GMAIL_CLIENT_SECRET: ${GMAIL_CLIENT_SECRET:-}
   GMAIL_REFRESH_TOKEN: ${GMAIL_REFRESH_TOKEN:-}
+  TRANSLATE_ENABLED: ${TRANSLATE_ENABLED:-false}
 
 services:
   web:
     build:
       context: .
+      args:
+        INSTALL_TRANSLATION_MODELS: ${INSTALL_TRANSLATION_MODELS:-false}
     command: >
       sh -ex -c "
       echo '--- running django check ---' &&
@@ -76,6 +79,8 @@ services:
   poller:
     build:
       context: .
+      args:
+        INSTALL_TRANSLATION_MODELS: ${INSTALL_TRANSLATION_MODELS:-false}
     command: python manage.py poll_gmail --loop --interval 60
     environment: *app-env
     restart: unless-stopped

@@ -51,6 +51,12 @@ labels.
 
 Use a read-only Gmail OAuth grant for the poller. Do not commit real secrets or real provider email samples.
 
+Offline RU->EN translation is optional in Docker builds. The default
+`TRANSLATE_ENABLED=false` and `INSTALL_TRANSLATION_MODELS=false` keeps the image
+small enough for constrained deploy hosts. To enable it, set both values to
+`true`; the build then installs `requirements-translation.txt` and the Argos
+model.
+
 ## Deploy
 
 ```bash

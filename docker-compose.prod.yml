@@ -2,6 +2,8 @@ services:
   web:
     build:
       context: .
+      args:
+        INSTALL_TRANSLATION_MODELS: ${INSTALL_TRANSLATION_MODELS:-false}
     command: >
       gunicorn config.wsgi:application
       --bind 0.0.0.0:8000
@@ -30,6 +32,8 @@ services:
   poller:
     build:
       context: .
+      args:
+        INSTALL_TRANSLATION_MODELS: ${INSTALL_TRANSLATION_MODELS:-false}
     command: python manage.py poll_gmail --loop --interval 60
     env_file:
       - ${TICKETMIRROR_ENV_FILE:-.env.prod}

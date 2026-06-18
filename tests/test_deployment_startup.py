@@ -56,3 +56,21 @@ def test_coolify_runs_dedicated_gmail_poller():
 
     assert "poller:" in compose
     assert "python manage.py poll_gmail --loop --interval 60" in compose
+
+
+def test_translation_dependencies_are_not_in_base_image_by_default():
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+    translation_requirements = Path("requirements-translation.txt").read_text(
+        encoding="utf-8"
+    )
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    coolify_compose = Path("docker-compose.coolify.yml").read_text(encoding="utf-8")
+
+    assert "argostranslate" not in requirements
+    assert "argostranslate" in translation_requirements
+    assert "torch==2.12.1+cpu" in translation_requirements
+    assert "ARG INSTALL_TRANSLATION_MODELS=false" in dockerfile
+    assert "INSTALL_TRANSLATION_MODELS: ${INSTALL_TRANSLATION_MODELS:-false}" in (
+        coolify_compose
+    )
+    assert "TRANSLATE_ENABLED: ${TRANSLATE_ENABLED:-false}" in coolify_compose
