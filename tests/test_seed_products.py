@@ -1,10 +1,21 @@
+from datetime import date, time
+from io import StringIO
+
 import pytest
 from django.core.management import call_command
 
-from apps.bookings.management.commands.seed_bookeo_products import DIRECT_OTA_ALIASES
+from apps.bookings.management.commands.merge_stale_audio_guide_activity import (
+    CANONICAL_ACTIVITY_NAME,
+    STALE_ACTIVITY_NAME,
+)
+from apps.bookings.management.commands.seed_bookeo_products import (
+    DIRECT_OTA_ALIASES,
+    LIVE_BOOKEO_PRODUCT_NAMES,
+)
 from apps.bookings.models import (
     ActivitySchedule,
     ActivityScheduleSlot,
+    Booking,
     Provider,
     ProviderAlias,
     TourActivity,
@@ -346,6 +357,83 @@ def test_seed_bookeo_products_creates_catalog_expected_after_deploy_seed():
             linked_activity__name=product_name,
             approved=True,
         ).exists()
+
+
+@pytest.mark.django_db
+def test_merge_stale_audio_guide_activity_moves_bookings_and_removes_stale_catalog():
+    call_command("seed_bookeo_products")
+    provider = Provider.objects.get(code="getyourguide")
+    canonical = TourActivity.objects.get(name=CANONICAL_ACTIVITY_NAME)
+    canonical_slot_1400 = ActivityScheduleSlot.objects.get(
+        schedule__activity=canonical,
+        schedule__schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+        start_time=time(14, 0),
+    )
+    stale = TourActivity.objects.create(
+        name=STALE_ACTIVITY_NAME,
+        internal_display_name=STALE_ACTIVITY_NAME,
+        active=True,
+        category=TourActivity.Category.CRUISE,
+    )
+    stale_schedule = ActivitySchedule.objects.create(
+        activity=stale,
+        schedule_kind=ActivitySchedule.ScheduleKind.CURRENT,
+        name="Legacy current schedule",
+        active=True,
+        priority=100,
+    )
+    stale_slot = ActivityScheduleSlot.objects.create(
+        schedule=stale_schedule,
+        start_time=time(19, 0),
+        end_time=time(21, 0),
+        duration_minutes=120,
+        slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        capacity=250,
+        active=True,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="GYG-STALE-1",
+        status=Booking.Status.CONFIRMED,
+        activity=stale,
+        schedule_slot=stale_slot,
+        raw_product_name=STALE_ACTIVITY_NAME,
+        provider_travel_date=date(2026, 6, 21),
+        provider_start_time=time(14, 0),
+        provider_slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        provider_traveler_count=2,
+        active_travel_date=date(2026, 6, 21),
+        active_start_time=time(14, 0),
+        active_slot_type=ActivityScheduleSlot.SlotType.FIXED_TIME,
+        active_traveler_count=2,
+    )
+    stale_alias = ProviderAlias.objects.create(
+        provider=provider,
+        raw_product_name=STALE_ACTIVITY_NAME,
+        raw_option_name="Legacy stale duplicate",
+        linked_activity=stale,
+        linked_schedule=stale_schedule,
+        linked_slot=stale_slot,
+        approved=True,
+    )
+
+    output = StringIO()
+    call_command("merge_stale_audio_guide_activity", stdout=output)
+
+    booking.refresh_from_db()
+    assert f"Reassigned booking id={booking.id}" in output.getvalue()
+    assert booking.activity == canonical
+    assert booking.schedule_slot == canonical_slot_1400
+    assert not ProviderAlias.objects.filter(id=stale_alias.id).exists()
+    assert not TourActivity.objects.filter(name=STALE_ACTIVITY_NAME).exists()
+    assert set(TourActivity.objects.values_list("name", flat=True)) == set(
+        LIVE_BOOKEO_PRODUCT_NAMES
+    )
+
+    call_command("merge_stale_audio_guide_activity")
+    assert set(TourActivity.objects.values_list("name", flat=True)) == set(
+        LIVE_BOOKEO_PRODUCT_NAMES
+    )
 
 
 @pytest.mark.django_db
