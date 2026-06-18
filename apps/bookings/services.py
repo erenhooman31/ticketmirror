@@ -360,6 +360,36 @@ def review_issue_is_obsolete(
     return False
 
 
+def review_issue_is_obsolete_for_context(
+    *,
+    issue_type: str,
+    title: str,
+    raw_email,
+    review_booking,
+    current_booking,
+) -> bool:
+    candidates = []
+    for booking in [review_booking, current_booking]:
+        if booking and booking not in candidates:
+            candidates.append(booking)
+    if not candidates:
+        return review_issue_is_obsolete(
+            issue_type=issue_type,
+            title=title,
+            booking=None,
+            raw_email=raw_email,
+        )
+    return any(
+        review_issue_is_obsolete(
+            issue_type=issue_type,
+            title=title,
+            booking=booking,
+            raw_email=raw_email,
+        )
+        for booking in candidates
+    )
+
+
 def active_field_for_provider_field(field_name: str) -> str | None:
     return PROVIDER_TO_ACTIVE_FIELD_MAP.get(field_name)
 

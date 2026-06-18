@@ -838,6 +838,100 @@ def test_inbox_filters_obsolete_issue_labels_before_status(client, users):
 
 
 @pytest.mark.django_db
+def test_stale_reviews_resolve_against_raw_email_current_booking():
+    provider = Provider.objects.create(name="Tripster", code="tripster")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="split-review-current-booking",
+        gmail_outer_sender="support@tripster.ru",
+        subject="Tripster booking 6692715",
+        received_at=timezone.now(),
+        body_text="Synthetic body",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    stale_booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715",
+        status=Booking.Status.MANUAL_REVIEW,
+    )
+    current_booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715-CURRENT",
+        status=Booking.Status.CONFIRMED,
+        raw_product_name="Bosphorus voyage on a yacht with a stop in Bebek",
+        provider_travel_date=date(2026, 6, 19),
+        provider_start_time=time(11, 30),
+        provider_traveler_count=5,
+    )
+    BookingEvent.objects.create(
+        booking=current_booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        source=BookingEvent.Source.EMAIL,
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=stale_booking,
+        issue_type=ReviewQueueItem.IssueType.DATE_MISSING,
+        title="Booking date missing",
+    )
+
+    call_command("resolve_stale_booking_reviews", stdout=StringIO())
+    review.refresh_from_db()
+
+    assert review.status == ReviewQueueItem.Status.RESOLVED
+
+
+@pytest.mark.django_db
+def test_inbox_filters_split_booking_obsolete_issues(client, users):
+    provider = Provider.objects.create(name="Tripster", code="tripster")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="split-inbox-current-booking",
+        gmail_outer_sender="support@tripster.ru",
+        subject="Tripster booking 6692715",
+        received_at=timezone.now(),
+        body_text="Synthetic body",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    stale_booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715",
+        status=Booking.Status.MANUAL_REVIEW,
+    )
+    current_booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715-CURRENT",
+        status=Booking.Status.CONFIRMED,
+        raw_product_name="Bosphorus voyage on a yacht with a stop in Bebek",
+        provider_travel_date=date(2026, 6, 19),
+        provider_start_time=time(11, 30),
+        provider_traveler_count=5,
+    )
+    BookingEvent.objects.create(
+        booking=current_booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        source=BookingEvent.Source.EMAIL,
+    )
+    ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=stale_booking,
+        issue_type=ReviewQueueItem.IssueType.DATE_MISSING,
+        title="Booking date missing",
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("inbox"))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "6692715-CURRENT" in html
+    assert "Complete" in html
+    assert "Date missing" not in html
+
+
+@pytest.mark.django_db
 def test_customers_render_missing_optional_fields_without_raw_structures(client, users):
     provider = Provider.objects.create(name="Viator", code="viator")
     Booking.objects.create(

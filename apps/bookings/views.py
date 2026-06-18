@@ -36,7 +36,7 @@ from apps.bookings.services import (
     capacity_snapshot,
     get_daily_capacity_summary,
     get_slot_bookings,
-    review_issue_is_obsolete,
+    review_issue_is_obsolete_for_context,
     slot_label,
 )
 from apps.ingestion.models import RawEmail
@@ -952,12 +952,12 @@ def _inbox_row(raw_email, issues):
 def _current_inbox_issues(raw_email, booking, issues):
     current_issues = []
     for issue in issues:
-        issue_booking = issue.booking or booking
-        if review_issue_is_obsolete(
+        if review_issue_is_obsolete_for_context(
             issue_type=issue.issue_type,
             title=issue.title,
-            booking=issue_booking,
             raw_email=raw_email,
+            review_booking=issue.booking,
+            current_booking=booking,
         ):
             continue
         current_issues.append(issue)

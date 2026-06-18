@@ -21,7 +21,7 @@ from apps.bookings.services import (
     is_manually_overridden,
     provider_update_conflicts,
     resolve_schedule_slot_details,
-    review_issue_is_obsolete,
+    review_issue_is_obsolete_for_context,
     warn_if_capacity_overbooked,
 )
 from apps.core.privacy import mask_contact_text
@@ -328,19 +328,20 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
 
 
 def _resolve_obsolete_review_items(*, raw_email: RawEmail, booking: Booking) -> int:
-    base_queryset = ReviewQueueItem.objects.filter(
+    base_queryset = ReviewQueueItem.objects.select_related("booking").filter(
         raw_email=raw_email,
         status=ReviewQueueItem.Status.OPEN,
-    ).filter(Q(booking=booking) | Q(booking__isnull=True))
+    )
     resolved_at = timezone.now()
     resolved = 0
 
     for review in base_queryset:
-        if not review_issue_is_obsolete(
+        if not review_issue_is_obsolete_for_context(
             issue_type=review.issue_type,
             title=review.title,
-            booking=booking,
             raw_email=raw_email,
+            review_booking=review.booking,
+            current_booking=booking,
         ):
             continue
         resolved += ReviewQueueItem.objects.filter(id=review.id).update(

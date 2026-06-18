@@ -3,7 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.bookings.models import Booking, BookingEvent, ReviewQueueItem
-from apps.bookings.services import review_issue_is_obsolete
+from apps.bookings.services import review_issue_is_obsolete_for_context
 from apps.ingestion.models import RawEmail
 from apps.ingestion.services import non_booking_ignore_reason, translated_raw_email_view
 
@@ -170,12 +170,13 @@ class Command(BaseCommand):
         return True
 
     def _is_obsolete(self, review: ReviewQueueItem) -> bool:
-        booking = review.booking or self._booking_from_raw_email(review.raw_email)
-        return review_issue_is_obsolete(
+        current_booking = self._booking_from_raw_email(review.raw_email)
+        return review_issue_is_obsolete_for_context(
             issue_type=review.issue_type,
             title=review.title,
-            booking=booking,
             raw_email=review.raw_email,
+            review_booking=review.booking,
+            current_booking=current_booking,
         )
 
     def _booking_from_raw_email(self, raw_email: RawEmail | None) -> Booking | None:
