@@ -3,11 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.bookings.models import Booking, BookingEvent, ReviewQueueItem
-from apps.bookings.services import (
-    booking_has_parsed_time,
-    booking_has_parsed_travel_date,
-    booking_has_parsed_traveler_count,
-)
+from apps.bookings.services import review_issue_is_obsolete
 from apps.ingestion.models import RawEmail
 from apps.ingestion.services import non_booking_ignore_reason, translated_raw_email_view
 
@@ -175,35 +171,12 @@ class Command(BaseCommand):
 
     def _is_obsolete(self, review: ReviewQueueItem) -> bool:
         booking = review.booking or self._booking_from_raw_email(review.raw_email)
-        raw_email = review.raw_email
-        issue_type = review.issue_type
-        if issue_type == ReviewQueueItem.IssueType.PROVIDER_NOT_DETECTED:
-            return bool(raw_email and raw_email.provider_detected_id)
-        if issue_type == ReviewQueueItem.IssueType.REFERENCE_MISSING:
-            if raw_email and raw_email.parse_status == RawEmail.ParseStatus.IGNORED:
-                return True
-            return bool(booking and booking.provider_booking_reference)
-        if not booking:
-            return False
-        if issue_type in {
-            ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
-            ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
-        }:
-            return bool(booking.activity_id)
-        if issue_type == ReviewQueueItem.IssueType.DATE_MISSING:
-            return booking_has_parsed_travel_date(booking)
-        if issue_type == ReviewQueueItem.IssueType.TIME_MISSING:
-            if review.title == "Schedule slot needs confirmation":
-                return False
-            return booking_has_parsed_time(booking)
-        if issue_type == ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING:
-            return booking_has_parsed_traveler_count(booking)
-        if issue_type == ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING:
-            return bool(booking.lead_traveler_name) or _provider_omits_lead_name(
-                raw_email,
-                booking,
-            )
-        return False
+        return review_issue_is_obsolete(
+            issue_type=review.issue_type,
+            title=review.title,
+            booking=booking,
+            raw_email=review.raw_email,
+        )
 
     def _booking_from_raw_email(self, raw_email: RawEmail | None) -> Booking | None:
         if not raw_email:
@@ -215,12 +188,3 @@ class Command(BaseCommand):
             .first()
         )
         return event.booking if event else None
-
-
-def _provider_omits_lead_name(raw_email, booking: Booking) -> bool:
-    provider_code = ""
-    if raw_email and raw_email.provider_detected_id:
-        provider_code = raw_email.provider_detected.code
-    if not provider_code and booking.provider_id:
-        provider_code = booking.provider.code
-    return provider_code == "tripster"

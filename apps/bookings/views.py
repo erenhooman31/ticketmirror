@@ -36,6 +36,7 @@ from apps.bookings.services import (
     capacity_snapshot,
     get_daily_capacity_summary,
     get_slot_bookings,
+    review_issue_is_obsolete,
     slot_label,
 )
 from apps.ingestion.models import RawEmail
@@ -913,6 +914,7 @@ def raw_email_detail(request, raw_email_id):
 
 def _inbox_row(raw_email, issues):
     booking = _raw_email_booking(raw_email, issues)
+    issues = _current_inbox_issues(raw_email, booking, issues)
     status = _inbox_status(raw_email, booking, issues)
     return {
         "raw_email": raw_email,
@@ -947,6 +949,21 @@ def _inbox_row(raw_email, issues):
     }
 
 
+def _current_inbox_issues(raw_email, booking, issues):
+    current_issues = []
+    for issue in issues:
+        issue_booking = issue.booking or booking
+        if review_issue_is_obsolete(
+            issue_type=issue.issue_type,
+            title=issue.title,
+            booking=issue_booking,
+            raw_email=raw_email,
+        ):
+            continue
+        current_issues.append(issue)
+    return current_issues
+
+
 def _raw_email_booking(raw_email, issues):
     for event in raw_email.booking_events.all():
         if event.booking_id:
@@ -976,7 +993,9 @@ def _inbox_status(raw_email, booking, issues):
     }
     if any(issue.issue_type in missing_issue_types for issue in issues):
         return "Missing data"
-    if issues or raw_email.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW:
+    if issues or (
+        raw_email.parse_status == RawEmail.ParseStatus.NEEDS_REVIEW and not booking
+    ):
         return "Needs review"
     if booking:
         return "Complete"

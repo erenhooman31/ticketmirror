@@ -17,13 +17,11 @@ from apps.bookings.models import (
 )
 from apps.bookings.services import (
     active_updates_from_provider_values,
-    booking_has_parsed_time,
-    booking_has_parsed_travel_date,
-    booking_has_parsed_traveler_count,
     diff_field_values,
     is_manually_overridden,
     provider_update_conflicts,
     resolve_schedule_slot_details,
+    review_issue_is_obsolete,
     warn_if_capacity_overbooked,
 )
 from apps.core.privacy import mask_contact_text
@@ -337,37 +335,18 @@ def _resolve_obsolete_review_items(*, raw_email: RawEmail, booking: Booking) -> 
     resolved_at = timezone.now()
     resolved = 0
 
-    def resolve(issue_type: str, *, exclude_title: str | None = None) -> None:
-        nonlocal resolved
-        queryset = base_queryset.filter(issue_type=issue_type)
-        if exclude_title:
-            queryset = queryset.exclude(title=exclude_title)
-        resolved += queryset.update(
+    for review in base_queryset:
+        if not review_issue_is_obsolete(
+            issue_type=review.issue_type,
+            title=review.title,
+            booking=booking,
+            raw_email=raw_email,
+        ):
+            continue
+        resolved += ReviewQueueItem.objects.filter(id=review.id).update(
             status=ReviewQueueItem.Status.RESOLVED,
             resolved_at=resolved_at,
         )
-
-    if raw_email.provider_detected_id:
-        resolve(ReviewQueueItem.IssueType.PROVIDER_NOT_DETECTED)
-    if booking.provider_booking_reference:
-        resolve(ReviewQueueItem.IssueType.REFERENCE_MISSING)
-    if booking.activity_id:
-        resolve(ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING)
-        resolve(ReviewQueueItem.IssueType.PRODUCT_MISMATCH)
-    if booking_has_parsed_travel_date(booking):
-        resolve(ReviewQueueItem.IssueType.DATE_MISSING)
-    if booking_has_parsed_time(booking):
-        resolve(
-            ReviewQueueItem.IssueType.TIME_MISSING,
-            exclude_title="Schedule slot needs confirmation",
-        )
-    if booking_has_parsed_traveler_count(booking):
-        resolve(ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING)
-    if booking.lead_traveler_name or _provider_omits_field(
-        raw_email,
-        ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
-    ):
-        resolve(ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING)
 
     return resolved
 

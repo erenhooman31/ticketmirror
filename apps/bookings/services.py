@@ -295,6 +295,71 @@ def booking_has_parsed_traveler_count(booking: Booking) -> bool:
     )
 
 
+def booking_has_parsed_product(booking: Booking) -> bool:
+    return bool(booking.activity_id or booking.raw_product_name)
+
+
+def booking_provider_omits_lead_name(raw_email, booking: Booking) -> bool:
+    provider_code = ""
+    if raw_email and getattr(raw_email, "provider_detected_id", None):
+        provider_code = raw_email.provider_detected.code
+    if not provider_code and booking.provider_id:
+        provider_code = booking.provider.code
+    return provider_code in {"tripster", "sputnik8"}
+
+
+def booking_has_required_parse_content(raw_email, booking: Booking) -> bool:
+    return all(
+        [
+            booking.provider_booking_reference,
+            booking_has_parsed_product(booking),
+            booking_has_parsed_travel_date(booking),
+            booking_has_parsed_time(booking),
+            booking_has_parsed_traveler_count(booking),
+            booking.lead_traveler_name
+            or booking_provider_omits_lead_name(raw_email, booking),
+        ]
+    )
+
+
+def review_issue_is_obsolete(
+    *,
+    issue_type: str,
+    title: str,
+    booking,
+    raw_email,
+) -> bool:
+    if issue_type == ReviewQueueItem.IssueType.PROVIDER_NOT_DETECTED:
+        return bool(raw_email and raw_email.provider_detected_id)
+    if issue_type == ReviewQueueItem.IssueType.REFERENCE_MISSING:
+        if raw_email and raw_email.parse_status == "ignored":
+            return True
+        return bool(booking and booking.provider_booking_reference)
+    if not booking:
+        return False
+    if issue_type in {
+        ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING,
+        ReviewQueueItem.IssueType.PRODUCT_MISMATCH,
+    }:
+        return bool(booking.activity_id)
+    if issue_type == ReviewQueueItem.IssueType.DATE_MISSING:
+        return booking_has_parsed_travel_date(booking)
+    if issue_type == ReviewQueueItem.IssueType.TIME_MISSING:
+        if title == "Schedule slot needs confirmation":
+            return False
+        return booking_has_parsed_time(booking)
+    if issue_type == ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING:
+        return booking_has_parsed_traveler_count(booking)
+    if issue_type == ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING:
+        return bool(booking.lead_traveler_name) or booking_provider_omits_lead_name(
+            raw_email,
+            booking,
+        )
+    if issue_type == ReviewQueueItem.IssueType.LOW_CONFIDENCE_PARSE:
+        return booking_has_required_parse_content(raw_email, booking)
+    return False
+
+
 def active_field_for_provider_field(field_name: str) -> str | None:
     return PROVIDER_TO_ACTIVE_FIELD_MAP.get(field_name)
 

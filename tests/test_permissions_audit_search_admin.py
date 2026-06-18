@@ -247,6 +247,10 @@ def test_review_queue_resolution_stores_user_and_timestamp(
 
 @pytest.mark.django_db
 def test_inbox_lists_raw_email_review_state(client, users, booking_setup):
+    booking = booking_setup["booking"]
+    booking.active_travel_date = None
+    booking.provider_travel_date = None
+    booking.save(update_fields=["active_travel_date", "provider_travel_date"])
     raw_email = RawEmail.objects.create(
         gmail_message_id="inbox-1",
         gmail_outer_sender="bookings@viator.com",
@@ -259,7 +263,7 @@ def test_inbox_lists_raw_email_review_state(client, users, booking_setup):
     )
     ReviewQueueItem.objects.create(
         raw_email=raw_email,
-        booking=booking_setup["booking"],
+        booking=booking,
         issue_type=ReviewQueueItem.IssueType.DATE_MISSING,
         title="Booking date missing",
     )

@@ -498,6 +498,46 @@ def test_stale_review_sweep_resolves_missing_reviews_from_provider_fields():
 
 
 @pytest.mark.django_db
+def test_stale_review_sweep_resolves_obsolete_low_confidence_review():
+    provider = Provider.objects.create(name="Tripster", code="tripster")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="obsolete-low-confidence",
+        gmail_outer_sender="support@tripster.ru",
+        subject="Tripster booking 6692715",
+        received_at=timezone.now(),
+        body_text="Synthetic body",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715",
+        status=Booking.Status.CONFIRMED,
+        raw_product_name="Bosphorus voyage on a yacht with a stop in Bebek",
+        provider_travel_date=date(2026, 6, 19),
+        provider_start_time=time(11, 30),
+        provider_traveler_count=5,
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        source=BookingEvent.Source.EMAIL,
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=booking,
+        issue_type=ReviewQueueItem.IssueType.LOW_CONFIDENCE_PARSE,
+        title="Low confidence parse",
+    )
+
+    call_command("resolve_stale_booking_reviews", stdout=StringIO())
+    review.refresh_from_db()
+
+    assert review.status == ReviewQueueItem.Status.RESOLVED
+
+
+@pytest.mark.django_db
 def test_stale_review_sweep_reclassifies_non_booking_email_and_cancels_false_booking():
     provider = Provider.objects.create(
         name="GetYourGuide",
@@ -742,6 +782,59 @@ def test_inbox_hides_ignored_raw_emails_without_open_issues(client, users):
 
     assert response.status_code == 200
     assert "Сообщение к заказу" not in html
+
+
+@pytest.mark.django_db
+def test_inbox_filters_obsolete_issue_labels_before_status(client, users):
+    provider = Provider.objects.create(name="Tripster", code="tripster")
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="obsolete-inbox-issues",
+        gmail_outer_sender="support@tripster.ru",
+        subject="Tripster booking 6692715",
+        received_at=timezone.now(),
+        body_text="Synthetic body",
+        provider_detected=provider,
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="6692715",
+        status=Booking.Status.CONFIRMED,
+        raw_product_name="Bosphorus voyage on a yacht with a stop in Bebek",
+        provider_travel_date=date(2026, 6, 19),
+        provider_start_time=time(11, 30),
+        provider_traveler_count=5,
+    )
+    BookingEvent.objects.create(
+        booking=booking,
+        raw_email=raw_email,
+        event_type=BookingEvent.EventType.EMAIL_UPDATE,
+        source=BookingEvent.Source.EMAIL,
+    )
+    for issue_type, title in [
+        (ReviewQueueItem.IssueType.DATE_MISSING, "Booking date missing"),
+        (ReviewQueueItem.IssueType.TIME_MISSING, "Booking time missing"),
+        (ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING, "Traveler count missing"),
+        (ReviewQueueItem.IssueType.LOW_CONFIDENCE_PARSE, "Low confidence parse"),
+    ]:
+        ReviewQueueItem.objects.create(
+            raw_email=raw_email,
+            booking=booking,
+            issue_type=issue_type,
+            title=title,
+        )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("inbox"))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "6692715" in html
+    assert "Complete" in html
+    assert "Date missing" not in html
+    assert "Time missing" not in html
+    assert "Traveler count missing" not in html
+    assert "Low confidence parse" not in html
 
 
 @pytest.mark.django_db
