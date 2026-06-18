@@ -80,7 +80,7 @@ services:
       echo '--- re-slotting bookings ---' &&
       (python manage.py reslot_bookings --quiet || true) &&
       echo '--- resolving stale booking reviews ---' &&
-      (python manage.py resolve_stale_booking_reviews --quiet --limit 500 || true) &&
+      (python manage.py resolve_stale_booking_reviews --quiet || true) &&
       echo '--- starting gmail poller ---' &&
       exec python manage.py poll_gmail --loop --interval 60
       "

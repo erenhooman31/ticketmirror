@@ -5,6 +5,7 @@ from typing import Any
 
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.bookings.models import (
     ActivityScheduleSlot,
@@ -311,6 +312,8 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
     if warn_if_capacity_overbooked(booking=booking, raw_email=raw_email):
         raw_email.parse_status = RawEmail.ParseStatus.NEEDS_REVIEW
 
+    _resolve_obsolete_review_items(raw_email=raw_email, booking=booking)
+
     raw_email.save(
         update_fields=[
             "provider_detected",
@@ -321,6 +324,52 @@ def upsert_booking_from_parsed(raw_email: RawEmail, parsed_booking) -> Booking |
         ]
     )
     return booking
+
+
+def _resolve_obsolete_review_items(*, raw_email: RawEmail, booking: Booking) -> int:
+    base_queryset = ReviewQueueItem.objects.filter(
+        raw_email=raw_email,
+        status=ReviewQueueItem.Status.OPEN,
+    ).filter(Q(booking=booking) | Q(booking__isnull=True))
+    resolved_at = timezone.now()
+    resolved = 0
+
+    def resolve(issue_type: str, *, exclude_title: str | None = None) -> None:
+        nonlocal resolved
+        queryset = base_queryset.filter(issue_type=issue_type)
+        if exclude_title:
+            queryset = queryset.exclude(title=exclude_title)
+        resolved += queryset.update(
+            status=ReviewQueueItem.Status.RESOLVED,
+            resolved_at=resolved_at,
+        )
+
+    if raw_email.provider_detected_id:
+        resolve(ReviewQueueItem.IssueType.PROVIDER_NOT_DETECTED)
+    if booking.provider_booking_reference:
+        resolve(ReviewQueueItem.IssueType.REFERENCE_MISSING)
+    if booking.activity_id:
+        resolve(ReviewQueueItem.IssueType.PROVIDER_ALIAS_MISSING)
+        resolve(ReviewQueueItem.IssueType.PRODUCT_MISMATCH)
+    if booking.active_travel_date:
+        resolve(ReviewQueueItem.IssueType.DATE_MISSING)
+    if booking.active_start_time or booking.active_slot_type in {
+        "full_day",
+        "half_day",
+    }:
+        resolve(
+            ReviewQueueItem.IssueType.TIME_MISSING,
+            exclude_title="Schedule slot needs confirmation",
+        )
+    if booking.active_traveler_count is not None:
+        resolve(ReviewQueueItem.IssueType.TRAVELER_COUNT_MISSING)
+    if booking.lead_traveler_name or _provider_omits_field(
+        raw_email,
+        ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING,
+    ):
+        resolve(ReviewQueueItem.IssueType.LEAD_TRAVELER_MISSING)
+
+    return resolved
 
 
 def _create_completeness_review_items(

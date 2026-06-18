@@ -261,6 +261,42 @@ def test_stale_review_sweep_resolves_orphan_reference_review_from_raw_email_even
 
 
 @pytest.mark.django_db
+def test_reprocessing_resolves_orphan_missing_review_for_repaired_booking():
+    provider = Provider.objects.create(
+        name="Viator",
+        code="viator",
+        parser_key="viator",
+    )
+    raw_email = RawEmail.objects.create(
+        gmail_message_id="reprocess-orphan-missing-review",
+        gmail_outer_sender="bookings@viator.com",
+        subject="Viator booking BR-123456789 confirmed",
+        received_at=timezone.now(),
+        body_text=fixture("viator_new.txt"),
+        parse_status=RawEmail.ParseStatus.NEEDS_REVIEW,
+    )
+    booking = Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="BR-123456789",
+        status=Booking.Status.MANUAL_REVIEW,
+    )
+    review = ReviewQueueItem.objects.create(
+        raw_email=raw_email,
+        booking=None,
+        issue_type=ReviewQueueItem.IssueType.DATE_MISSING,
+        title="Booking date missing",
+    )
+
+    process_raw_email(raw_email.id)
+    booking.refresh_from_db()
+    review.refresh_from_db()
+
+    assert booking.active_travel_date == date(2026, 6, 21)
+    assert review.status == ReviewQueueItem.Status.RESOLVED
+    assert review.resolved_at is not None
+
+
+@pytest.mark.django_db
 def test_stale_review_sweep_resolves_reference_review_for_ignored_raw_email():
     raw_email = RawEmail.objects.create(
         gmail_message_id="ignored-stale-reference-review",

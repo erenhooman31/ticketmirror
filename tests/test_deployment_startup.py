@@ -68,7 +68,7 @@ def test_coolify_poller_repairs_backlog_before_polling():
     )
     reslot_index = poller_section.index("python manage.py reslot_bookings --quiet")
     stale_review_index = poller_section.index(
-        "python manage.py resolve_stale_booking_reviews --quiet --limit 500"
+        "python manage.py resolve_stale_booking_reviews --quiet"
     )
     poll_index = poller_section.index(
         "exec python manage.py poll_gmail --loop --interval 60"
