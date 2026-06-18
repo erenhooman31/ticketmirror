@@ -431,6 +431,9 @@ def extract_money(text: str) -> dict:
 
 
 def extract_traveler_count(text: str) -> int | None:
+    breakdown_total = _ticket_breakdown_total(text)
+    if breakdown_total is not None:
+        return breakdown_total
     patterns = [
         r"(?:traveler|traveller|participant|guest|ticket|person|people|pax)s?\s*[:#-]?\s*(\d+)",
         r"(\d+)\s*(?:traveler|traveller|participant|guest|ticket|person|people|pax)s?\b",
@@ -875,6 +878,9 @@ def _labeled_traveler_count(text: str, labels: list[str]) -> int | None:
     value = labeled_value(text, labels)
     if not value:
         return None
+    breakdown_total = _ticket_breakdown_total(value)
+    if breakdown_total is not None:
+        return breakdown_total
     preferred = re.search(
         r"(\d+)[^\w\d]*(?:persons|people|participants|guests|adults|pcs|"
         r"взросл(?:ый|ых|ые)?|дет(?:ей|и)?|реб[её]нок|младен(?:ец|цев)|"
@@ -886,6 +892,13 @@ def _labeled_traveler_count(text: str, labels: list[str]) -> int | None:
         return int(preferred.group(1))
     match = re.search(r"\d+", value)
     return int(match.group(0)) if match else None
+
+
+def _ticket_breakdown_total(text: str) -> int | None:
+    breakdown = _ticket_breakdown(text)
+    if not breakdown:
+        return None
+    return sum(breakdown.values())
 
 
 def _ticket_breakdown(text: str) -> dict:

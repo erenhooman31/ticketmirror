@@ -245,6 +245,87 @@ def test_parse_viator_new_booking():
     assert parsed.warnings == []
 
 
+def test_parse_viator_sums_labeled_participant_categories():
+    parsed = parse_by_provider(
+        "viator",
+        "Viator booking BR-PAX-1 confirmed",
+        "bookings@viator.example",
+        "\n".join(
+            [
+                "Booking reference: BR-PAX-1",
+                "Tour Name: Synthetic Bosphorus Cruise",
+                "Travel date: 2026-06-21",
+                "Tour Option: 14:00",
+                "Participants: 7 adults , 1 child",
+            ]
+        ),
+    )
+
+    assert parsed.traveler_count == 8
+    assert parsed.ticket_breakdown == {"adult": 7, "child": 1}
+
+
+def test_parse_viator_sums_unlabeled_participant_categories():
+    parsed = parse_by_provider(
+        "viator",
+        "Viator booking BR-PAX-2 confirmed",
+        "bookings@viator.example",
+        "\n".join(
+            [
+                "Booking reference: BR-PAX-2",
+                "Tour Name: Synthetic Bosphorus Cruise",
+                "Travel date: 2026-06-21",
+                "Tour Option: 14:00",
+                "Party size detail: 3 adults, 1 child, 1 infant",
+            ]
+        ),
+    )
+
+    assert parsed.traveler_count == 5
+    assert parsed.ticket_breakdown == {"adult": 3, "child": 1, "infant": 1}
+
+
+@pytest.mark.parametrize("count_line", ["Travelers: 4", "Participants: 4"])
+def test_parse_viator_keeps_single_total_traveler_count(count_line):
+    parsed = parse_by_provider(
+        "viator",
+        "Viator booking BR-PAX-3 confirmed",
+        "bookings@viator.example",
+        "\n".join(
+            [
+                "Booking reference: BR-PAX-3",
+                "Tour Name: Synthetic Bosphorus Cruise",
+                "Travel date: 2026-06-21",
+                "Tour Option: 14:00",
+                count_line,
+            ]
+        ),
+    )
+
+    assert parsed.traveler_count == 4
+    assert parsed.ticket_breakdown == {}
+
+
+def test_parse_viator_keeps_single_category_traveler_count():
+    parsed = parse_by_provider(
+        "viator",
+        "Viator booking BR-PAX-4 confirmed",
+        "bookings@viator.example",
+        "\n".join(
+            [
+                "Booking reference: BR-PAX-4",
+                "Tour Name: Synthetic Bosphorus Cruise",
+                "Travel date: 2026-06-21",
+                "Tour Option: 14:00",
+                "Party size detail: 2 adults",
+            ]
+        ),
+    )
+
+    assert parsed.traveler_count == 2
+    assert parsed.ticket_breakdown == {"adult": 2}
+
+
 def test_parse_bookeo_notification_uses_underlying_ota_identity():
     parsed = parse_by_provider(
         "bookeo",
