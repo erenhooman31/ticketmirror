@@ -58,8 +58,10 @@
                     <tr>
                       <th>Phone:</th>
                       <td>
-                        {% if customer.phone %}
-                          <a href="tel:{{ customer.phone }}">{{ customer.phone }}</a>
+                        {% if customer.phone_href %}
+                          <a href="tel:{{ customer.phone_href }}">{{ customer.phone }}</a>
+                        {% elif customer.phone %}
+                          {{ customer.phone }}
                         {% endif %}
                       </td>
                     </tr>

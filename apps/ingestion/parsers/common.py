@@ -480,7 +480,7 @@ def status_for_event(event_type: str, body_text: str) -> str:
         return STATUS_PENDING
     if "confirmed" in haystack or "confirmation" in haystack or "подтвержд" in haystack:
         return STATUS_CONFIRMED
-    return STATUS_PENDING
+    return STATUS_CONFIRMED
 
 
 _infer_event_type_legacy = infer_event_type

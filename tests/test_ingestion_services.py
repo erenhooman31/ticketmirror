@@ -323,7 +323,7 @@ def test_bookeo_without_ota_reference_still_creates_bookeo_booking():
     assert booking.provider.code == "bookeo"
     assert booking.provider_booking_reference == "2557606167491444"
     assert booking.provider_order_reference == "Bookeo 2557606167491444"
-    assert booking.status == Booking.Status.PENDING_PROVIDER_ACCEPTANCE
+    assert booking.status == Booking.Status.CONFIRMED
 
 
 @pytest.mark.django_db

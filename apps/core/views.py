@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from urllib.parse import urlencode
 
@@ -566,6 +567,9 @@ def _customer_rows(bookings):
     rows_by_key = {}
     for booking in bookings:
         key = _customer_key(booking)
+        phone_display, phone_href = _customer_phone(
+            booking.lead_traveler_phone,
+        )
         row = rows_by_key.setdefault(
             key,
             {
@@ -576,7 +580,8 @@ def _customer_rows(bookings):
                 "initials": _customer_initials(
                     customer_label(booking, fallback=""),
                 ),
-                "phone": clean_text(booking.lead_traveler_phone, "Missing phone"),
+                "phone": phone_display,
+                "phone_href": phone_href,
                 "email": clean_text(booking.lead_traveler_email, "Missing email"),
                 "language": clean_text(booking.language, "Missing language"),
                 "bookings": [],
@@ -598,6 +603,32 @@ def _customer_rows(bookings):
         ):
             row["last_booking"] = booking
     return list(rows_by_key.values())
+
+
+def _customer_phone(value):
+    phone = clean_text(value, "")
+    if not phone:
+        return "Missing phone", ""
+
+    display = re.sub(
+        r"^\s*(?:\((?:mobile|home|phone|tel|telephone)\)|"
+        r"(?:mobile|home|phone|tel|telephone))\s*:\s*",
+        "",
+        phone,
+        flags=re.IGNORECASE,
+    ).strip()
+    if not _looks_like_phone_number(display):
+        return "Missing phone", ""
+    href = re.sub(r"[^\d+]", "", display)
+    href = re.sub(r"(?!^)\+", "", href)
+    return display, href
+
+
+def _looks_like_phone_number(value):
+    digits = re.sub(r"\D", "", value or "")
+    if len(digits) < 7:
+        return False
+    return not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.strip())
 
 
 def _customer_key(booking):

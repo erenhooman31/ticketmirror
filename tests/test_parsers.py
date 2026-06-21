@@ -174,7 +174,7 @@ def test_extract_forwarded_headers_unfolds_gmail_wrapped_headers():
 @pytest.mark.parametrize(
     ("subject_prefix", "expected_event", "expected_status"),
     [
-        ("New booking", "email_new_booking", "pending_provider_acceptance"),
+        ("New booking", "email_new_booking", "confirmed"),
         ("Booking update", EVENT_UPDATE, STATUS_MODIFIED),
         ("Booking cancellation", EVENT_CANCELLATION, STATUS_CANCELLED),
     ],

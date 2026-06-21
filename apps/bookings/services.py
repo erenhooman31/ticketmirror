@@ -680,7 +680,11 @@ def export_capacity_summary_csv(date_from, date_to) -> str:
             writer.writerow(
                 [
                     row["date"],
-                    row["activity"].name,
+                    (
+                        row["activity"].name
+                        if row["activity"]
+                        else "Unscheduled / unmapped"
+                    ),
                     row["slot_label"],
                     row["confirmed_pax"],
                     row["pending_pax"],

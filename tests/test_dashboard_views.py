@@ -222,7 +222,12 @@ def test_home_agenda_print_page_renders_scoped_agenda(
     client,
     users,
     booking_data,
+    monkeypatch,
 ):
+    monkeypatch.setattr(
+        "apps.core.views.timezone.localdate",
+        lambda: date(2026, 6, 19),
+    )
     client.force_login(users["viewer"])
     response = client.get(
         reverse("core:agenda_print"),
@@ -312,7 +317,11 @@ def test_dashboard_booking_modal_hides_raw_internal_sections(
 
 
 @pytest.mark.django_db
-def test_dashboard_range_groups_agenda_days(client, users, booking_data):
+def test_dashboard_range_groups_agenda_days(client, users, booking_data, monkeypatch):
+    monkeypatch.setattr(
+        "apps.core.views.timezone.localdate",
+        lambda: date(2026, 6, 19),
+    )
     client.force_login(users["viewer"])
     response = client.get(
         reverse("core:dashboard"),
@@ -1240,6 +1249,8 @@ def test_csv_export_works(client, users, booking_data):
 
 @pytest.mark.django_db
 def test_customers_directory_search_alpha_and_detail(client, users, booking_data):
+    booking_data["booking"].lead_traveler_phone = "(mobile): +1 555 0100"
+    booking_data["booking"].save(update_fields=["lead_traveler_phone", "updated_at"])
     second_alex = create_booking(
         booking_data,
         "BR-2",
@@ -1270,6 +1281,8 @@ def test_customers_directory_search_alpha_and_detail(client, users, booking_data
     assert "Total people:" in html
     assert "BR-1" in html
     assert "BR-2" in html
+    assert 'href="tel:+15550100"' in html
+    assert "tel:(mobile)" not in html
     assert 'data-bs-target="#customer-modal-' in html
     assert 'data-customer-booking-target="#customer-booking-modal-' in html
     assert 'id="customer-booking-modal-' in html
@@ -1291,6 +1304,31 @@ def test_customers_directory_renders_with_empty_database(client, users):
     html = response.content.decode()
     assert "No customers found." in html
     assert "1 - 0 of 0" in html
+
+
+@pytest.mark.django_db
+def test_customers_directory_does_not_link_invalid_phone_values(
+    client,
+    users,
+):
+    provider = Provider.objects.create(name="Viator", code="viator")
+    Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="BR-DATE-PHONE",
+        status=Booking.Status.CONFIRMED,
+        lead_traveler_name="Date Phone Guest",
+        lead_traveler_phone="2026-06-27",
+        active_traveler_count=1,
+    )
+
+    client.force_login(users["viewer"])
+    response = client.get(reverse("core:customers"))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Date Phone Guest" in html
+    assert "Missing phone" in html
+    assert "tel:2026-06-27" not in html
 
 
 @pytest.mark.django_db

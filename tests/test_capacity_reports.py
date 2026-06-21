@@ -5,7 +5,7 @@ from io import StringIO
 import pytest
 from helpers import create_activity_setup, create_booking
 
-from apps.bookings.models import ActivityScheduleSlot, Booking
+from apps.bookings.models import ActivityScheduleSlot, Booking, Provider
 from apps.bookings.services import (
     export_capacity_summary_csv,
     export_daily_manifest_csv,
@@ -234,3 +234,27 @@ def test_date_range_filters_work(capacity_data):
     assert {row["date"] for row in capacity_rows} == {"2026-06-21"}
     assert provider_rows[0]["booking count"] == "1"
     assert provider_rows[0]["confirmed pax"] == "3"
+
+
+@pytest.mark.django_db
+def test_capacity_summary_exports_unscheduled_rows(capacity_data):
+    provider = Provider.objects.create(name="Tripster", code="tripster")
+    Booking.objects.create(
+        provider=provider,
+        provider_booking_reference="TS-UNSCHEDULED",
+        status=Booking.Status.CONFIRMED,
+        active_travel_date=capacity_data["date"],
+        active_traveler_count=21,
+        lead_traveler_name="Unscheduled Guest",
+    )
+
+    rows = _rows(
+        export_capacity_summary_csv(capacity_data["date"], capacity_data["date"])
+    )
+
+    unscheduled = next(
+        row for row in rows if row["activity"] == "Unscheduled / unmapped"
+    )
+    assert unscheduled["slot"] == "Unscheduled / unmapped"
+    assert unscheduled["confirmed pax"] == "21"
+    assert unscheduled["capacity"] == ""
